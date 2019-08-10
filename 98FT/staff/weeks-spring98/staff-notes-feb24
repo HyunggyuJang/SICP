@@ -1,0 +1,222 @@
+		6.001 Staff notes for week of Feb 23, 1998
+
+Administration:
+
+-- usage survey of sections
+
+-- students missing tutorials?
+
+-- Quiz 1 is two weeks from Wednesday!  Grading is on Thursday
+
+
+Lecture 6: Tuesday, 24 Feb 1998
+
+     Lists and Aggregate Data
+
+Pairs: CONS, CAR, CDR, PAIR?  names.
+
+Common Patterns of Usage:
+
+   Mixing and Matching Interchangeable Parts
+    SEQUENCE as a critical conventional idea
+
+   Lists as a convention for using pairs to represent SEQUENCES
+    NIL is the name of the empty list
+    CDR recursion: CDRing down a list, CONSing up an answer
+
+   Abstracting common patterns
+      map, filter, accumulate
+
+   Permutations of a list of numbers
+
+   Conventional Interfaces
+     Representations of Standard Interfaces
+
+
+Recitation: Wednesday, 25 Feb 1998
+
+Reminder: Quiz 1 in two weeks, 5-7pm xor 7-9pm
+
+  I would do lots of examples of lists and procedures for manipulating
+them -- e.g. use of map, filter, accumulate
+        e.g. reverse
+
+  Be sure to include box-and-pointer diagrams.
+
+  I/O representation of list structure
+
+     reality is box-and-pointer diagrams
+
+     I/O is character based, 
+       so we use parens, spaces, and dots to notate trees.
+
+     Printed representation of lists.  You probably should tell
+     them about dotted pair notation as brighter students will
+     notice that the story for lists is not sufficient.
+
+     Output ambiguity:
+
+         (let ((x (cons 1 2)))
+           (cons x x))
+
+       prints out the same as
+
+         (cons (cons 1 2) (cons 1 2))
+
+       but box-and-pointer diagram is different.  
+       This does not matter until we have side-effects.
+
+       procedures and other complicated objects
+
+
+Lecture 7: Thursday, 26 Feb 1998
+
+Starts with an introduction to the Communications Decency Act and
+the issue of free speech vs protection of children on the Internet.
+PICS as an example of part of the technology to solve the problem.
+Then shows the fundamental data structures used by PICS -- which
+really ARE Scheme list syntax:
+
+(define test-label
+  '(PICS-1.0  "http://www.rsac.org/ratingsv01.html"
+	      l gen true comment "RSACi North America Server"
+	      by "rodgerb@playboy.com"
+	      for "http://www.playboy.com"
+	      on "1996.04.04T08:15-0500"
+	      r (n 4 s 3 v 0 l 4)))
+
+(define test-service
+  '((PICS-version 1.1)
+    (rating-system "http://www.rsac.org/ratingsv01.html")
+    (rating-service "http://www.rsac.org/")
+    (name "The RSAC Ratings Service")
+    (description "The Recreational Software Advisory Council rating
+service.  Based on the work of Dr. Donald F. Roberts of Stanford
+University, who has studied the effects of media on children for
+nearly 20 years.")
+    (default (label-only true))
+    (category  (transmit-as "v")
+	       (name "Violence")
+	       (label (name "Conflict")
+		      (description "Harmless conflict; some damage to objects")
+		      (value 0))
+	       (label (name "Fighting")
+		      (description "Creatures injured or killed; damage to objects; fighting")
+		      (value 1))
+	       (label (name "Killing")
+		      (description "Humans injured or killed with small amount of blood")
+		      (value 2))
+	       (label (name "Blood and Gore")
+		      (description "Humans injured or killed; blood and gore")
+		      (value 3))
+	       (label (name "Wanton Violence")
+		      (description "Wanton and gratuitous violence; torture; rape")
+		      (value 4)))
+    (category (transmit-as "s")
+	      (name "Sex")
+	      (label (name "None")
+		     (description "Romance; no sex")
+		     (value 0))
+	      (label (name "Passionate kissing")
+		     (description "Passionate kissing")
+		     (value 1))
+	      (label (name "Clothed sexual touching")
+		     (description "Clothed sexual touching")
+		     (value 2))
+	      (label (name "Non-explicit sexual activity")
+		     (description "Non-explicit sexual activity")
+		     (value 3))
+	      (label (name "Explicit sexual activity; sex crimes")
+		     (description "Explicit sexual activity; sex crimes")
+		     (value 4)))
+    (category (transmit-as "n")
+	      (name "Nudity")
+	      (label (name "None")
+		     (description "No nudity or revealing attire")
+		     (value 0))
+	      (label (name "Revealing Attire")
+		     (description "Revealing attire")
+		     (value 1))
+	      (label (name "Partial Nudity")
+		     (description "Partial nudit")
+		     (value 2))
+	      (label (name "Frontal Nudity")
+		     (description "Non-sexual frontal nudity")
+		     (value 3))
+	      (label (name "Explicit")
+		     (description "Provocative frontal nudity")
+		     (value 4)))
+    (category  (transmit-as "l")
+	       (description "Language")
+	       (label (name "Slang")
+		      (description "Inoffensive slang; no profanity")
+		      (value 0))
+	       (label (name "Mild Expletives")
+		      (description "Mild expletives")
+		      (value 1))
+	       (label (name "Expletives")
+		      (description "Expletives; non-sexual anatomical references")
+		      (value 2))
+	       (label (name "Obscene Gestures")
+		      (description "Strong, vulgar language; obscene gestures")
+		      (value 3))
+	       (label (name "Explicit")
+		      (description "Crude or explicit sexual references")
+		      (value 4)))))
+
+Introduce symbols as the way to allow us to build these data
+structures, emphasizing that the only interesting thing about the new
+data type is that "two symbols that look the same, are the same" and
+introducing the operation EQ? as the fundamental (and fast!) way to
+tell if two things are exactly the same.
+
+Lecture ends by writing selectors and a procedure for taking a PICS
+label and a PICS service description (shown above) and expanding the
+label by filling in the names and descriptions of the categories and
+values included in the label.  This will build on the
+map/filter/accumulate model from the previous lecture.
+
+If time allows (unlikely) I'll introduce quotation of lists and the
+notation '() for the empty list.
+
+Recitation: Friday, 27 Feb 1998
+
+Go over EQ? again.  Stress that all bets are off when neither arg is a
+symbol -- the rule is that EQ? will say things are the same only if
+there is no way whatsoever to tell them apart.  In particular, don't
+use EQ? on numbers (use = instead) or strings (use string=?).
+
+Review cons, list and append (maybe write code for append), and get them
+to draw box-and-pointer diagrams for things like (introduce quoted
+lists if it didn't happen in lecture).
+
+  (cons 'a '(b))
+  (cons '(a) '(b))
+  (list 'a 'b)
+  (list '(a) '(b))
+  (append '(a) '(b))
+
+Be prepared for much confusion concerning pairs and lists.  (Remember
+there is always an inward pointing arrow...)  This is probably *not*
+the right time to introduce the fact that 'A is the same as (QUOTE A)
+-- unless you want to say it in passing and come back to it later when
+we do the evaluator.
+
+If you want, do the symbolic derivative example in the text.
+
+   Note that quotation is a hard concept
+
+If time, do more list and especially tree examples, including
+box-and-pointer diagrams.
+
+  Do some examples that stress that lists can be trees -- not
+  just flat sequences.  You'll have an chance to do more of
+  this later, but it wouldn't hurt to do a little of it now.
+
+    reversing a list on all levels
+    computing the fringe of a tree
+
+  Another nice thing to do is the Representation of Sets
+   example section 2.4.3 
+
+

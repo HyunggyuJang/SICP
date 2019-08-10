@@ -1,0 +1,233 @@
+		MASSACHUSETTS INSTITVTE OF TECHNOLOGY
+      Department of Electrical Engineering and Computer Science
+       6001: Structure and Interpretation of Computer Programs
+	       Staff notes for week of 15 February 1998
+
+
+Last week the students were introduced to:
+
+  "shapes" of processes, and how those shapes derive from the details
+  of the procedure definitions that control their evolution.
+
+     e.g. recursion, iteration, tree recursion
+
+   estimates of order of growth, and how they relate to the shapes.
+
+     examples taken from exponentiation
+     application to modular exponentiation and Diffie-Hellman
+
+  higher-order procedures: procedures as first-class citizens
+
+     the importance of closure in design
+       "Closure: Combinations of things are themselves things 
+                 that can be further combined."
+     abstract strategies, such as fixed-point iteration
+     approximation
+     
+
+There is no lecture on Tuesday, 17 February -- virtual Monday
+
+
+Recitation 5, Wednesday, 18 February 1998
+
+     This recitation section has been inserted at a strategically
+useful time.  (Thanks to the very clever calendar strategy of the MIT
+administration.)  The last two lectures were pretty tough, and we hope
+that your students have been appropriately confused by them.
+(Remember that confusion is the first step toward enlightenment!)
+
+In this section you have the opportunity to help them solidify the
+concepts introduced last week.  It is appropriate to, for example, use
+this time to give away the answer to the Diophantine equation problem
+that is part of PS2.  This is quite a hard problem, and it brings out
+many of the points of the Tuesday lecture.  The next pages are
+expositions of this problem.
+
+The main points of the Thursday lecture are less difficult in detail,
+but probably more profoundly disturbing to students, because they are
+more abstract.  One of the fun games to play here is the following:
+
+(define (twice f)
+  (compose f f))
+
+((twice square) 3)
+
+(((twice twice) square) 3)
+
+From Hal: Diophantine equation problem
+
+The problem is:
+
+Given integers A and B, find integers X and Y such that AX+BY=1.
+
+In order for this to be possible, A and B must have not common
+factors, i.e., GCD(A,B)=1.
+
+By WISHFUL THINKING, suppose we could solve this problem for a
+different pair of integers, namely, the pair of integers B and R,
+where R is the remainder of A modulo B.
+
+That is, by WISHFUL THINKING, we suppose we could find integers XBAR
+and YBAR such that B XBAR + R YBAR = 1.  If we had XBAR and YBAR, we
+could solve our orginal problem, as follows:
+
+R is the remainder of A modulo B means that A= BQ+R, or R = A - BQ,
+where Q is the integer quotient of A by B.  So we can substitute in
+for R in our (supposedly solved) simpler problem:
+
+B XBAR + R YBAR = 1
+B XBAR + (A - BQ) YBAR = 1
+
+Now rewrite the left side as a multiple of A plus and multiple of B:
+
+A YBAR + B (XBAR - Q YBAR) = 1.
+
+and our original problem is solved!
+
+Namely, if we solve the problem for B and R to get XBAR and YBAR, then
+the solution to the problem for A and B is X=YBAR and Y=XBAR-Q*YBAR.
+
+As we keep doing this transformation over and over, we get smaller and
+smaller pairs of integers.  But more than that, these pairs are
+precisely the pairs of integers we would get if we ran the recursive
+GCD algorithm, which means that EVENTUALLY we reach a pair where the
+second integer is 1.  But the problem is trivially solved for that.
+Just let X=0 and Y=1.
+
+This leads to the following procedure:
+
+(define (solve-ax+by=1 a b)
+  (if (= b 1)       ; simple base case
+      (list 0 1)    ; so return the desired pair
+      (let ((q (quotient a b))   ;else set up for recursive call
+            (r (remainder a b)))
+        ;; find solution to simpler problem
+        (let ((reduced (solve-ax+by=1 b r))) 
+          (let ((x-bar (car reduced))   ; extract the pieces
+                (y-bar (cadr reduced)))
+            ;;construct and return solution
+            (list y-bar (- x-bar (* q y-bar))))))))
+
+Notice how "solving the problem" must return 2 numbers, so we have the
+procedure return a pair.  It might be better to invent a data
+structure to represent the solution.
+
+Note that this procedure runs in logarithmic time.
+
+You'll have to handwave the use of list to make a pair and car and
+cadr to get out the parts.
+
+
+From JMiller:
+
+As you know, I spent about 3 hours on this one last night.  I came to a
+slightly different way of thinking about this that I like a bit better.
+It comes down to the fact that we are always computing the second argument
+for the next iteration (b') as a remainder modulo the old argument (b).
+Thus the second argument is always decreasing (the remainder b' is always
+between 0 and b-1).  Thus we are guaranteed that the second argument will
+eventually be 0, and we are then looking for a solution to the equation a'x
++ b'y = 1 = a'x so x = 1/a'.  This is where the GCD=1 comes in, because in
+this case a'=1 and we get an integer solution.
+
+Hence my code:
+
+(define (solve-ax+by=1 a b)
+  (if (= b 0)
+      (if (= a 1)
+          (list 1 0)                    ; X=1, Y is any integer
+          (error "GCD wasn't 1"))
+      (let ((q (quotient a b))
+            (r (remainder a b)))
+        (let ((simpler (solve-ax+by=1 b r)))
+          (let ((xbar (car simpler))
+                (ybar (cadr simpler)))
+            (list ybar (- xbar (* ybar q))))))))
+
+Lecture 5, Thursday, 19 February 1998 (GJS)
+
+In this lecture we introduce compound data 
+   and the beginning of data abstraction.  
+
+I will talk about the idea of combining pieces of data to make
+compound data objects.  I will explain why this is a good idea, and I
+will illustrate this with a number of elementary examples, such as
+complex numbers.
+
+I will probably show how we could just make Church pairs, as in
+Exercise 2.4.  However, it is useful to introduce CONS as a primitive
+glue.  (After all, we could have defined addition with Peano
+arithmetic, but we chose to supply primitive arithmetic.)
+
+However implemented, CONS, CAR, CDR satisfy the following conditions:
+
+Forall a, b
+     (CAR (CONS a b)) = a
+  and
+     (CDR (CONS a b)) = b
+  and
+     (PAIR? (CONS a b)) = #T
+  and
+     (NULL? (CONS a b)) = #F
+
+The important point here is that it is the the behavior of CONS, CAR,
+and CDR that matter, not the implementation.  This is the essence of
+the abstraction barrier.
+
+I will then go on to invent lists.  This requires inventing the empty
+list, notated by '(), such that (NULL? '()) = #T and (PAIR? '()) = #F.
+I will discuss, in depth, the list notation: (a0 ... an) and show how
+it is a string of pairs ending in the empty list.  
+
+
+I will go on to represent (geometric) vectors by lists of components
+(in rectangular coordinates).  I will then build up a data structure
+that is the newtonian state of a particle (mass (x y z) (vx vy vz)),
+and I will make a list of them to represent our Solar System.
+
+The preceeding will take most of the hour.
+
+At this point I will wander off into an inspiring but inessential
+description of the evolution of the behavior of the Solar System by
+numerical integration.  I will tell a short nice story about chaos.
+However, there will be a few nice higher-order procedures woven into
+this story.
+
+Recitation 6, Friday, 20 February 1998
+
+   Microquiz, as usual.
+
+   Today, we need students to get comfortable with the manipulation of
+   lists and pairs.  Students should understand the following:
+
+      (define (list? x)
+	(or (null? x)
+	    (and (pair? x)
+		 (list? (cdr x)))))
+
+      (define (list-ref x n)
+	(if (= n 0)
+	    (car x)
+	    (list-ref (cdr x) (- n 1))))
+
+
+   Suppose we have recursive list structures that ground out in
+   numbers.  I want students to be able to see why this kind of
+   procedure extends arithmetic to combinations of isomorphic list
+   structures:
+
+      (define (binary-list-operator bop)
+	(define (operate l1 l2)
+          (cond ((and (pair? l1) (pair? l1))
+                 (cons (operate (car l1) (car l2))
+                       (operate (cdr l1) (cdr l2))))
+                ((and (null? l1) (null? l2)) '())
+                ((and (number? l1) (number? l2))
+                 (bop l1 l2))
+                (else
+                  (error "Cannot combine -- BOP"
+                         bop l1 l2))))
+	operate)
+
+
+                
