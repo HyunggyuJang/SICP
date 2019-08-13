@@ -726,7 +726,6 @@
   (attempt-n-k n
 	       (floor (/ (log n)
 			 (log 2)))))
-
 ;; Exercise 1.46
 
 analogus to fixed-point implement
