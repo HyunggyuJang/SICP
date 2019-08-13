@@ -187,3 +187,50 @@
     (- (y-point right-top)
        (y-point left-bottom))))
 ;; Then the perimeter and area are same as above.
+
+;; Exercise 2.4
+(define (cons x y)
+  (lambda (m) (m x y)))
+(define (car z)
+  (z (lambda (p q) p)))
+(define (cdr z)
+  (z (lambda (p q) q)))
+;; prove (car (cons x y)) = x using substitution model
+;; 	(car (cons x y))
+;; =	((lambda (m) (m x y)) (lambda (p q) p))
+;; =	((lambda (p q) p) x y)
+;; =	x
+
+;; prove (cdr (cons x y)) = y using substitution model
+;; 	(cdr (cons x y))
+;; =	((lambda (m) (m x y)) (lambda (p q) q))
+;; =	((lambda (p q) q) x y)
+;; =	y
+
+;; Exercise 2.5
+;; assume x,y are nonnegative integers
+(define (cons x y)
+  (* (expt 2 x)
+     (expt 3 y)))
+(define (car z)
+  (if (odd? z)
+      0
+      (1+ (car (/ z 2)))))
+(define (cdr z)
+  (if (or (even? z)
+          (= z 1))
+      0
+      (1+ (cdr (/ z 3)))))
+;; Test
+;; (= (car (cons 3 7)) 3)                  ;#t
+;; (= (cdr (cons 3 7)) 7)                  ;#t
+
+;; Exercise 2.6
+(define zero (lambda (f) (lambda (x) x)))
+(define (add-1 n)
+  (lambda (f) (lambda (x) (f ((n f) x)))))
+(define one (lambda (f) (lambda (x) (f x))))
+
+;; By wishful thinking,
+(define (add n m)
+  (lambda (f) (lambda (x) (n f ((m f) x)))))
