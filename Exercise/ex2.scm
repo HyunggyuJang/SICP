@@ -239,3 +239,167 @@
 
 (define (mul n m)
   (lambda (f) (m (n f))))
+
+;; Section 2.1.4
+
+(define (add-interval x y)
+  (make-interval (+ (lower-bound x) (lower-bound y))
+                 (+ (upper-bound x) (upper-bound y))))
+
+(define (mul-interval x y)
+  (let ((p1 (* (lower-bound x) (lower-bound y)))
+        (p2 (* (lower-bound x) (upper-bound y)))
+        (p3 (* (upper-bound x) (lower-bound y)))
+        (p4 (* (upper-bound x) (upper-bound y))))
+    (make-interval (min p1 p2 p3 p4)
+                   (max p1 p2 p3 p4))))
+
+(define (div-interval x y)
+  (mul-interval x
+                (make-interval (/ 1.0 (upper-bound y))
+                               (/ 1.0 (lower-bound y)))))
+
+;; Exercise 2.7
+(define (make-interval a b) (cons a b))
+
+(define (upper-bound interval)
+  (cdr interval))
+
+(define (lower-bound interval)
+  (car interval))
+
+;; Exercise 2.8
+(define (sub-interval x y)
+  (make-interval (- (lower-bound x) (upper-bound y))
+                 (- (upper-bound x) (lower-bound y))))
+
+;; Exercise 2.9
+;; for all (x such that x_u - x_l = w_x). for all (y such that y_u - y_l = w_y).
+;; w_(x+y) = w_x + w_y and
+;; w_(x-y) = w_x + w_y
+;; i.e. it doesn't depend on x and y value but only width of their
+;;
+;; Counter example for multiplication (division)
+;; x = 2 +- 1 with y = 3 +- 2
+;; x = 3 +- 1 with y = 4 +- 2
+;; i.e. the result width also dependant to the center value of those.
+
+;; Exercise 2.10
+(define (div-interval x y)
+  (if (and (>= (upper-bound y) 0)
+           (<= (lower-bound y) 0))
+      (error "the divisor interval spans over 0" y)
+      (mul-interval x
+                    (make-interval (/ 1.0 (upper-bound y))
+                                   (/ 1.0 (lower-bound y))))))
+
+;; Exercise 2.11
+;;
+;; table
+;; x		y	#mul
+;; ++	++	2
+;; ++	-+	2
+;; ++	--	2
+;; -+	++	2
+;; -+	-+	4
+;; -+	--	2
+;; --	++	2
+;; --	-+	2
+;; --	--	2
+
+(define (mul-interval x y)
+  (let ((x_l (lower-bound x))
+        (x_u (upper-bound x))
+        (y_l (lower-bound y))
+        (y_u (upper-bound y)))
+    (cond ((>= x_l 0)
+           (cond ((>= y_l 0)
+                  (make-interval (* x_l y_l)
+                                 (* x_u y_u)))
+                 ((<= y_l 0)
+                  (make-interval (* x_u y_l)
+                                 (* x_u y_u)))
+                 ((<= y_u 0)
+                  (make-interval (* x_u y_l)
+                                 (* x_l y_u)))))
+          ((<= x_l 0)
+           (cond ((>= y_l 0)
+                  (make-interval (* x_l y_u)
+                                 (* x_u y_u)))
+                 ((<= y_l 0)
+                  (let ((p1 (* x_l y_l))
+                        (p2 (* x_l y_u))
+                        (p3 (* x_u y_l))
+                        (p4 (* x_u y_u)))
+                    (make-interval (min p2 p3)
+                                   (max p1 p4))))
+                 ((<= y_u 0)
+                  (make-interval (* x_l y_u)
+                                 (* x_u y_l)))))
+          ((>= x_l 0)
+           (cond ((>= y_l 0)
+                  (make-interval (* x_l y_u)
+                                 (* x_u y_l)))
+                 ((<= y_l 0)
+                  (make-interval (* x_l y_u)
+                                 (* x_l y_l)))
+                 ((<= y_u 0)
+                  (make-interval (* x_u y_u)
+                                 (* x_l y_l)))))
+          )))
+
+;; Exercise 2.12
+
+(define (make-center-width c w)
+  (make-interval (- c w) (+ c w)))
+(define (center i)
+  (/ (+ (lower-bound i) (upper-bound i)) 2))
+(define (width i)
+  (/ (- (upper-bound i) (lower-bound i)) 2))
+
+(define (make-center-percent c p)
+  (make-center-width c (* c p)))
+(define (percent i)
+  (* (/ (width i)
+        (center i))
+     100.0))
+
+;; Exercise 2.13
+;; Under the small percentage tolerances assumption, we get
+;; R1(1+e1) * R2(1+e2) ~ R1 R2 (1 + e1 + e2).
+;; As consequence, the result percentage toleracne would be
+;; 100 (e1 + e2) = p1 + p2
+
+;; Exercise 2.14
+(define (par1 r1 r2)
+  (div-interval (mul-interval r1 r2)
+                (add-interval r1 r2)))
+
+(define (par2 r1 r2)
+  (let ((one (make-interval i)))
+    (div-interval one
+                  (add-interval (div-interval one r1)
+                                (div-interval one r2)))))
+;; The procedures (or equations) above are equal only when the interval arithmetic
+;; satisfy the relation--A/A = 1 (in addition, A - A = 0).
+;;
+;; The thing is that our arithmetic system doesn't satisfy this rule; The above procedures
+;; results to different intervals.
+;; To remedy this, we should simplify the formula with symbolic algebra
+;; (with rules about complement operator; i.e. - of +, / of *),
+;; and then we should do interval arithmetic as usual.
+;;
+;; There is some ambiguity in the meaning of "simplify"; we can quantify "the complexity of formula" by
+;; the number of interval arithmetic calculation that needed to evaluate but the number of numeral arithmetic.
+;;
+;; This also answers the question of Exercise 2.16.
+;;
+;; More concretely, we investigate this phenomena under the small percentage tolerances model.
+;; I've wrote about this in text of sicp in the Exercise 2.13 section (+ note of that section).
+;; And this also answers the Exercise 2.15
+
+;; Exercise 2.15
+;; See above & relevant note in Digital paper
+
+;; Exercise 2.16
+;; See the discussion in Exercise 2.14
