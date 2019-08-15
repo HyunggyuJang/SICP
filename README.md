@@ -1,2 +1,0 @@
-# SICP
-SICP with Proof

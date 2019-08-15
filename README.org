@@ -1,0 +1,134 @@
+#+TITLE: SICP Study Note
+* Building Abstractions with Data
+** Hierarchical Data and the Closure Property
+*** Repersenting Sequences
+- Does it prints same as list to construct a sequence by conses?
+  #+BEGIN_SRC scheme
+(cons 1 (cons 2 (cons 3 (cons 4 '()))))
+  #+END_SRC
+
+  #+RESULTS:
+  | 1 | 2 | 3 | 4 |
+
+  #+BEGIN_SRC scheme
+(list 1 2 3 4)
+  #+END_SRC
+
+  #+RESULTS:
+  | 1 | 2 | 3 | 4 |
+
+  →Yeah, looks same.
+**** Exercise 2.17
+#+BEGIN_SRC scheme
+(define (last-pair items)               ;assume items is non empty list
+  (let ((next-p (cdr items)))
+    (if (null? next-p)
+        items
+        (last-pair next-p))))
+#+END_SRC
+
+#+RESULTS:
+: #<unspecified>
+
+Let's test with it
+#+BEGIN_SRC scheme
+(last-pair (list 23 72 149 34))
+#+END_SRC
+
+#+RESULTS:
+| 34 |
+
+It works.
+
+**** Exercise 2.18
+#+BEGIN_SRC scheme
+(define (reverse l)
+  (define (iter l r)
+    (if (null? l)
+        r
+        (iter (cdr l) (cons (car l) r))))
+  (iter l nil))                         ; we don't know what nil is but assume we have
+#+END_SRC
+Or do not use nil explicitly analogous to last-pair.
+#+BEGIN_SRC scheme
+(define (reverse l)                     ;assume that l is not empty
+  (let ((next-p (cdr l)))
+    (if (null? next-p)
+        l
+        (append (reverse next-p) (list (car l))))))
+(define (append l1 l2)
+  (if (null? l1)
+      l2
+      (cons (car l1) (append (cdr l1) l2))))
+#+END_SRC
+
+#+RESULTS:
+: #<unspecified>
+
+**** Exercise 2.19
+Let's review the change-counting program. We know that the number of
+change-count can be reduced as follows:
+- Exchange the change using the first coin and
+- not using the first coin
+
+
+The above states the reductive process. To complete the whole process of it, we
+need to specify the base case:
+- when the amount is zero, then we have only one way to change.
+
+
+It is quite tricky at first why this is true; but think it this way: simulate
+the situation with some simple case,e.g. the amount is 6 cents or like that.
+Then we come to realize it really need to count as 1 when amount is zero in this
+recursive process.
+
+That's not the only base case; by the reductive process we have only two cases left to consider:
+- when we have 0 coins to change, we count this as 0 and
+- when we have negative amount to change, there is no way to change the amount; 0.
+
+
+Again, we can got the guts by simulating the simple cases or more formally we
+should reason this argument using induction. I think it is reasonable to use the
+computer aided proof check like this situation because humankind inherited the
+error-prone property. Nonetheless let's code.
+
+Then we can code this recursive process:
+#+BEGIN_SRC scheme
+(define us-coins (list 50 25 10 5 1))   ;examples of how the parameter, coin-values, constructed
+(define (cc amount coin-values)
+  (cond ((= amount 0) 1)
+        ((< amount 0) 0)
+        ((no- wjmore? coin-values) 0)         ;↑base cases
+        (else (+ (cc (- amount
+                        (first-denomination coin-values)) ;first reduction branch
+                     coin-values)
+                 (cc amount             ;second (last) reduction branch
+                     (except-first-denomination coin-values))))))
+
+(define (no-more? coin-values)
+  (null? coin-values)) ;we could (define no-more? null?) but we don't mess up the debugger
+
+(define (first-denomination coin-values)
+  (car coin-values))                 ;we provided that the coin-values not empty
+
+(define (except-first-denomination coin-values)
+  (cdr coin-values))                 ;we provided that the coin-values not empty
+#+END_SRC
+
+#+RESULTS:
+
+We can reason that the order of the list ~coin-values~ does not affect the
+answer produced by cc; it just only takes more times to evaluate it.
+
+We can assure that by experimenting with some examples:
+#+BEGIN_SRC scheme :returns value
+(define us-reverse (reverse us-coins))
+(cc 100 us-reverse)
+(cc 100 us-coins)
+(cc 112 us-reverse)
+(cc 112 us-coins)
+#+END_SRC
+
+#+RESULTS:
+
+**** Exercise 2.20

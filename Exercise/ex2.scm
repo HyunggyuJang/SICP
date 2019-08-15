@@ -189,12 +189,12 @@
 ;; Then the perimeter and area are same as above.
 
 ;; Exercise 2.4
-(define (cons x y)
-  (lambda (m) (m x y)))
-(define (car z)
-  (z (lambda (p q) p)))
-(define (cdr z)
-  (z (lambda (p q) q)))
+;; (define (cons x y)
+;;   (lambda (m) (m x y)))
+;; (define (car z)
+;;   (z (lambda (p q) p)))
+;; (define (cdr z)
+;;   (z (lambda (p q) q)))
 ;; prove (car (cons x y)) = x using substitution model
 ;; 	(car (cons x y))
 ;; =	((lambda (m) (m x y)) (lambda (p q) p))
@@ -209,18 +209,18 @@
 
 ;; Exercise 2.5
 ;; assume x,y are nonnegative integers
-(define (cons x y)
-  (* (expt 2 x)
-     (expt 3 y)))
-(define (car z)
-  (if (odd? z)
-      0
-      (1+ (car (/ z 2)))))
-(define (cdr z)
-  (if (or (even? z)
-          (= z 1))
-      0
-      (1+ (cdr (/ z 3)))))
+;; (define (cons x y)
+;;   (* (expt 2 x)
+;;      (expt 3 y)))
+;; (define (car z)
+;;   (if (odd? z)
+;;       0
+;;       (1+ (car (/ z 2)))))
+;; (define (cdr z)
+;;   (if (or (even? z)
+;;           (= z 1))
+;;       0
+;;       (1+ (cdr (/ z 3)))))
 ;; Test
 ;; (= (car (cons 3 7)) 3)                  ;#t
 ;; (= (cdr (cons 3 7)) 7)                  ;#t
@@ -403,3 +403,55 @@
 
 ;; Exercise 2.16
 ;; See the discussion in Exercise 2.14
+
+;; Exercise 2.17
+(define (last-pair items)               ;assume items is non empty list
+  (let ((next-p (cdr items)))
+    (if (null? next-p)
+        items
+        (last-pair next-p))))
+;; test
+(last-pair (list 23 72 149 34))
+
+;; Exercise 2.18
+(define (reverse l)
+  (define (iter l r)
+    (if (null? l)
+        r
+        (iter (cdr l) (cons (car l) r))))
+  (iter l nil))                         ; we don't know what nil is but assume we have
+
+;; or doens't use nil explicitly analogous to last-pair
+(define (reverse l)                     ;assume that l is not empty
+  (let ((next-p (cdr l)))
+    (if (null? next-p)
+        l
+        (append (reverse next-p) (list (car l))))))
+(define (append l1 l2)
+  (if (null? l1)
+      l2
+      (cons (car l1) (append (cdr l1) l2))))
+;; Exercise 2.19
+(define us-coins (list 50 25 10 5 1))   ;examples of how the parameter, coin-values, constructed
+(define (cc amount coin-values)
+  (cond ((= amount 0) 1)
+        ((< amount 0) 0)
+        ((no-more? coin-values) 0)         ;↑base cases
+        (else (+ (cc (- amount
+                        (first-denomination coin-values)) ;first reduction branch
+                     coin-values)
+                 (cc amount             ;second (last) reduction branch
+                     (except-first-denomination coin-values))))))
+(define (no-more? coin-values)
+  (null? coin-values)) ;we could (define no-more? null?) but we don't mess up the debugger
+
+(define (first-denomination coin-values)
+  (car coin-values))                 ;we provided that the coin-values not empty
+
+(define (except-first-denomination coin-values)
+  (cdr coin-values))                 ;we provided that the coin-values not empty
+
+;; Experiment with examples
+;; (define us-reverse (reverse us-coins))
+;; (cc 112 us-reverse)
+;; (cc 112 us-coins)
