@@ -106,7 +106,7 @@ Then we can code this recursive process:
                      (except-first-denomination coin-values))))))
 
 (define (no-more? coin-values)
-  (null? coin-values)) ;we could (define no-more? null?) but we don't mess up the debugger
+  (null? coin-values)) ;we could (define no-more? null?) but we don't like to mess up the debugger
 
 (define (first-denomination coin-values)
   (car coin-values))                 ;we provided that the coin-values not empty
