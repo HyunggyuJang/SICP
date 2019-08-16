@@ -131,4 +131,504 @@ We can assure that by experimenting with some examples:
 
 #+RESULTS:
 
+The ~us-reverse~ results to same as ~us-coins~. Why should it be?: The reductive
+process and base case I've wrote above does not mention about the order of
+coins; it should behave as same whatever order is.
+
+Then how about the efficiency (complexity) of space and times? We can guess the
+reversed order should be more complex than the previous case; but it is not
+obvious.
+
+Let's do some trick. While we have not studied the ~set!~ statement, but it is
+useful to estimate the complexity and get some intuition about the general case:
+#+BEGIN_SRC scheme
+(define (cc amount coin-values)
+  (define (cc-counter amount coin-values)
+    (cond ((= amount 0)
+           (set! count (1+ count))
+           1)
+          ((< amount 0)
+           (set! count (1+ count))
+           0)
+          ((no-more? coin-values)
+           (set! count (1+ count))
+           0)                           ;↑base cases
+          (else
+           (set! count (1+ count))
+           (+ (cc-counter (- amount
+                     (first-denomination coin-values)) ;first reduction branch
+                  coin-values)
+              (cc-counter amount                ;second (last) reduction branch
+                  (except-first-denomination coin-values))))))
+  (define count 0)                      ;count the steps needed to evaluate cc
+  (cons count (cc-counter amount coin-values))) ;return the pair of count and number of cc ways
+#+END_SRC
+
+Then we can inspect by using that:
+#+BEGIN_SRC scheme
+(cc 100 us-reverse)                     ;=> (38901 . 292)
+(cc 100 us-coins)                       ;=> (15499 . 292)
+#+END_SRC
+
+Yeah, as we expected, the reversed version needs more than double steps than original.
+How can we reason this? Let's we do some simulation with simple argument using
+substitution model. After some experiment, I've realized it is hard to prove
+that the reversed one has more step complexity than previous in asymptonic notation.
+To prove that the reversed one has more step & space complextity, we should
+prove that using inequality sign not asymptonic notation; it will convolve more
+subtle argument. We should use proof assistant otherwise it become really tricky
+to prove.
 **** Exercise 2.20
+I've started not to think about the structure. It's the evidence that I've
+exhausted completely. Anyway here is the code:
+#+BEGIN_SRC scheme
+(define (same-parity first . rest)
+  (let ((same? (if (even? first)
+                   even?
+                   odd?)))
+    (cons first (filter same? rest))))  ;wishful tinking
+
+(define (filter include? l)
+  (if (null? l)
+      l
+      (let ((hd (car l))                ;it would be clearer if I use the let* notation.
+            (tl (cdr l)))               ;but I've not learned yet.
+        (let ((filtered
+               (filter include? tl)))
+          (if (include? hd)
+              (cons hd filtered)
+              filtered)))))
+#+END_SRC
+Isn't this obvious to explain? Anyway, I'll skip that.
+**** Mapping over lists
+#+BEGIN_SRC scheme
+(define (map proc items)
+  (if null? items)
+  nil
+  (cons (proc (car items))
+        (map proc (cdr items))))
+#+END_SRC
+**** Exercise 2.21
+#+BEGIN_SRC scheme
+(define (square-list items)
+  (if (null? items)
+      nil
+      (cons (square (car items) (square-list (cdr items))))))
+
+(define (square-list items)
+  (map square items))
+#+END_SRC
+**** Exercise 2.22
+1. Because the structure of the helper procedure iter is same as our first
+   definition of [[Exercise 2.18][reverse]].
+2. List is, by definition, sequence of pairs. But the tried implementation
+   returns something other than list: ~(cons answer (square (car things)))~ is
+   not chained pairs.
+
+
+**** Exercise 2.23
+*First try*
+#+BEGIN_SRC scheme
+(define (for-each proc items)
+  (if (null? items)                     ;base case
+      true                              ;done case (termination)
+.....
+#+END_SRC
+↑ We can not use if clause for evaluation of sequenced statement.
+So we should use cond clause instead.
+#+BEGIN_SRC scheme
+(define (for-each proc items)
+  (cond ((null? items) true)            ;termination (base) case return true, which can be arbitrary value.
+        (else
+         (proc (car items))
+         (for-each proc (cdr items))))
+#+END_SRC
+Let's test it:
+#+BEGIN_SRC scheme
+(for-each (lambda (x) (newline) (display x))
+          (list 57 321 88))
+#+END_SRC
+Yeah works well.
+*** Hierarchical Structure
+Let's implement the ~count-leaves~. It should behave like follows:
+#+BEGIN_SRC scheme
+(define x (cons (list 1 2) (list 3 4)))
+(length x)                              ;3
+(count-leaves x)                        ;4
+(list x x)                              ;(((1 2) 3 4) ((1 2) 3 4))
+(length (list x x))                     ;2
+(count-leaves (list x x))               ;8
+#+END_SRC
+The implementation of ~count-leaves~ is analogous to ~length~:
+- ~count-leaves~ of the empty list is 0.
+
+
+But in the reduction step, we should take a count the ~car~ part:
+- ~count-leaves~ of tree ~x~ is ~count-leaves~ of the ~car~ of ~x~ plus
+  ~count-leaves~ of the ~cdr~ of ~x~.
+
+
+After repeatedly apply the reduction step, we reach the another base case:
+- ~count-leaves~ of a leaf is 1.
+
+
+And we can test whether it is leaf by using the primitive predicate ~pair?~ we
+test whether it is pair or not.
+
+Then we can complete the procedure:
+#+BEGIN_SRC scheme
+(define (count-leaves x)
+  (cond ((null? x) 0)
+        ((not (pair? x)) 1)
+        (else (+ (count-leaves (car x))
+                 (count-leaves (cdr x))))))
+#+END_SRC
+**** Exercise 2.24
+I've drawn assigned task in Digital Papper.
+**** Exercise 2.25
+1. ~(cadaddr (list 1 3 (list 5 7) 9))~ results to 7.
+   The notation ~(cadaddr x)~ is abbreviation for ~(car (cdr (car (cdr (cdr x)))))~.
+   Let we use this notation from this point for the space.
+2. ~(caar (list (list 7)))~.
+3. ~(cadadadadadadr x)~, where ~x~ is ~(1 (2 (3 (4 (5 (6 7))))))~.
+
+
+**** Exercise 2.26
+1. ~(append x y)~ would result to ~(1 2 3 4 5 6)~.
+2. ~(cons x y)~ would result to ~((1 2 3) 4 5 6)~.
+3. ~(list x y)~ would result to ~((1 2 3) (4 5 6))~.
+
+
+We can verify those by evaluating:
+#+BEGIN_SRC scheme
+(define x (list 1 2 3))
+(define y (list 4 5 6))
+(append x y)
+(cons x y)
+(list x y)
+#+END_SRC
+
+Yeah the results are same as above.
+**** Exercise 2.27
+We should implement, so called, ~deep-reverse~. It behaves as follows:
+#+BEGIN_SRC scheme
+(define x (list (list 1 2) (list 3 4))) ;((1 2) (3 4))
+(reverse x)                             ;((3 4) (1 2))
+(deep-reverse x)                        ;((4 3) (2 1))
+#+END_SRC
+
+It is obvious that we should use, so called, tree recursion for it. Or wishful
+thinking so to say.
+
+Let's start with reduction step:
+- We assume that subtrees are /deep reversed/. Then we can complete the whole
+  procedure:
+  #+BEGIN_SRC scheme
+(reverse (cons (deep-reverse (car x)) (deep-reverse (cdr x))))
+  #+END_SRC
+- Then the results are reduced to the subproblem whose argument is subtree of ~x~.
+
+
+There are two base case with which the reduction step end up:
+- By cdring down the list, we optain nil at the very end.
+- Or, we could encounter the leaf, not the pair by caring the list.
+
+
+As consequence, we can complete the procedure analogous to ~count-leaves~:
+#+BEGIN_SRC scheme
+(define (deep-reverse x)
+  (cond ((null? x) x)
+        ((not (pair? x)) x)
+        (else (reverse (cons
+                        (deep-reverse (car x))
+                        (deep-reverse (cdr x)))))))
+#+END_SRC
+**** Exercise 2.28
+Implement ~fringe~. Whose behavior are the followings:
+#+BEGIN_SRC scheme
+(define x (list (list 1 2) (list 3 4)))
+(fringe x)                              ;(1 2 3 4)
+(fringe (list x x))                     ;(1 2 3 4 1 2 3 4)
+#+END_SRC
+
+The strategy is similar with [[Exercise 2.27][above]]:
+#+BEGIN_SRC scheme
+(define (fringe x)
+  (cond ((null? x) x)
+        ((not (pair? x)) (list x))
+        (else (append (fringe (car x))
+                      (fringe (cdr x))))))
+#+END_SRC
+
+Note that we return the singleton list in the case of leaf; it is necessary at
+the reduction step.
+**** Exercise 2.29
+Here we model the binary mobile, which consists of two branches--a left branch
+and right branch. Each branch is a rod of a certain length, from which hangs
+either a weight or another binary mobile.
+
+We can construct it by using ~list~:
+#+BEGIN_SRC scheme
+(define (make-mobile left right)
+  (list left right))
+#+END_SRC
+
+A branch is constructed from a ~length~, which must be a number, together with a
+~structure~, which may be either a number--a simple weight-- or another mobile:
+#+BEGIN_SRC scheme
+(define (make-branch length structure)
+  (list length structure))
+#+END_SRC
+
+***** a.
+Then we can implement the selectors, namely ~left-branch~ and ~right-branch~:
+#+BEGIN_SRC scheme
+(define (left-branch mobile)
+  (car mobile))
+(define (right-branch mobile)
+  (cadr mobile))
+#+END_SRC
+And the branch' structure:
+#+BEGIN_SRC scheme
+(define (branch-structure branch)
+  (cadr branch))
+#+END_SRC
+
+***** b.
+The procedure that returns weight of mobile, ~total-weight~, is similar with
+above tree recursion processes:[fn::We sense more and more replicative patterns
+here]
+- Reduction process:
+  #+BEGIN_SRC scheme
+(+ (total-weight (branch-structure (left-branch mobile)))
+   (total-weight (branch-structure (right-branch mobile))))
+  #+END_SRC
+  which end up with
+- Base case:
+  #+BEGIN_SRC scheme
+(if (not (mobile? x)) x)                ;a simple weight case
+  #+END_SRC
+  And the ~mobile?~ test whether it is mobile:
+  #+BEGIN_SRC scheme
+(define (mobile? x) (pair? x))
+  #+END_SRC
+
+
+And then we complete the procedure:
+#+BEGIN_SRC scheme
+(define (total-weight mobile)
+  (if (not (mobile? mobile))
+      mobile
+      (+ (total-weight (branch-structure (left-branch mobile)))
+         (total-weight (branch-structure (right-branch mobile))))))
+#+END_SRC
+***** c. Design the predicate that tests whether a binary mobile is balanced.
+Here we also exploit the wishful thinking about the tree structure:
+- Reduction process:
+  #+BEGIN_SRC scheme
+(let ((left (left-branch mobile))
+      (right (right-branch mobile)))
+  (let ((mobile-l (branch-structure left))
+        (mobile-r (branch-structure right)))
+    (if (and (balanced? mobile-l)
+             (balanced? mobile-r))
+        (= (* (branch-length left)
+              (total-weight mobile-l))
+           (+ (branch-length right)
+              (total-weight mobile-r)))
+        false)))
+  #+END_SRC
+  Here we used the ~branch-length~ whose definition is
+  #+BEGIN_SRC scheme
+(define (branch-length branch)
+  (car branch))
+  #+END_SRC
+  Yeah, it's quite dirty; but straight forward. We can revise the if clause as
+  follow:
+  #+BEGIN_SRC scheme
+(and (balanced? mobile-l)
+     (balanced? mobile-r)
+     (= (* (branch-length left)
+              (total-weight mobile-l))
+           (+ (branch-length right)
+              (total-weight mobile-r))))
+  #+END_SRC
+  as the consequence and alternative of if clause are boolean. This end up with
+- Base case (a simple weight):
+  #+BEGIN_SRC scheme
+(if (not (mobile? x)) true)
+  #+END_SRC
+  which can be reduced to
+  #+BEGIN_SRC scheme
+(not (mobile? x))
+  #+END_SRC
+
+
+The complete code:
+#+BEGIN_SRC scheme
+(define (blanced? mobile)
+  (and (not (mobile? mobile))
+       (let ((left (left-branch mobile))
+             (right (right-branch mobile)))
+         (let ((mobile-l (branch-structure left))
+               (mobile-r (branch-structure right)))
+           (and (balanced? mobile-l)
+                (balanced? mobile-r)
+                (= (* (branch-length left)
+                      (total-weight mobile-l))
+                   (+ (branch-length right)
+                      (total-weight mobile-r))))))))
+#+END_SRC
+***** d.
+Suppose we change the representation of mobiles so that the constructors are
+#+BEGIN_SRC scheme
+(define (make-mobile left right)
+  (cons left right))
+(define (make-branch length structure)
+  (cons length structure))
+#+END_SRC
+
+Then we should change only the followings:
+#+BEGIN_SRC scheme
+(define (right-branch mobile)
+  (cdr mobile))
+(define (branch-structure branch)
+  (cdr branch))
+#+END_SRC
+Boom! That's it. The power of abstract barrier!
+
+**** Mapping over trees
+We can define the ~scale-tree~ procedure analogous to ~scale-list~ using ~map~:
+#+BEGIN_SRC scheme
+(define (scale-tree tree factor)
+  (map (lambda (sub-tree)
+         (if (pair? sub-tree)
+             (scale-tree sub-tree factor)
+             (* sub-tree factor)))
+       tree))
+#+END_SRC
+**** Exercise 2.30
+Define a procedure ~square-tree~ analogous to the ~square-list~ procedure of [[Exercise
+2.21][exercise 2.21]].
+That is, ~square-tree~ should behave as follows:
+#+BEGIN_SRC scheme
+(square-tree
+ (list 1
+       (list 2 (list 3 4) 5)
+       (list 6 7)))                     ;(1 (4 (9 16) 25) (36 49))
+#+END_SRC
+
+***** Define ~square-tree~ without higher-order procedures
+We can do this by analogy to ~scale-tree~:
+#+BEGIN_SRC scheme
+(define (square-tree tree)
+  (cond ((null? tree) tree)
+        ((not (pair? tree)) (square tree))
+        (else (cons (square-tree (car tree))
+                    (square-tree (cdr tree))))))
+#+END_SRC
+***** Define ~square-tree~ using ~map~
+#+BEGIN_SRC scheme
+(define (square-tree tree)
+  (map (lambda (sub-tree)
+         (if (pair? sub-tree)
+             (square-tree sub-tree)
+             (square sub-tree)))
+       tree))
+#+END_SRC
+
+**** Exercise 2.31
+Define ~tree-map~ that behave as follows:
+#+BEGIN_SRC scheme
+(define (square-tree tree) (tree-map square tree))
+#+END_SRC
+It is easy:
+#+BEGIN_SRC scheme
+(define (tree-map proc tree)
+  (map (lambda (sub-tree)
+         (if (pair? sub-tree)
+             (tree-map proc sub-tree)
+             (proc sub-tree)))
+       tree))
+#+END_SRC
+**** Exercise 2.32
+We can get the whole subsets of ~s~ by reducing that:
+- The subsets that include the element ~a~ of ~s~ plus
+- The subsets that do not include the element ~a~.
+
+
+Then we can complete the code:
+#+BEGIN_SRC scheme
+(define (subsets s)
+  (if (null? s)
+      (list s)
+      (let ((rest (subsets (cdr s))))
+        (append rest
+                (map (lambda (subset)
+                       (cons (car s) subset))
+                     rest)))))
+#+END_SRC
+*** Sequences as Conventional Interfaces
+**** Sequence Operations
+The main procedures that complete the signal processing interfaces are
+followings:
+- [[Mapping over lists][map]]
+- [[Exercise 2.20][filter]]
+- accumulate
+  #+BEGIN_SRC scheme
+(define (accumulate op initial sequence)
+  (if (null? sequence)
+      initial
+      (op (car sequence)
+          (accumulate op initial (cdr sequence)))))
+  #+END_SRC
+
+
+All that remains to implement signal-flow diagrams is to enumerate the sequence
+of elements to be processed. That is, to make signals which processed afterward.
+- make initial signal; produces list.
+  To enumerate the interval of integers, we can code
+  #+BEGIN_SRC scheme
+(define (enumerate-interval low high)
+  (if (> low high)
+      nil
+      (cons low (enumerate-interval (+ low 1) high))))
+  #+END_SRC
+
+  For tree, we can transform the tree as follows[fn::In fact, it is same
+  procedure as [[Exercise 2.28][fringe]].]:
+  #+BEGIN_SRC scheme
+(define (enumerate-tree tree)
+  (cond ((null? tree) nil)
+        ((not (pair? tree)) (list tree))
+        (else (append (enumerate-tree (car tree))
+                      (enumerate-tree (cdr tree))))))
+  #+END_SRC
+
+
+**** Exercise 2.33
+By comparing the ~map~ procedure and ~accumulate~ we can define the ~map~ as follows:
+#+BEGIN_SRC scheme
+(define (map p sequence)
+  (accumulate (lambda (x y) (cons (p x) y))
+              nil
+              sequence))
+#+END_SRC
+And the others also can be implemented analogous to above:
+#+BEGIN_SRC scheme
+(define (append seq1 seq2)
+  (accumulate cons seq2 seq1))
+(define (length sequence)
+  (accumulate (lambda (x y) (1+ y)) 0 sequence))
+#+END_SRC
+**** Exercise 2.34
+Horner's rule.
+#+BEGIN_SRC scheme
+(define (horner-eval x coefficient-sequence)
+  (accumulate (lambda (this-coeff higher-terms) (+ this-coeff (* x higher-terms)))
+              0
+              coefficient-sequence))
+;; test
+(horner-eval 2 (list 1 3 0 5 0 1))      ;79
+#+END_SRC
+Actually I've used this in the exercise in [[github:HyunggyuJang/Isabelle][Isabelle]].

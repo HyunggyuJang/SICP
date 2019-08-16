@@ -434,14 +434,25 @@
 ;; Exercise 2.19
 (define us-coins (list 50 25 10 5 1))   ;examples of how the parameter, coin-values, constructed
 (define (cc amount coin-values)
-  (cond ((= amount 0) 1)
-        ((< amount 0) 0)
-        ((no-more? coin-values) 0)         ;↑base cases
-        (else (+ (cc (- amount
-                        (first-denomination coin-values)) ;first reduction branch
-                     coin-values)
-                 (cc amount             ;second (last) reduction branch
-                     (except-first-denomination coin-values))))))
+  (define (cc-counter amount coin-values)
+    (cond ((= amount 0)
+           (set! count (1+ count))
+           1)
+          ((< amount 0)
+           (set! count (1+ count))
+           0)
+          ((no-more? coin-values)
+           (set! count (1+ count))
+           0)                           ;↑base cases
+          (else
+           (set! count (1+ count))
+           (+ (cc-counter (- amount
+                             (first-denomination coin-values)) ;first reduction branch
+                          coin-values)
+              (cc-counter amount                ;second (last) reduction branch
+                          (except-first-denomination coin-values))))))
+  (define count 0)                      ;count the steps needed to evaluate cc
+  (cons count (cc-counter amount coin-values))) ;return the pair of count and number of cc ways
 (define (no-more? coin-values)
   (null? coin-values)) ;we could (define no-more? null?) but we don't mess up the debugger
 
@@ -453,5 +464,183 @@
 
 ;; Experiment with examples
 ;; (define us-reverse (reverse us-coins))
-;; (cc 112 us-reverse)
-;; (cc 112 us-coins)
+;; (cc 100 us-reverse)
+;; (cc 100 us-coins)
+
+;; Exercise 2.20
+(define (same-parity first . rest)
+  (define (filter include? l)
+    (if (null? l)
+        l
+        (let ((hd (car l))
+              (tl (cdr l)))
+          (let ((filtered
+                 (filter include? tl)))
+            (if (include? hd)
+                (cons hd filtered)
+                filtered)))))
+  (let ((same? (if (even? first)
+                   even?
+                   odd?)))
+    (cons first (filter same? rest))))
+;; test
+;; (same-parity 1 2 3 4 5 6 7) => (1 3 5 7)
+;; (same-parity 2 3 4 5 6 7) => (2 4 6)
+;; (same-parity 2 4 33 21 29 30) => (2 4 30)
+
+;; Mapping over lists
+;; (define (map proc items)
+;;   (if null? items)
+;;   nil
+;;   (cons (proc (car items))
+;;         (map proc (cdr items))))
+
+;; Exercise 2.21
+(define (square-list items)
+  (if (null? items)
+      nil
+      (cons (square (car items) (square-list (cdr items))))))
+(define (square-list items)
+  (map square items))
+
+;; Exercise 2.23
+(define (for-each proc items)
+  ;; (if (null? items)                     ;base case
+  ;;     true                              ;done case (termination)
+  ;;     ()))
+  ;;     ↑ we can not use if clause for evaluation of sequence of statement
+  (cond ((null? items) true)            ;termination (base) case return true, which can be arbitrary value.
+        (else
+         (proc (car items))
+         (for-each proc (cdr items)))))
+;; test
+;; (for-each (lambda (x) (newline) (display x))
+;;           (list 57 321 88))
+
+;; Section 2.2.2
+(define (count-leaves x)
+  (cond ((null? x) 0)
+        ((not (pair? x)) 1)
+        (else (+ (count-leaves (car x))
+                 (count-leaves (cdr x))))))
+
+;; Exercise 2.26
+;; (define x (list 1 2 3))
+;; (define y (list 4 5 6))
+;; (append x y)
+;; (cons x y)
+;; (list x y)
+
+;; Exercise 2.27
+(define (deep-reverse x)
+  (cond ((null? x) x)
+        ((not (pair? x)) x)
+        (else (reverse (cons
+                        (deep-reverse (car x))
+                        (deep-reverse (cdr x)))))))
+
+;; (define x (list (list 1 2) (list 3 4)))
+;; (reverse x)
+;; (deep-reverse x)
+
+;; Exercise 2.28
+(define (fringe x)
+  (cond ((null? x) x)
+        ((not (pair? x)) (list x))
+        (else (append (fringe (car x))
+                      (fringe (cdr x))))))
+
+;; (define x (list (list 1 2) (list 3 4)))
+;; (fringe x)                              ;(1 2 3 4)
+;; (fringe (list x x))                     ;(1 2 3 4 1 2 3 4)
+
+;; Exercise 2.29
+(define (make-mobile left right)
+  (list left right))
+(define (make-branch length structure)
+  (list length structure))
+(define (left-branch mobile)
+  (car mobile))
+(define (right-branch mobile)
+  (cadr mobile))
+(define (branch-structure branch)
+  (cadr branch))
+(define (mobile? x) (pair? x))
+(define (total-weight mobile)
+  (if (not (mobile? mobile))
+      mobile
+      (+ (total-weight (branch-structure (left-branch mobile)))
+         (total-weight (branch-structure (right-branch mobile))))))
+
+(define (blanced? mobile)
+  (and (not (mobile? mobile))
+       (let ((left (left-branch mobile))
+             (right (right-branch mobile)))
+         (let ((mobile-l (branch-structure left))
+               (mobile-r (branch-structure right)))
+           (and (balanced? mobile-l)
+                (balanced? mobile-r)
+                (= (* (branch-length left)
+                      (total-weight mobile-l))
+                   (+ (branch-length right)
+                      (total-weight mobile-r))))))))
+(define (branch-length branch)
+  (car branch))
+
+;; Exercise 2.30
+(define (square-tree tree)
+  (cond ((null? tree) tree)
+        ((not (pair? tree)) (square tree))
+        (else (cons (square-tree (car tree))
+                    (square-tree (cdr tree))))))
+(define (square-tree tree)
+  (map (lambda (sub-tree)
+         (if (pair? sub-tree)
+             (square-tree sub-tree)
+             (square sub-tree)))
+       tree))
+
+;; (square-tree
+;;  (list 1
+;;        (list 2 (list 3 4) 5)
+;;        (list 6 7)))                     ;(1 (4 (9 16) 25) (36 49))
+
+;; Exercise 2.31
+(define (tree-map proc tree)
+  (map (lambda (sub-tree)
+         (if (pair? sub-tree)
+             (tree-map proc sub-tree)
+             (proc sub-tree)))
+       tree))
+
+;; Exercise 2.32
+(define (subsets s)
+  (if (null? s)
+      (list s)
+      (let ((rest (subsets (cdr s))))
+        (append rest
+                (map (lambda (subset)
+                       (cons (car s) subset))
+                     rest)))))
+;; Exercise 2.33
+(define (accumulate op initial sequence)
+  (if (null? sequence)
+      initial
+      (op (car sequence)
+          (accumulate op initial (cdr sequence)))))
+(define (map p sequence)
+  (accumulate (lambda (x y) (cons (p x) y))
+              nil
+              sequence))
+(define (append seq1 seq2)
+  (accumulate cons seq2 seq1))
+(define (length sequence)
+  (accumulate (lambda (x y) (1+ y)) 0 sequence))
+
+;; Exercise 2.34
+(define (horner-eval x coefficient-sequence)
+  (accumulate (lambda (this-coeff higher-terms) (+ this-coeff (* x higher-terms)))
+              0
+              coefficient-sequence))
+;; test
+;; (horner-eval 2 (list 1 3 0 5 0 1))      ;79
