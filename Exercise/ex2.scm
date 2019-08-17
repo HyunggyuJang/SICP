@@ -628,10 +628,10 @@
       initial
       (op (car sequence)
           (accumulate op initial (cdr sequence)))))
-(define (map p sequence)
-  (accumulate (lambda (x y) (cons (p x) y))
-              nil
-              sequence))
+;; (define (map p sequence)
+;;   (accumulate (lambda (x y) (cons (p x) y))
+;;               nil
+;;               sequence))
 (define (append seq1 seq2)
   (accumulate cons seq2 seq1))
 (define (length sequence)
@@ -644,3 +644,106 @@
               coefficient-sequence))
 ;; test
 ;; (horner-eval 2 (list 1 3 0 5 0 1))      ;79
+
+;; Exercise 2.35
+(define (count-leaves t)
+  (accumulate (lambda (x y)
+                (if (not (pair? x))
+                    (1+ y)
+                    (+ (count-leaves x)
+                       y)))
+              0
+              t))
+(define (count-leaves t)
+  (accumulate + 0 (map (lambda (x) 1)
+                       (enumerate-tree t))))
+
+;; Exercise 2.36
+(define (accumulate-n op init seqs)
+  (if (null? (car seqs))
+      (car seqs)
+      (cons (accumulate op init (map car seqs))
+            (accumulate-n op init (map cdr seqs)))))
+
+;; Exercise 2.37
+(define (dot-product v w)
+  (accumulate + 0 (map * v w)))
+(define (matrix-*-vector m v)
+  (map (lambda (m_i) (dot-product m_i u))
+       m))
+(define (transpose mat)
+  (accumulate-n cons '() mat))
+(define (matrix-*-matrix m n)
+  (let ((cols (transpose n)))
+    (map (lambda (m_i)
+           (matrix-*-vector cols m_i))
+         m)))
+;; Exercise 2.39
+(define (snoc x y)
+  (append y (list x)))
+(define (reverse sequence)
+  (fold-right (lambda (x y)
+                (snoc x y))
+              '()
+              sequence))
+(define (reverse sequence)
+  (fold-left (lambda (x y)
+               (cons y x))
+             '()
+             sequence))
+
+;; Exercise 2.40
+(define (enumerate-interval low high)
+  (if (> low high)
+      '()
+      (cons low (enumerate-interval (+ low 1) high))))
+(define (flatmap proc seq)
+  (accumulate append '() (map proc seq)))
+(define (unique-pairs n)
+  (flatmap
+   (lambda (i)
+     (map (lambda (j) (list i j))
+          (enumerate-interval 1 (- i 1))))
+   (enumerate-interval 1 n)))
+
+;; Exercise 2.41
+(define (triple-sum-to-s n s)
+  (filter (lambda (triple)
+            (= s (fold-right + 0 triple)))
+          (flatmap (lambda (k)
+                     (map (lambda (p)
+                            (snoc k p))
+                          (unique-pairs (- k 1))))
+                   (enumerate-interval 1 n))))
+
+;; Exercise 2.42
+(define (queens board-size)
+  (define (queen-cols k)
+    (if (= k 0)
+        (list empty-board)
+        (filter
+         (lambda (positions) (safe? k positions))
+         (flatmap
+          (lambda (rest-of-queens)
+            (map (lambda (new-row)
+                   (adjoin-position new-row k rest-of-queens))
+                 (enumerate-interval i board-size)))
+          (queen-cols (- k 1))))))
+  (queen-cols board-size))
+(define empty-board '())
+(define (adjoin-position new-row k rest-of-queens)
+  (cons new-row rest-of-queens))
+(define (safe? k positions)
+  (define (equal-not-to? nr rest)
+    (or (null? rest)
+        (and (not (= nr (car rest)))
+             (equal-not-to? nr (cdr rest)))))
+  (define (pm-i-not-equal-to? nr i rest)
+    (or (null? rest)
+        (and (not (or (= (+ nr i) (car rest))
+                      (= (- nr i) (car rest))))
+             (pm-i-not-equal-to? nr (1+ i) (cdr rest)))))
+  (let ((new-row (car positions))
+        (rest-queens (cdr positions)))
+    (and (equal-not-to? new-row rest-queens) ;provided that positions not empty
+         (pm-i-not-equal-to? new-row 1 rest-queens))))
