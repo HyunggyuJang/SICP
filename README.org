@@ -822,10 +822,10 @@ duplicately every ~new-row~ of ~(enumerate-interval 1 board-size)~, i.e
 ~board-size~ times.
 
 We can reason the asymptotic time complexity of both cases:
-- The original one is \theta{(n^3)}
-- The troubled one is \theta{(n^n)}
+- The original one is \theta(n^{3})
+- The troubled one is \theta(n^{n})
 
 
 Here we used the n as ~board-size~. As consequence, when ~board-size~ is 8 and
 let the time taken by original one /T/, then the Louis's one takes approximately
-more than 8^5 \times /T/.
+more than 8^{5} \times /T/.
