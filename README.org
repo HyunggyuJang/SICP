@@ -829,3 +829,386 @@ We can reason the asymptotic time complexity of both cases:
 Here we used the n as ~board-size~. As consequence, when ~board-size~ is 8 and
 let the time taken by original one /T/, then the Louis's one takes approximately
 more than 8^{5} \times /T/.
+*** Example: A Picture Language
+**** The picture language
+- Primitives: /painter/
+- Means of combination: ~beside~, ~below~
+  - Create new painter from existing one: ~filp-vert~, ~flip-horiz~
+- Means of abstraction: ~define~ in scheme language; As means of combination are
+  all procedure in scheme, we can abstract them like any other procedure in scheme.
+
+
+The results of combination of painter are also painters; by this closure
+property with scheme's picture language inherit closure property in complete
+sense.
+
+I've tried to configure the picture language framework in mit-scheme; but to no vail.
+I've searched the github of mit-scheme, which has the directory named "6001"
+that contains ~6001.pkg~; to use that package, I've read the relevant content of
+MIT scheme's user manual, also to no use; I've complied it with ~sf~ method in
+edwin editor--this package depends on the edwin package, so I have no choice to
+use emacs in this case--, and I found myself it is useless I need to put more
+time in configuration than solving the exercises. The easiest alternative was to
+use racket's sicp package, which I knew but have stuck with using *pure*
+mit-scheme as I felt it is more canonical. Well, whatever, I've given up with
+that; let's go with racket.
+**** Exercise 2.44
+We can define ~up-split~ analogous to ~right-split~.
+#+BEGIN_SRC scheme
+(define (up-split painter n)
+  (if (= n 0)
+      painter
+      (let ((smaller (up-split painter (- n 1))))
+        (below painter (beside smaller smaller)))))
+#+END_SRC
+**** Exercise 2.45
+We can easily abstract this by higher order function:
+#+BEGIN_SRC scheme
+(define (split tran1 tran2)
+  (lambda (painter n)
+    (if (= n 0)
+        painter
+        (let ((smaller ((split tran1 tran2) painter (- n 1))))
+          (tran1 painter (tran2 smaller smaller))))))
+#+END_SRC
+**** Exercise 2.46
+Note that I implement ~sub-vect~ using the ~scale-vect~ and ~add-vect~; it is
+subtle matter but I thought this definition is more canonical in algebraical
+sense:
+#+BEGIN_SRC scheme
+(define (make-vect x y)
+  (cons x y))
+
+(define (xcor-vect v)
+  (car v))
+
+(define (ycor-vect v)
+  (cdr v))
+
+(define (add-vect v1 v2)
+  (make-vect (+ (xcor-vect v1)
+                (xcor-vect v2))
+             (+ (ycor-vect v1)
+                (ycor-vect v2))))
+(define (scale-vect s v)
+  (make-vect (* (xcor-vect v) s)
+             (* (ycor-vect v) s)))
+(define (sub-vect v1 v2)
+  (add-vect v1 (scale-vect -1 v2)))
+#+END_SRC
+**** Exercise 2.47
+For first representation, we can implement selectors accordingly:
+#+BEGIN_SRC scheme
+(define (origin-frame f)
+  (car f))
+(define (edge1-frame f)
+  (cadr f))
+(define (edge2-frame f)
+  (caddr f))
+#+END_SRC
+For the latter, similarly:
+#+BEGIN_SRC scheme
+(define (origin-frame f)
+  (car f))
+(define (edge1-frame f)
+  (cadr f))
+(define (edge2-frame f)
+  (cddr f))
+#+END_SRC
+**** Exercise 2.48
+Didn't we solved this in exercise 2.2? In there, we made segment using points
+not vector but the representation axiom is same in both; we can reuse that
+definiiton:
+#+BEGIN_SRC scheme
+;; Constructor make-segment
+(define (make-segment start-pt end-pt)
+  (cons start-pt end-pt))
+;; Selector start-segment
+(define (start-segment segment)
+  (car segment))
+;; Selector end-segment
+(define (end-segment segment)
+  (cdr segment))
+#+END_SRC
+**** Exercise 2.49
+***** a.
+The painter that draws the outline of the designated frame.
+#+BEGIN_SRC scheme
+(define outliner
+  (let ((o (make-vect 0 0))
+        (br (make-vect 1 0))
+        (tr (make-vect 1 1))
+        (tl (make-vect 0 1)))
+    (segments->painter (list (make-segment o br)
+                             (make-segment br tr)
+                             (make-segment tr tl)
+                             (make-segment tl o)))))
+#+END_SRC
+***** b.
+The painter that draws an "X" by connecting opposite corners of the frame.
+#+BEGIN_SRC scheme
+(define x-liner
+  (let ((o (make-vect 0 0))
+        (br (make-vect 1 0))
+        (tr (make-vect 1 1))
+        (tl (make-vect 0 1)))
+    (segments->painter (list (make-segment o tr)
+                             (make-segment br tl)))))
+#+END_SRC
+***** c.
+The painter that draws a diamond shape by connecting the midpoints of the sides
+of the frame.
+#+BEGIN_SRC scheme
+(define dia-liner
+  (let ((o (make-vect 0 0))
+        (br (make-vect 1 0))
+        (tr (make-vect 1 1))
+        (tl (make-vect 0 1)))
+    (let ((left (scale-vect 0.5 tl))
+          (bottom (scale-vect 0.5 br)))
+      (let ((right (add-vect br left))
+            (top (add-vect tl bottom)))
+        (segments->painter (list (make-segment left top)
+                                 (make-segment top right)
+                                 (make-segment right bottom)
+                                 (make-segment bottom left)))))))
+#+END_SRC
+***** DONE d.
+The wave painter.
+#+BEGIN_SRC scheme
+(define wave
+  (let ((lhl (make-vect 0 0.65))         ;left hand
+        (lhh (make-vect 0 0.8))
+        (rhh (make-vect 1 0.35))
+        (rhl (make-vect 1 0.2))
+        (lal (make-vect 0.24 0.45))     ;left arm joint
+        (lah (make-vect 0.24 0.6))
+        (lsl (make-vect 0.4 0.6))       ;left shoulder
+        (lsh (make-vect 0.4 0.65))
+        (ln (make-vect 0.45 0.65))
+        (rn (make-vect 0.55 0.65))
+        (rs (make-vect 0.6 0.65))
+        (lfa (make-vect 0.43 0.8))
+        (rfa (make-vect 0.57 0.8))
+        (lh (make-vect 0.45 1))
+        (rh (make-vect 0.55 1))
+        (lv (make-vect 0.43 0.55))
+        (rv (make-vect 0.57 0.55))
+        (lfo (make-vect 0.3 0))
+        (rfo (make-vect 0.7 0))
+        (lfo1 (make-vect 0.4 0))
+        (rfo1 (make-vect 0.6 0))
+        (cl (make-vect 0.5 0.3)))
+    (segments->painter (list (make-segment lhh lah)
+                             (make-segment lah lsh)
+                             (make-segment lsh ln)
+                             (make-segment ln lfa)
+                             (make-segment lfa lh) ;from left hand high to left head
+                             (make-segment lhl lal)
+                             (make-segment lal lsl)
+                             (make-segment lsl lv)
+                             (make-segment lv lfo) ;from left hand low to left foot
+                             (make-segment lfo1 cl)
+                             (make-segment cl rfo1) ;from left foot1 to right foot1
+                             (make-segment rfo rv)
+                             (make-segment rv rhl) ;from left foot to right hand low
+                             (make-segment rhh rs)
+                             (make-segment rs rn)
+                             (make-segment rn rfa)
+                             (make-segment rfa rh)))        ;from left hand high left head
+    ))
+#+END_SRC
+**** Transforming and combining painters
+As we noted in the introductive session of this section, the combinators created
+new painter element using the existing ones. Now we implement the combinators
+using more general procedure, ~transform-painter~:
+#+BEGIN_SRC scheme
+(define (transform-painter painter origin corner1 corner2)
+  (lambda (frame)
+    (let ((m (frame-coord-map frame)))
+      (let ((new-origin (m origin)))
+        (painter
+         (make-frame new-origin
+                     (sub-vect (m corner1) new-origin)
+                     (sub-vect (m corner2) new-origin)))))))
+#+END_SRC
+Here we exploit the fact that ~painter~ is actually just procedure, which takes
+~frame~ for its arguemnt, so to transform the ~painter~ all we need to do is
+transform the ~frame~ appropriately. Also note that we could have chosen ~edge1~
+and ~edge2~ for transformation instead ~corner1~ and ~corner2~; we just found
+from the use case it is more convenient.
+
+Then we can implement a lot of combinators:
+- ~filp-vert~
+  #+BEGIN_SRC scheme
+(define (flip-vert painter)
+  (transform-painter painter
+                     (make-vect 0.0 0.0)
+                     (make-vect 1.0 1.0)
+                     (make-vect 0.0 0.0)))
+  #+END_SRC
+- We can also shrink the frame:
+  #+BEGIN_SRC scheme
+(define (shrink-to-upper-right painter)
+  (transform-painter painter
+                     (make-vect 0.5 0.5)
+                     (make-vect 1.0 0.5)
+                     (make-vect 0.5 1.0)))
+  #+END_SRC
+- Also we can rotate the frame:
+  #+BEGIN_SRC scheme
+(define (rotate90 painter)
+  (transform-painter painter
+                     (make-vect 1.0 0.0)
+                     (make-vect 1.0 1.0)
+                     (make-vect 0.0 0.0)))
+  #+END_SRC
+- We can combine two or more paitners
+  #+BEGIN_SRC scheme
+(define (beside painter1 painter2)
+  (let ((split-point (make-vect 0.5 0.0)))
+    (let ((paint-left
+           (transform-painter painter1
+                              (make-vect 0.0 0.0)
+                              split-point
+                              (make-point 0.0 1.0)))
+          (paint-right
+           (transform-painter painter2
+                              split-point
+                              (make-vect 1.0 0.0)
+                              (make-vect 0.5 1.0))))
+      (lambda (frame)
+        (paint-left frame)
+        (paint-right frame)))))
+  #+END_SRC
+**** Exercise 2.50
+We can define ~flip-horiz~ analogous to ~flip-vert~:
+#+BEGIN_SRC scheme
+(define (flip-horiz painter)
+  (transform-painter painter
+                     (make-vect 1.0 0.0) ;new origin
+                     (make-vect 0.0 0.0) ;new end of edge1
+                     (make-vect 0.0 1.0))) ;new end of edge2
+#+END_SRC
+We can define rotating frames in either way, using ~rotate90~ or directly:
+- Using ~rotate90~:
+  #+BEGIN_SRC scheme
+(define (rotate180 painter)
+  (rotate90 (rotate90 painter)))
+(define (rotate270 painter)
+  (rotate90 (rotate180 painter)))
+  #+END_SRC
+- define directly:
+  #+BEGIN_SRC scheme
+(define (rotate180 painter)
+  (transform-painter painter
+                     (make-vect 1.0 1.0)
+                     (make-vect 0.0 1.0)
+                     (make-vect 1.0 0.0)))
+(define (rotate270 painter)
+  (transform-painter painter
+                     (make-vect 0.0 1.0)
+                     (make-vect 0.0 0.0)
+                     (make-vect 1.0 1.0)))
+  #+END_SRC
+**** Exercise 2.51
+- Define ~below~ analogous to ~beside~:
+  #+BEGIN_SRC scheme
+(define (below painter1 painter2)
+  (let ((split-point (make-vect 0.0 0.5)))
+    (let ((paint-bottom
+           (transform-painter painter1
+                              (make-vect 0.0 0.0)
+                              (make-point 1.0 0.0)
+                              split-point))
+          (paint-top
+           (transform-painter painter2
+                              split-point
+                              (make-vect 1.0 0.5)
+                              (make-vect 0.0 1.0))))
+      (lambda (frame)
+        (paint-bottom frame)
+        (paint-top frame)))))
+  #+END_SRC
+- Using ~beside~:
+  #+BEGIN_SRC scheme
+(define (below painter1 painter2)
+  (rotate270 (beside (rotate90 painter2)
+                     (rotate90 painter1))))
+  #+END_SRC
+**** Exercise 2.52
+***** a.
+Let's add some smile to our ~wave~:
+#+BEGIN_SRC scheme
+(define wave
+  (let ((lhl (make-vect 0 0.65))         ;left hand
+        (lhh (make-vect 0 0.8))
+        (rhh (make-vect 1 0.35))
+        (rhl (make-vect 1 0.2))
+        (lal (make-vect 0.24 0.45))     ;left arm joint
+        (lah (make-vect 0.24 0.6))
+        (lsl (make-vect 0.4 0.6))       ;left shoulder
+        (lsh (make-vect 0.4 0.65))
+        (ln (make-vect 0.45 0.65))
+        (rn (make-vect 0.55 0.65))
+        (lm (make-vect 0.48 0.77))      ;smile~
+        (rm (make-vect 0.52 0.77))
+        (cm (make-vect 0.5 0.75))
+        (rs (make-vect 0.6 0.65))
+        (lfa (make-vect 0.43 0.8))
+        (rfa (make-vect 0.57 0.8))
+        (lh (make-vect 0.45 1))
+        (rh (make-vect 0.55 1))
+        (lv (make-vect 0.43 0.55))
+        (rv (make-vect 0.57 0.55))
+        (lfo (make-vect 0.3 0))
+        (rfo (make-vect 0.7 0))
+        (lfo1 (make-vect 0.4 0))
+        (rfo1 (make-vect 0.6 0))
+        (cl (make-vect 0.5 0.3)))
+    (segments->painter (list (make-segment lhh lah)
+                             (make-segment lah lsh)
+                             (make-segment lsh ln)
+                             (make-segment ln lfa)
+                             (make-segment lfa lh) ;from left hand high to left head
+                             (make-segment lhl lal)
+                             (make-segment lal lsl)
+                             (make-segment lsl lv)
+                             (make-segment lv lfo) ;from left hand low to left foot
+                             (make-segment lfo1 cl)
+                             (make-segment cl rfo1) ;from left foot1 to right foot1
+                             (make-segment rfo rv)
+                             (make-segment rv rhl) ;from left foot to right hand low
+                             (make-segment rhh rs)
+                             (make-segment rs rn)
+                             (make-segment rn rfa)
+                             (make-segment rfa rh) ;from left hand high left head
+                             (make-segment lm cm)
+                             (make-segment cm rm))) ;smile~
+    ))
+#+END_SRC
+***** b.
+Change ~corner-split~ using only one copy of the ~up-split~ and ~right-split~:
+#+BEGIN_SRC scheme
+(define (corner-split painter n)
+  (if (= n 0)
+      painter
+      (let ((up (up-split painter (- n 1)))
+            (right (right-split painter (- n 1))))
+        (let ((top-left up)
+              (bottom-right right))
+          (beside (below painter top-left)
+                  (below bottom-right (corner-split painter (- n 1))))))))
+#+END_SRC
+***** c.
+Modify ~square-limit~ so that the big Mr. Rogers look outward from each corner
+of the square:
+#+BEGIN_SRC scheme
+(define (squre-limit painter n)
+  (let ((combine4 (square-of-four flip-vert
+                                  rotate180
+                                  identity
+                                  flip-horiz)))))
+#+END_SRC
+#+CAPTION: Finale
+[image]

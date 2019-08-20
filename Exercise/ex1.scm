@@ -38,7 +38,7 @@
 ;(f-recur 20);-> 10771211
 ;(f-iter 20); -> 10771211
 
-;; Exercise 1.12 
+;; Exercise 1.12
 
 (define (pascal row column)		;recursive process
   (if (or
@@ -94,12 +94,12 @@
   (if (not (> (abs angle) 0.1))		;check whether we can apply small angle approximatine
       angle				;approximation
       (p (sine (/ angle 3.0)))))	;cannot apply the small angle approximation,reduce the angle
-					
+
 
 
 ;(sine 12.15)				;check the answer, 5
 ;(sine 90.0)				;test just for fun 0.8823... when small angle approximation allowed at 0.1 radians
-					;when angle approximation allowed at 0.01 radians, 0.89.... 
+					;when angle approximation allowed at 0.01 radians, 0.89....
 					;seems like doesn't very effective to shrink the approximation angle
 
 ; Exercise 1.16
@@ -172,7 +172,7 @@
 
 (define (smallest-divisor n)
   (find-divisor n 2))
-(define (find-divisor n test-divisor)   
+(define (find-divisor n test-divisor)
   (cond ((> (square test-divisor) n) n)	;the smallest divisor is n itself
 	((divides? test-divisor n) test-divisor) ;we count from small number, so it is smallest divisor
 	(else (find-divisor n (next test-divisor))))) ;test next number
@@ -297,7 +297,7 @@
 
 ; iterative process version of expmod
 ;; (define (find-nontriv-or-sq-mod sqrt-mod m)
-  ;; (cond ((= sqrt-mod 0) 0) 
+  ;; (cond ((= sqrt-mod 0) 0)
         ;; (and (not (= sqrt-mod 1))
               ;; (not (= sqrt-mod (- m 1))))
          ;; (define sq-mod (remainder (square sqrt-mod) m))
@@ -579,7 +579,7 @@
 		 (+ (d i)
 		    result)))))
   (iter k 0))				;initial state
-  
+
 ;; Exercise 1.38
 
 (define (approx-e-minus-2 k)
@@ -592,7 +592,7 @@
 	       1))
 	 1))
    k))
-	 
+
 ;; Exercise 1.39
 
 (define (tan-cf x k)
@@ -683,7 +683,7 @@
 ;; 	      (lambda (x)
 ;; 		(f (result x))))))
 ;;   (iter 1 f))				;initial state
-      
+
 ;; or using the compose procedure
 
 (define (repeated f n)			;iterative process
@@ -757,10 +757,10 @@ analogus to fixed-point implement
 ;; Even more, we can apply substitution rule for checking the inheritance, i.e. which is more
 ;; general method; previous version of iterative-method can be instantiated by
 ;; amended version, whereas the opposite doesn't hold.
-;; 
+;;
 ;; Yeah, when the fixed-point implemented using amended version, there is some overhead than
 ;; the previous one.
-;; 
+;;
 ;; More specific implement for ad-hoc per se, more optimization available.
 
 ;; (define (iterative-improve good-enough? improve)
