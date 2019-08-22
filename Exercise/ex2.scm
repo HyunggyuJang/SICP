@@ -1149,3 +1149,58 @@
 
 ;; ↑ doesn't work. I should have not cheat this sort.
 ;; further more, it just complicate the proof of this algorithm.
+
+;; Extend so as to accommodate exponentiation
+(define (->AST iexp)
+  (cond ((not (pair? iexp))             ;symbol--singleton
+         iexp)
+        ((null? (cdr iexp))             ;eof mark
+         (if (pair? (car iexp))
+             (->AST (car iexp))         ;turns out compound exp
+             (car iexp)))               ;it was singleton
+        (else (expt->AST (cdr iexp) (->AST (car iexp)))))) ;recursive process
+(define (expt->AST iexp AST)
+  (cond ((null? iexp) AST)              ;eof
+        ((and (symbol? (car iexp))
+              (eq? (car iexp) '**))
+         (expt->AST (cddr iexp) (list '** AST (->AST (cadr iexp)))))
+        (else (prod->AST iexp AST))))
+(define (prod->AST iexp AST)
+  (cond ((null? iexp) AST)
+        ((and (symbol? (car iexp))
+              (eq? (car iexp) '*))
+         (prod->AST (cddr iexp) (list '* AST (->AST (cadr iexp)))))
+        (else (sum->AST iexp AST))))
+(define (sum->AST iexp AST)
+  (cond ((null? iexp) AST)
+        ((and (symbol? (car iexp))
+              (eq? (car iexp) '+))
+         (list '+ AST (->AST (cdr iexp))))))
+
+;; test
+;; (->AST '(x + 3 * (x + y + 2)))          ;(+ x (* 3 (+ x (+ y 2))))
+;; (->AST '(x ** 4 * (x * 2 + y + 2)))     ;(* (** x 4) (+ (* x 2) (+ y 2)))
+
+(define (exponentiation? iexp)
+  (and (pair? iexp)
+       (pair? (cdr iexp))
+       (let ((ast (->ast iexp)))
+         (eq? (car ast) '**))))
+
+(define (base iexp)
+  (let ((ast (->ast iexp)))
+    (->infix (cadr ast))))
+
+(define (exponent iexp)
+  (let ((ast (->ast iexp)))
+    (->infix (caddr ast))))
+
+(define (make-exponentiation base exponent)
+  (cond ((=number? exponent 0) 1)
+        ((=number? exponent 1) base)
+        ((and (number? base) (number? exponent))
+         (expt base exponent))
+        (else (list base '** exponent))))
+
+;; test
+;; (deriv '(x ** 4 * (x * 2 + y + 2)) 'x)  ;((((x * 2) + (y + 2)) * (4 * (x ** 3))) + (2 * (x ** 4)))

@@ -1790,6 +1790,104 @@ It works well. Phew, we did it.
 
 # ↑ doesn't work. I should have not cheat this.
 
+Well, we did it, but we did not include the exponentiation expression. Our
+standard infix form should accommodate that expression? Although the statement
+of this exercise did not mention it, isn't it cool if we can handle the
+exponentiation? If we can accomplish that thing, we can extend further more!
+
+First we need to redesign our ~->AST~ procedure. It is possible to cope with
+exponentiation just modifying our existing procedure; but the result would be
+quite mess--hard to recognize and maintain, no logic behind, etc.
+
+****** Try: Let we assume there are specialist who can only handle specific operation.
+For instance, ~expt->AST~ can convert only exponentiation to AST and so on.
+
+The flow of overall ~->AST~ procedure can be described as
+#+BEGIN_SRC text
+infix form => inital setup + handle base case => expt->AST => prod->AST
+=> sum->AST => AST(output)
+#+END_SRC
+
+We can specify the ~<??>->AST~'s behavior:
+- should take infix form with partially built AST.
+- should return partially built AST whit rest infix form where the first
+  operation is not ~<??>~.
+
+
+So, for example, the output of ~expt->AST~ should satisfy that its first ~op~ is
+either ~+~ or ~*~ (or no operation left in infix form); by the same argument,
+when it comes to ~sum->AST~ the first ~op~ should ~+~ (or as mentioned no more
+operation).
+
+Let we code it:
+#+BEGIN_SRC scheme
+(define (->AST iexp)
+  (cond ((not (pair? iexp))             ;symbol--singleton
+         iexp)
+        ((null? (cdr iexp))             ;eof mark
+         (if (pair? (car iexp))
+             (->AST (car iexp))         ;turns out compound exp
+             (car iexp)))               ;it was singleton
+        (else (expt->AST (cdr iexp) (->AST (car iexp)))))) ;recursive process
+(define (expt->AST iexp AST)
+  (cond ((null? iexp) AST)              ;eof
+        ((and (symbol? (car iexp))
+              (eq? (car iexp) '**))
+         (expt->AST (cddr iexp) (list '** AST (->AST (cadr iexp)))))
+        (else (prod->AST iexp AST))))
+(define (prod->AST iexp AST)
+  (cond ((null? iexp) AST)
+        ((and (symbol? (car iexp))
+              (eq? (car iexp) '*))
+         (prod->AST (cddr iexp) (list '* AST (->AST (cadr iexp)))))
+        (else (sum->AST iexp AST))))
+(define (sum->AST iexp AST)
+  (cond ((null? iexp) AST)
+        ((and (symbol? (car iexp))
+              (eq? (car iexp) '+))
+         (list '+ AST (->AST (cdr iexp))))))
+#+END_SRC
+
+The results:
+#+BEGIN_SRC scheme
+(->AST '(x + 3 * (x + y + 2)))          ;(+ x (* 3 (+ x (+ y 2))))
+(->AST '(x ** 4 * (x * 2 + y + 2)))     ;(* (** x 4) (+ (* x 2) (+ y 2)))
+#+END_SRC
+
+Works well!
+
+The rest are the predicate, selectors and constructors of exponentiation, which
+can be accomplished using analogy with others:
+#+BEGIN_SRC scheme
+(define (exponentiation? iexp)
+  (and (pair? iexp)
+       (pair? (cdr iexp))
+       (let ((ast (->ast iexp)))
+         (eq? (car ast) '**))))
+
+(define (base iexp)
+  (let ((ast (->ast iexp)))
+    (->infix (cadr ast))))
+
+(define (exponent iexp)
+  (let ((ast (->ast iexp)))
+    (->infix (caddr ast))))
+
+(define (make-exponentiation base exponent)
+  (cond ((=number? exponent 0) 1)
+        ((=number? exponent 1) base)
+        ((and (number? base) (number? exponent))
+         (expt base exponent))
+        (else (list base '** exponent))))
+#+END_SRC
+
+Let's test our last piece:
+#+BEGIN_SRC scheme
+(deriv '(x ** 4 * (x * 2 + y + 2)) 'x)
+;;((((x * 2) + (y + 2)) * (4 * (x ** 3))) + (2 * (x ** 4)))
+#+END_SRC
+
+Done.
 
 #  LocalWords:  AST
 
