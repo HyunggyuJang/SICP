@@ -1210,5 +1210,596 @@ of the square:
                                   identity
                                   flip-horiz)))))
 #+END_SRC
-#+CAPTION: Finale
-[image]
+**** Resulting Pictures
+#+BEGIN_SRC racket :session *racket-pict*
+#lang racket
+(require sicp-pict)
+(define/contract wave
+  (listof segment?)
+  (let ((lhl (make-vect 0 0.65))         ;left hand
+        (lhh (make-vect 0 0.8))
+        (rhh (make-vect 1 0.35))
+        (rhl (make-vect 1 0.2))
+        (lal (make-vect 0.24 0.45))     ;left arm joint
+        (lah (make-vect 0.24 0.6))
+        (lsl (make-vect 0.4 0.6))       ;left shoulder
+        (lsh (make-vect 0.4 0.65))
+        (ln (make-vect 0.45 0.65))
+        (rn (make-vect 0.55 0.65))
+        (rs (make-vect 0.6 0.65))
+        (lm (make-vect 0.48 0.77))      ;smile~
+        (rm (make-vect 0.52 0.77))
+        (cm (make-vect 0.5 0.75))
+        (lfa (make-vect 0.43 0.8))
+        (rfa (make-vect 0.57 0.8))
+        (lh (make-vect 0.45 1))
+        (rh (make-vect 0.55 1))
+        (lv (make-vect 0.43 0.55))
+        (rv (make-vect 0.57 0.55))
+        (lfo (make-vect 0.3 0))
+        (rfo (make-vect 0.7 0))
+        (lfo1 (make-vect 0.4 0))
+        (rfo1 (make-vect 0.6 0))
+        (cl (make-vect 0.5 0.3)))
+    (list (make-segment lhh lah)
+          (make-segment lah lsh)
+          (make-segment lsh ln)
+          (make-segment ln lfa)
+          (make-segment lfa lh)         ;from left hand high to left head
+          (make-segment lhl lal)
+          (make-segment lal lsl)
+          (make-segment lsl lv)
+          (make-segment lv lfo)         ;from left hand low to left foot
+          (make-segment lfo1 cl)
+          (make-segment cl rfo1)        ;from left foot1 to right foot1
+          (make-segment rfo rv)
+          (make-segment rv rhl)         ;from left foot to right hand low
+          (make-segment rhh rs)
+          (make-segment rs rn)
+          (make-segment rn rfa)
+          (make-segment rfa rh)         ;from left hand high left head
+          (make-segment lm cm)
+          (make-segment cm rm))         ;smile~
+    ))
+(define wave-p (segments->painter wave))
+(paint wave-p)
+#+END_SRC
+
+#+RESULTS:
+: (object:image-snip% ...)
+** Symbolic Data
+*** Quotation
+**** Exercise 2.53
+This is easy stuff to get familized with quote notation
+#+BEGIN_SRC scheme
+(list 'a 'b 'c)                         ;(a b c)
+(list (list 'george))                   ;((george))
+(cdr '((x1 x2) (y1 y2)))                ;((y1 y2))
+(pair? (car '(a short list)))           ;#f
+(memq 'red '((red shoes) (blue socks))) ;#f
+(memq 'red '(red shoes blue socks))     ;(red shoes blue socks)
+#+END_SRC
+**** Exercise 2.54
+We can think ~equal?~ procedure as two independent unit:
+- check if two arguments are symbols--not list and if it is then delegate to ~eq?~.
+- otherwise, it means both are list; delegate this to another helper procedure
+  ~eqList?~.
+
+
+Here we used our old strategy wishful thinking: We haven't ~eqList?~; we defered
+to implement it.
+#+BEGIN_SRC scheme
+(define (equal? s1 s2)
+  (or (and (symbol? s1)
+           (symbol? s2)
+           (eq? s1 s2))
+      (eqList? s1 s2)))
+#+END_SRC
+
+Then we should implement ~eqList?~. We can design it using the type constrains,
+of which Standard ML is good at:
+#+BEGIN_SRC sml
+fun eqList [] [] = true
+  | eqList _ [] = false
+  | eqList [] _ = false
+  | eqList (x::xs) (y::ys) = (eq x y) andalso (eqList xs ys);
+#+END_SRC
+
+We can translate to scheme easily:
+#+BEGIN_SRC scheme
+(define (eqList? xs ys)
+  (cond ((and (null? xs) (null? ys))
+         true)
+        ((and (not (null? xs)) (null? ys))
+         false)
+        ((and (null? xs) (not (null? ys))) ;base case
+         false)
+        (else (and (eq? (car xs) (car ys)) ;recursive case
+                   (eqList? (cdr xs) (cdr ys))))))
+#+END_SRC
+**** Exercise 2.55
+Because ~'...~ is just syntatic sugar for ~(quote ...)~. So it is same as
+~(quote (quote ...))~. That is, as inner parts of the outermost ~quote~ are
+treated symbolically, ~(car (quote ...))~ is ~quote~. There is no surprise here.
+*** Example: Symbolic Differentiation
+By allowing the symbolic notation in our language, we can cope with algebraic
+manipulation symbolically. For simplicity, here we consider only simple
+differentiation rules:
+- $\frac{dc}{dx} = 0$ for $c$ a constant or a variable different from $x$
+- $\frac{dx}{dx} = 1$
+- $\frac{\left( u + v \right)}{dx} = \frac{du}{dx} + \frac{dv}{dx}$
+- $\frac{\left( uv \right)}{dx} = u \left( \frac{dv}{dx} \right) + v \left(
+  \frac{du}{dx} \right)$
+
+
+Here we delegate implementing of representation of symbolic differentiation
+system by using wishful thinking: We just need specify what we want.
+
+First let's try to code ~deriv~ that calculate the derivative of given
+expression with respect to ~var~ along with differentiation rules:
+#+BEGIN_SRC scheme
+(define (deriv exp var)
+  (cond ((number? exp) 0)
+        ((variable? exp)
+         (if (same-variable exp var) 1 0))
+        ((sum? exp)
+         (make-sum (deriv (addend exp) var)
+                   (deriv (augend exp) var)))
+        ((product? exp)
+         (make-sum
+          (make-product (multiplicand exp)
+                        (deriv (multiplier exp) var))
+          (make-product (deriv (multiplicand exp) var)
+                        (multiplier exp))))
+        (else
+         (error "unknown expression type -- DERIV" exp))))
+#+END_SRC
+
+Note that we /just/ used all the procedure that we need without implementing
+that. Also note that this ~deriv~ procedure coded directly the differential
+rules from calculus.
+
+Can we represent the expression that we used in ~deriv~? Yes sure!
+#+BEGIN_SRC scheme
+(define (variable? x) (symbol? x))
+(define (same-variable? v1 v2)
+  (and (symbol? v1) (symbol? v2) (eq? v1 v2)))
+(define (make-sum a1 a2)
+  (list '+ a1 a2))
+(define (make-product m1 m2)
+  (list '* m1 m2))
+(define (sum? s)
+  (and (pair? s) (eq? (car s) '+)))
+(define (addend s) (cadr s))
+(define (augend s) (caddr s))
+(define (product? p)
+  (and (pair? p) (eq? (car p) '*)))
+(define (multiplier p) (cadr p))
+(define (multiplicand P) (caddr p))
+#+END_SRC
+
+Here we embedded the symbolic expression analogous to lisp's compound
+expression--prefix notation.
+
+Let's test this:
+#+BEGIN_SRC scheme
+(deriv '(+ x 3) 'x)                     ;(+ 1 0)
+(deriv '(* x y) 'x)                     ;(+ (* x 0) (* 1 y))
+(deriv '(* (* x y) (+ x 3)) 'x)         ;(+ (* (+ x 3) (+ (* y 1) (* 0 x))) (* (+ 1 0) (* x y)))
+#+END_SRC
+
+Is what we expected? Well, yes and no: The program produces answer that are
+correct with respect with the differentiation rules; but it is so verbose. We
+need some simplifying steps; we can accomplish this using the analogy to
+rational number arithmetic system; we don't need to alter the ~deriv~ procedure,
+which uses the constructors and selectors--the lower lever of language.
+
+Let's specify what we exactly expect from the simplification:
+- For multiplication
+  - $x \times 0 = 0$
+  - $y \times 1 = y$
+- For summation
+  - $x + 0 = 0$
+
+
+Also we want to fold the constants:
+If the two argument of symbolic operation are both number than we calculate
+appropriately, i.e.
+- ~('+ 5 4)~ should be simplified to ~9~
+- ~('* 5 4)~ should be simplified to ~20~
+
+
+Then we can implement this by amending the low level language.
+#+BEGIN_SRC scheme
+(define (make-sum a1 a2)
+  (cond ((=number? a1 0) a2)
+        ((=number? a2 0) a1)
+        ((and (number? a1) (number? a2)) (+ a1 a2))
+        (else (list '+ a1 a2))))
+(define (=number? s n)
+  (and (number? s) (= s n)))
+(define (make-product m1 m2)
+  (cond ((or (=number? m1 0) (=number? m2 0)) 0)
+        ((=number? m1 1) m2)
+        ((=number? m2 1) m1)
+        ((and (number? m1) (number? m2))
+         (* m1 m2))
+        (else (list '* m1 m2))))
+#+END_SRC
+**** Exercise 2.56
+Add the exponentiation to our symbolic algebraic system.
+Our differentiation system become
+#+BEGIN_SRC scheme
+(define (deriv exp var)
+  (cond ((number? exp) 0)
+        ((variable? exp)
+         (if (same-variable? exp var) 1 0))
+        ((sum? exp)
+         (make-sum (deriv (addend exp) var)
+                   (deriv (augend exp) var)))
+        ((product? exp)
+         (make-sum
+          (make-product (multiplicand exp)
+                        (deriv (multiplier exp) var))
+          (make-product (deriv (multiplicand exp) var)
+                        (multiplier exp))))
+        ((exponentiation? exp)
+         (make-product (make-product (exponent exp)
+                                     (make-exponentiation (base exp) (- (exponent exp) 1)))
+                       (deriv (base exp) var)))
+        (else
+         (error "unknown expression type -- DERIV" exp))))
+#+END_SRC
+with the representation
+#+BEGIN_SRC scheme
+(define (make-exponentiation base exponent)
+  (cond ((=number? exponent 0) 1)
+        ((=number? exponent 1) base)
+        ((and (number? base) (number? exponent))
+         (expt base exponent))
+        (else (list '** base exponent))))
+
+(define (exponentiation? e)
+  (and (pair? e) (eq? (car e) '**)))
+
+(define (base ex)
+  (cadr ex))
+
+(define (exponent ex)
+  (caddr ex))
+#+END_SRC
+Let's test it:
+- The normal differentiation:
+  #+BEGIN_SRC scheme
+(deriv '(** x 5) 'x)                    ;(* 5 (** x 4))
+  #+END_SRC
+- Check if it simplify appropriately:
+  #+BEGIN_SRC scheme
+(deriv '(** x 2) 'x)                    ;(* 2 x)
+  #+END_SRC
+**** Exercise 2.57
+Extend our program to handle sums and product of arbitrary numbers (two or more)
+of terms; e.g.
+- our last example of test, ~(deriv '(* (* x y) (+ x 3)) 'x)~, can be expressed
+  as ~(deriv '(* x y (+ x 3)) 'x)~.
+
+
+Just amending the lower level of language--constructors and selectors.
+Note that the differential rules-- ~deriv~-- doesn't assume that the $v$ is just
+symbol; if we can recognize the $v$ part appropriately, we are done.
+
+Here is the idea:
+\[\frac{d\left[ u + \left( v + w + \cdots \right) \right]}{dx} = \frac{du}{dx} +
+\frac{d\left( v + w + \cdots \right)}{dx}\]
+That is, if we can amend ~(augend exp)~ to return ~(+ v w ...)~ then we complete
+our mission.
+
+We can code it directly:
+#+BEGIN_SRC scheme
+(define (augend s)
+;; provided that s has more than two number of terms
+  (if (null? (cdddr s))
+      (caddr s)                         ;it has exactly two terms addend augend.
+      (cons '+ (cddr s))))              ;it has more than that
+#+END_SRC
+
+Similarly,
+#+BEGIN_SRC scheme
+(define (multiplicand m)
+;; provided that s has more than two number of terms
+  (if (null? (cdddr m))
+      (caddr m)                         ;it has exactly two terms.
+      (cons '* (cddr m))))              ;it has more than that
+#+END_SRC
+
+We don't need to fix any of the constructors. We don't like to fix any so that
+our construct afford to make expression with arbitrary terms; that only make
+things more complicate.
+**** Exercise 2.58
+The mathematicians want to use infix form instead of prefix form like lisp
+expression. Suppose we have to program our differentiation procedure for such
+mathematicians; i.e. we have to modify our differentiation program so that it
+works with ordinary mathematical notation--infix form.
+
+***** a. binary infix form
+Here we consider the infix operator accept only two terms, i.e. binary infix
+operator. By experimenting with some examples, we can conclude that in the
+correct syntax form of expression, the operator should position at ~cadr~ of it.
+
+Then we can accomplish it by coding that observation:
+#+BEGIN_SRC scheme
+(define (sum? iexp)
+  (and (pair? iexp)
+       (pair? (cdr iexp))
+       (eq? (cadr iexp) '+)))
+#+END_SRC
+
+Here we used ~pair?~ twice to assure it will not raise exception when we call
+~(cadr iexp)~. It is necessary not to raise exception because the caller of
+~sum?~ doesn't know and doesn't need to know the gross detail like whether
+~iexp~ satisfy the constraint of representation of ~sum~; they doesn't need to
+know the representation of those.
+
+Likewise,
+#+BEGIN_SRC scheme
+(define (product? iexp)
+  (and (pair? iexp)
+       (pair? (cdr iexp))
+       (eq? (cadr iexp) '*)))
+#+END_SRC
+
+The selectors can be expressed as follows
+#+BEGIN_SRC scheme
+(define (addend is) (car is))
+(define (augend is) (caddr is))
+(define (multiplier im) (car im))
+(define (multiplicand im) (caddr im))
+#+END_SRC
+
+Similarly, the constructors represented as
+#+BEGIN_SRC scheme
+(define (make-sum a1 a2)
+  (cond ((=number? a1 0) a2)
+        ((=number? a2 0) a1)
+        ((and (number? a1) (number? a2)) (+ a1 a2)) ;↑ simplification
+        (else (list a1 '+ a2))))
+
+(define (make-product m1 m2)
+  (cond ((or (=number? m1 0) (=number? m2 0)) 0)
+        ((=number? m1 1) m2)
+        ((=number? m2 1) m1)
+        ((and (number? m1) (number? m2)) ;↑ simplification
+         (* m1 m2))
+        (else (list m1 '* m2))))
+#+END_SRC
+
+The test works well:
+#+BEGIN_SRC scheme
+(deriv '((x * 5) + (y + 4)) 'x)         ;5
+#+END_SRC
+***** b. Standard algebraic notation
+Now we want to deal with more general case, standard algebraic notation, e.g.
+~(x + 3 * (x + y + 2))~, which drops unnecessary parentheses and assumes that
+multiplication is done before addition, i.e. multiplication has higher
+precedence than addition.
+
+To simplify the task, we develop new language, that is, the semantics of
+standard algebraic notation. We can be rephrased as add new layer under the
+representation; or to layer out between semantics and syntax.
+
+First let's experiment with some examples:
+~((x + y) * 5 * z)~, ~(x * y + (z + y) * 5)~
+
+We can reconstruct using tree representation. Unfortunately I myself don't know
+yet how to print the tree figure here[fn:1]; so I've drew these in my personal
+note. Well, anyway there is one way to represent the tree structure in text:
+Lisp! As said in text or lecture of SICP, we can represent the tree as list!
+If we do that now, we obtain following results:
+- ~(* (+ x y) 5 z)~ or ~(* (+ x y) (* 5 z))~
+- ~(+ (* x y) (* (+ z y) 5))~
+
+
+Note that in the first example we can represent in both, binary tree or tree
+with arbitrary branches. Also note that this situation exactly match with the
+previous exercise, [[Exercise 2.57][ex 2.57]].
+
+Consequently, all we need to do is to convert infix form to prefix form allowed
+to have arbitrary number of terms; the rest would be handled by ex 2.57 as said.
+
+Then how? Again by wishful thinking assume that all the subtrees are constructed
+appropriately. Let's try out.
+
+If ~(car exp)~ is compound data, then delegate it to subtree constructor and
+also we know that if it is correct infix form the ~(cadr exp)~ is
+operator[fn:2]. Now we can construct whole tree by delegating the ~(cddr exp)~
+and then constructing ~((cadr exp) sub1 sub2)~.
+
+We constructed the abstract design of our code. The thing is, is it correct?
+No, it isn't! The second example shows why it is; we have not considered the
+precedence relation appropriately! To cope with it, we have to build the whole
+tree either when we encounter with the lowest precedence operator or when we
+get faced with last operator of expression at the top level.
+
+This time, it works! How can we be sure? Can we prove it? Well, at least it is
+worth to prove for practice or because it is not obvious; yet we are left with
+long way to go. Let's consider that first. We've built the so called AST--
+Abstract Syntactic Tree. Are we good to go and code this idea? Unfortunately no;
+there is something we missed: The selectors that used by ~deriv~ should return
+infix form not the prefix form as AST.
+
+That is, this time, we have to linger over the opposite way than we have
+constructed so far: To convert from AST to infix form. Here we also use the
+wishful thinking in recursive case: The subtrees are constructed for us; the
+rest is to deal with at the very top level.
+
+For simplicity, let we ignore the unnecessary parentheses, i.e. we don't have to
+omit the verbose parenthesis for conciseness when we convert to infix form. Then
+we can easily do the task: ~(cov-sub1 op cov-sub2)~
+
+Yeah It was quite long way to accomplish this! We did the design things! All the
+left is to code it!
+
+If we code that directly without further design--naive approach, then we get
+#+BEGIN_SRC scheme
+(define (->AST iexp)
+  (define (constructor left stack)
+    (let ((op (cadr left)))
+      (cond ((or (lowest? op) (last? op left))
+             (list op
+                   (->AST (cons (car left) stack))
+                   (->AST (cddr left))))
+            (else (constructor
+                   (cddr left)
+                   (cons op
+                         (cons (car left)
+                               stack)))))))
+  (cond ((null? (cdr iexp))             ;in the top level, it appears as singlton expression
+         (if (pair? (car iexp))
+             (->AST (car iexp))         ;compound expression
+             (car iexp)))               ;singleton
+        (else (constructor iexp '()))))
+
+(define (lowest? op)
+  (and (symbol? op) (eq? op '+)))
+(define (last? op left)
+  (and (symbol? op) (null? (cdddr left))))
+#+END_SRC
+
+We can test it; it works:
+#+BEGIN_SRC scheme
+;; test
+(->AST '((x + y) * 5 * z))              ;(* (* 5 (+ x y)) z)
+(->AST '(x * y + (z + y) * 5))          ;(+ (* y x) (* (+ z y) 5))
+#+END_SRC
+
+The reverse process can be coded likely:
+#+BEGIN_SRC scheme
+(define (->infix ast)
+  (cond ((not (pair? ast)) ast)         ;base case
+        (else (list (->infix (cadr ast)) ;recursive case
+                    (car ast)
+                    (->infix (caddr ast))))))
+#+END_SRC
+
+It also works:
+#+BEGIN_SRC scheme
+(->infix (->AST '((x + y) * 5 * z)))    ;((5 * (x + y)) * z)
+#+END_SRC
+
+With those, we can complete the code:
+#+BEGIN_SRC scheme
+(define (sum? iexp)
+  (and (pair? iexp)
+       (pair? (cdr iexp))
+       (let ((ast (->ast iexp)))
+         (eq? (car ast) '+))))
+
+(define (product? iexp)
+  (and (pair? iexp)
+       (pair? (cdr iexp))
+       (let ((ast (->ast iexp)))
+         (eq? (car ast) '*))))
+
+(define (addend iexp)
+  (let ((ast (->ast iexp)))
+    (->infix (cadr ast))))
+
+(define (augend iexp)
+  (let ((ast (->ast iexp)))
+    (->infix (caddr ast))))
+
+(define (multiplier iexp)
+  (let ((ast (->ast iexp)))
+    (->infix (cadr ast))))
+
+(define (multiplicand iexp)
+  (let ((ast (->ast iexp)))
+    (->infix (caddr ast))))
+#+END_SRC
+
+The constructor should work as *a.* without modification.
+
+Let's test it:
+#+BEGIN_SRC scheme
+(deriv '(x + 3 * (x + y + 2)) 'x)       ;4
+(deriv '((x + y) * 5 * z) 'x)           ;(z * 5)
+(deriv '(x * y + (z + y) * 5) 'x)       ;y
+#+END_SRC
+
+It works well. Phew, we did it.
+
+# Or I've realized that actually it suffice to convert the infix form to prefix
+# only at the very top level. If you see the code or example, I think, you got what
+# I meant:
+# #+BEGIN_SRC scheme
+# (define (->pseudoAST iexp)
+#   (define (constructor left stack)
+#     (let ((op (cadr left)))
+#       (cond ((or (lowest? op) (last? op left))
+#              (cons op
+#                    (cons (cons (car left) stack)
+#                          (cddr left))))
+#             (else (constructor
+#                    (cddr left)
+#                    (cons op
+#                          (cons (car left)
+#                                stack)))))))
+#   (if (null? (cdr iexp))
+#       (car iexp)
+#       (constructor iexp '())))
+# #+END_SRC
+
+# And here are the example (or tests):
+# #+BEGIN_SRC scheme
+# (->pseudoAST '((x + y) * 5 * z))        ;(* (5 * (x + y)) z)
+# (->pseudoAST '(x * y + (z + y) * 5))    ;(+ (y * x) (z + y) * 5)
+# #+END_SRC
+
+# We have shortcut transforming to AST and back to infix form by this. With this,
+# we can easily implement rest:
+# - The predicates
+#   #+BEGIN_SRC scheme
+# (define (sum? iexp)
+#   (and (pair? iexp)
+#        (pair? (cdr iexp))
+#        (let ((pAST (->pseudoAST iexp)))
+#          (eq? (car pAST) '+))))
+
+# (define (product? iexp)
+#   (and (pair? iexp)
+#        (pair? (cdr iexp))
+#        (let ((pAST (->pseudoAST iexp)))
+#          (eq? (car pAST) '*))))
+#   #+END_SRC
+# - The selectors
+# #+BEGIN_SRC scheme
+# (define (addend is)
+#   (let ((pAST (->pseudoAST is)))
+#     (cadr is)))
+# (define (augend is)
+#   (let ((pAST (->pseudoAST is)))
+#     (cddr is)))
+# (define (multiplier im)
+#   (let ((pAST (->pseudoAST is)))
+#     (cadr im)))
+# (define (multiplicand im)
+#   (let ((pAST (->pseudoAST is)))
+#     (cddr im)))
+# #+END_SRC
+# - The constructors are same as part *a.*
+
+# ↑ doesn't work. I should have not cheat this.
+
+
+#  LocalWords:  AST
+
+* Footnotes
+
+[fn:2] Note that we naturally inherit the lisp's power, that is, of manipulating
+list. That means we don't have to parse all the expression to get the token,
+which we have to do usually when we implement the complier or interpreter.
+
+[fn:1] Well, there are several candidates for doing this like [[http://plantuml.com/en/][plantUML]], [[https://www.graphviz.org/][dot]]
+, etc. If I can afford to learn those, I'd like to upload these study note as well someday.
+
+#  LocalWords:  SICP

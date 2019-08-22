@@ -819,83 +819,333 @@
 (define (edge2-frame f)
   (cddr f))
 
-;; Exercise 2.49
+;; ;; Exercise 2.49
+;; ;; a.
+;; (define outliner
+;;   (let ((o (make-vect 0 0))
+;;         (br (make-vect 1 0))
+;;         (tr (make-vect 1 1))
+;;         (tl (make-vect 0 1)))
+;;     (segments->painter (list (make-segment o br)
+;;                              (make-segment br tr)
+;;                              (make-segment tr tl)
+;;                              (make-segment tl o)))))
+;; ;; b.
+;; (define x-liner
+;;   (let ((o (make-vect 0 0))
+;;         (br (make-vect 1 0))
+;;         (tr (make-vect 1 1))
+;;         (tl (make-vect 0 1)))
+;;     (segments->painter (list (make-segment o tr)
+;;                              (make-segment br tl)))))
+;; ;; c.
+;; (define dia-liner
+;;   (let ((o (make-vect 0 0))
+;;         (br (make-vect 1 0))
+;;         (tr (make-vect 1 1))
+;;         (tl (make-vect 0 1)))
+;;     (let ((left (scale-vect 0.5 tl))
+;;           (bottom (scale-vect 0.5 br)))
+;;       (let ((right (add-vect br left))
+;;             (top (add-vect tl bottom)))
+;;         (segments->painter (list (make-segment left top)
+;;                                  (make-segment top right)
+;;                                  (make-segment right bottom)
+;;                                  (make-segment bottom left)))))))
+;; ;; d.
+;; (define wave
+;;   (let ((lhl (make-vect 0 0.65))         ;left hand
+;;         (lhh (make-vect 0 0.8))
+;;         (rhh (make-vect 1 0.35))
+;;         (rhl (make-vect 1 0.2))
+;;         (lal (make-vect 0.24 0.45))     ;left arm joint
+;;         (lah (make-vect 0.24 0.6))
+;;         (lsl (make-vect 0.4 0.6))       ;left shoulder
+;;         (lsh (make-vect 0.4 0.65))
+;;         (ln (make-vect 0.45 0.65))
+;;         (rn (make-vect 0.55 0.65))
+;;         (lm (make-vect 0.48 0.77))      ;smile~
+;;         (rm (make-vect 0.52 0.77))
+;;         (cm (make-vect 0.5 0.75))
+;;         (rs (make-vect 0.6 0.65))
+;;         (lfa (make-vect 0.43 0.8))
+;;         (rfa (make-vect 0.57 0.8))
+;;         (lh (make-vect 0.45 1))
+;;         (rh (make-vect 0.55 1))
+;;         (lv (make-vect 0.43 0.55))
+;;         (rv (make-vect 0.57 0.55))
+;;         (lfo (make-vect 0.3 0))
+;;         (rfo (make-vect 0.7 0))
+;;         (lfo1 (make-vect 0.4 0))
+;;         (rfo1 (make-vect 0.6 0))
+;;         (cl (make-vect 0.5 0.3)))
+;;     (segments->painter (list (make-segment lhh lah)
+;;                              (make-segment lah lsh)
+;;                              (make-segment lsh ln)
+;;                              (make-segment ln lfa)
+;;                              (make-segment lfa lh) ;from left hand high to left head
+;;                              (make-segment lhl lal)
+;;                              (make-segment lal lsl)
+;;                              (make-segment lsl lv)
+;;                              (make-segment lv lfo) ;from left hand low to left foot
+;;                              (make-segment lfo1 cl)
+;;                              (make-segment cl rfo1) ;from left foot1 to right foot1
+;;                              (make-segment rfo rv)
+;;                              (make-segment rv rhl) ;from left foot to right hand low
+;;                              (make-segment rhh rs)
+;;                              (make-segment rs rn)
+;;                              (make-segment rn rfa)
+;;                              (make-segment rfa rh) ;from left hand high left head
+;;                              (make-segment lm cm)
+;;                              (make-segment cm rm))) ;smile~
+;;     ))
+
+;; Exercise 2.53
+(list 'a 'b 'c)                         ;(a b c)
+(list (list 'george))                   ;((george))
+(cdr '((x1 x2) (y1 y2)))                ;((y1 y2))
+(pair? (car '(a short list)))           ;#f
+(memq 'red '((red shoes) (blue socks))) ;#f
+(memq 'red '(red shoes blue socks))     ;(red shoes blue socks)
+
+;; Exercise 2.54
+(define (eqList? xs ys)
+  (cond ((and (null? xs) (null? ys))
+         true)
+        ((and (not (null? xs)) (null? ys))
+         false)
+        ((and (null? xs) (not (null? ys))) ;base case
+         false) (else (and (eq? (car xs) (car ys)) ;recursive case
+                   (eqList? (cdr xs) (cdr ys))))))
+(define (equal? s1 s2)
+  (or (and (symbol? s1)
+           (symbol? s2)
+           (eq? s1 s2))
+      (eqList? s1 s2)))
+
+;; Symbolic Differentiation
+(define (deriv exp var)
+  (cond ((number? exp) 0)
+        ((variable? exp)
+         (if (same-variable? exp var) 1 0))
+        ((sum? exp)
+         (make-sum (deriv (addend exp) var)
+                   (deriv (augend exp) var)))
+        ((product? exp)
+         (make-sum
+          (make-product (multiplicand exp)
+                        (deriv (multiplier exp) var))
+          (make-product (deriv (multiplicand exp) var)
+                        (multiplier exp))))
+        ((exponentiation? exp)
+         (make-product (make-product (exponent exp)
+                                     (make-exponentiation (base exp) (- (exponent exp) 1)))
+                       (deriv (base exp) var)))
+        (else
+         (error "unknown expression type -- DERIV" exp))))
+
+(define (variable? x) (symbol? x))
+(define (same-variable? v1 v2)
+  (and (symbol? v1) (symbol? v2) (eq? v1 v2)))
+(define (make-sum a1 a2)
+  (cond ((=number? a1 0) a2)
+        ((=number? a2 0) a1)
+        ((and (number? a1) (number? a2)) (+ a1 a2))
+        (else (list '+ a1 a2))))
+(define (=number? s n)
+  (and (number? s) (= s n)))
+(define (make-product m1 m2)
+  (cond ((or (=number? m1 0) (=number? m2 0)) 0)
+        ((=number? m1 1) m2)
+        ((=number? m2 1) m1)
+        ((and (number? m1) (number? m2))
+         (* m1 m2))
+        (else (list '* m1 m2))))
+(define (sum? s)
+  (and (pair? s) (eq? (car s) '+)))
+(define (addend s) (cadr s))
+(define (augend s) (caddr s))
+(define (product? p)
+  (and (pair? p) (eq? (car p) '*)))
+(define (multiplier p) (cadr p))
+(define (multiplicand P) (caddr p))
+
+;; test
+;; (deriv '(+ x 3) 'x)                     ;(+ 1 0)
+;; (deriv '(* x y) 'x)                     ;(+ (* x 0) (* 1 y))
+;; (deriv '(* (* x y) (+ x 3)) 'x)         ;(+ (* (+ x 3) (+ (* y 1) (* 0 x))) (* (+ 1 0) (* x y)))
+;; (deriv '(** x 2) 'x)
+
+;; Exercise 2.56
+(define (make-exponentiation base exponent)
+  (cond ((=number? exponent 0) 1)
+        ((=number? exponent 1) base)
+        ((and (number? base) (number? exponent))
+         (expt base exponent))
+        (else (list '** base exponent))))
+
+(define (exponentiation? e)
+  (and (pair? e) (eq? (car e) '**)))
+
+(define (base ex)
+  (cadr ex))
+
+(define (exponent ex)
+  (caddr ex))
+
+;; Exercise 2.57
+(define (augend s)
+;; provided that s has more than two number of terms
+  (if (null? (cdddr s))
+      (caddr s)                         ;it has exactly two terms addend augend.
+      (cons '+ (cddr s))))              ;it has more than that
+(define (multiplicand m)
+;; provided that s has more than two number of terms
+  (if (null? (cdddr m))
+      (caddr m)                         ;it has exactly two terms.
+      (cons '* (cddr m))))              ;it has more than that
+
+;; Exercise 2.58
 ;; a.
-(define outliner
-  (let ((o (make-vect 0 0))
-        (br (make-vect 1 0))
-        (tr (make-vect 1 1))
-        (tl (make-vect 0 1)))
-    (segments->painter (list (make-segment o br)
-                             (make-segment br tr)
-                             (make-segment tr tl)
-                             (make-segment tl o)))))
+(define (sum? iexp)
+  (and (pair? iexp)
+       (pair? (cdr iexp))
+       (eq? (cadr iexp) '+)))
+
+(define (product? iexp)
+  (and (pair? iexp)
+       (pair? (cdr iexp))
+       (eq? (cadr iexp) '*)))
+
+(define (addend is) (car is))
+(define (augend is) (caddr is))
+(define (multiplier im) (car im))
+(define (multiplicand im) (caddr im))
+(define (make-sum a1 a2)
+  (cond ((=number? a1 0) a2)
+        ((=number? a2 0) a1)
+        ((and (number? a1) (number? a2)) (+ a1 a2)) ;↑ simplification
+        (else (list a1 '+ a2))))
+(define (make-product m1 m2)
+  (cond ((or (=number? m1 0) (=number? m2 0)) 0)
+        ((=number? m1 1) m2)
+        ((=number? m2 1) m1)
+        ((and (number? m1) (number? m2)) ;↑ simplification
+         (* m1 m2))
+        (else (list m1 '* m2))))
+;; test
+;; (deriv '((x * 5) + (y + 4)) 'x)         ;5
+
 ;; b.
-(define x-liner
-  (let ((o (make-vect 0 0))
-        (br (make-vect 1 0))
-        (tr (make-vect 1 1))
-        (tl (make-vect 0 1)))
-    (segments->painter (list (make-segment o tr)
-                             (make-segment br tl)))))
-;; c.
-(define dia-liner
-  (let ((o (make-vect 0 0))
-        (br (make-vect 1 0))
-        (tr (make-vect 1 1))
-        (tl (make-vect 0 1)))
-    (let ((left (scale-vect 0.5 tl))
-          (bottom (scale-vect 0.5 br)))
-      (let ((right (add-vect br left))
-            (top (add-vect tl bottom)))
-        (segments->painter (list (make-segment left top)
-                                 (make-segment top right)
-                                 (make-segment right bottom)
-                                 (make-segment bottom left)))))))
-;; d.
-(define wave
-  (let ((lhl (make-vect 0 0.65))         ;left hand
-        (lhh (make-vect 0 0.8))
-        (rhh (make-vect 1 0.35))
-        (rhl (make-vect 1 0.2))
-        (lal (make-vect 0.24 0.45))     ;left arm joint
-        (lah (make-vect 0.24 0.6))
-        (lsl (make-vect 0.4 0.6))       ;left shoulder
-        (lsh (make-vect 0.4 0.65))
-        (ln (make-vect 0.45 0.65))
-        (rn (make-vect 0.55 0.65))
-        (lm (make-vect 0.48 0.77))      ;smile~
-        (rm (make-vect 0.52 0.77))
-        (cm (make-vect 0.5 0.75))
-        (rs (make-vect 0.6 0.65))
-        (lfa (make-vect 0.43 0.8))
-        (rfa (make-vect 0.57 0.8))
-        (lh (make-vect 0.45 1))
-        (rh (make-vect 0.55 1))
-        (lv (make-vect 0.43 0.55))
-        (rv (make-vect 0.57 0.55))
-        (lfo (make-vect 0.3 0))
-        (rfo (make-vect 0.7 0))
-        (lfo1 (make-vect 0.4 0))
-        (rfo1 (make-vect 0.6 0))
-        (cl (make-vect 0.5 0.3)))
-    (segments->painter (list (make-segment lhh lah)
-                             (make-segment lah lsh)
-                             (make-segment lsh ln)
-                             (make-segment ln lfa)
-                             (make-segment lfa lh) ;from left hand high to left head
-                             (make-segment lhl lal)
-                             (make-segment lal lsl)
-                             (make-segment lsl lv)
-                             (make-segment lv lfo) ;from left hand low to left foot
-                             (make-segment lfo1 cl)
-                             (make-segment cl rfo1) ;from left foot1 to right foot1
-                             (make-segment rfo rv)
-                             (make-segment rv rhl) ;from left foot to right hand low
-                             (make-segment rhh rs)
-                             (make-segment rs rn)
-                             (make-segment rn rfa)
-                             (make-segment rfa rh) ;from left hand high left head
-                             (make-segment lm cm)
-                             (make-segment cm rm))) ;smile~
-    ))
+(define (->AST iexp)
+  (define (constructor left stack)
+    (let ((op (cadr left)))
+      (cond ((or (lowest? op) (last? op left))
+             (list op
+                   (->AST (cons (car left) stack))
+                   (->AST (cddr left))))
+            (else (constructor
+                   (cddr left)
+                   (cons op
+                         (cons (car left)
+                               stack)))))))
+  (cond ((null? (cdr iexp))             ;in the top level, it appears as singlton expression
+         (if (pair? (car iexp))
+             (->AST (car iexp))         ;compound expression
+             (car iexp)))               ;singleton
+        (else (constructor iexp '())))) ;recursive process
+
+(define (lowest? op)
+  (and (symbol? op) (eq? op '+)))
+(define (last? op left)
+  (and (symbol? op) (null? (cdddr left))))
+;; test
+;; (->AST '((x + y) * 5 * z))
+;; (->AST '(x * y + (z + y) * 5))
+;; (->AST '((x + y) * 5))
+;; (->AST '(x + y))
+
+(define (->infix ast)
+  (cond ((not (pair? ast)) ast)         ;base case
+        (else (list (->infix (cadr ast)) ;recursive case
+                    (car ast)
+                    (->infix (caddr ast))))))
+(define (sum? iexp)
+  (and (pair? iexp)
+       (pair? (cdr iexp))
+       (let ((ast (->ast iexp)))
+         (eq? (car ast) '+))))
+
+(define (product? iexp)
+  (and (pair? iexp)
+       (pair? (cdr iexp))
+       (let ((ast (->ast iexp)))
+         (eq? (car ast) '*))))
+
+(define (addend iexp)
+  (let ((ast (->ast iexp)))
+    (->infix (cadr ast))))
+
+(define (augend iexp)
+  (let ((ast (->ast iexp)))
+    (->infix (caddr ast))))
+
+(define (multiplier iexp)
+  (let ((ast (->ast iexp)))
+    (->infix (cadr ast))))
+
+(define (multiplicand iexp)
+  (let ((ast (->ast iexp)))
+    (->infix (caddr ast))))
+
+;; test
+;; (deriv '(x + 3 * (x + y + 2)) 'x)       ;4
+;; (deriv '((x + y) * 5 * z) 'x)           ;(z * 5)
+;; (deriv '(x * y + (z + y) * 5) 'x)       ;y
+;; (define (->pseudoAST iexp)
+;;   (define (constructor left stack)
+;;     (let ((op (cadr left)))
+;;       (cond ((or (lowest? op) (last? op left))
+;;              (cons op
+;;                    (cons (cons (car left) stack)
+;;                          (cddr left))))
+;;             (else (constructor
+;;                    (cddr left)
+;;                    (cons op
+;;                          (cons (car left)
+;;                                stack)))))))
+;;   (if (null? (cdr iexp))
+;;       (car iexp)
+;;       (constructor iexp '())))
+
+;; ;; test
+;; ;; (->pseudoAST '((x + y) * 5 * z))
+;; ;; (->pseudoAST '(x * y + (z + y) * 5))
+
+;; (define (sum? iexp)
+;;   (and (pair? iexp)
+;;        (pair? (cdr iexp))
+;;        (let ((pAST (->pseudoAST iexp)))
+;;          (eq? (car pAST) '+))))
+
+;; (define (product? iexp)
+;;   (and (pair? iexp)
+;;        (pair? (cdr iexp))
+;;        (let ((pAST (->pseudoAST iexp)))
+;;          (eq? (car pAST) '*))))
+
+;; (define (addend is)
+;;   (let ((pAST (->pseudoAST is)))
+;;     (cadr is)))
+;; (define (augend is)
+;;   (let ((pAST (->pseudoAST is)))
+;;     (cddr is)))
+;; (define (multiplier im)
+;;   (let ((pAST (->pseudoAST im)))
+;;     (cadr im)))
+;; (define (multiplicand im)
+;;   (let ((pAST (->pseudoAST im)))
+;;     (cddr im)))
+
+;; ↑ doesn't work. I should have not cheat this sort.
+;; further more, it just complicate the proof of this algorithm.
