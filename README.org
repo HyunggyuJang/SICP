@@ -1890,7 +1890,495 @@ Let's test our last piece:
 Done.
 
 #  LocalWords:  AST
+*** Example: Representing Sets
+We can abstract out the representation of set by using data abstraction: As long
+as we have ~union-set~, ~intersection-set~, ~element-of-set?~, and ~adjoin-set~
+we can do anything as with normal set. Those procedures can be thought as
+interface of object set or axioms of set:
+- ~(element-of-set? x (union-set S1 S2))~ is equivalent to
+  ~(or (element-of-set? x S1) (element-of-set? x S2)~
+- ~(element-of-set? x (intersection-set S1 S2))~ is equivalent to
+  ~(and (element-of-set? x S1) (element-of-set? x S2)~
+- For any element ~x~ and set ~S~, ~(element-of-set? x (adjoin-set x S))~ is ~true~
 
+
+All the representation that satisfy all the axioms above can be treat as set.
+
+**** Sets as unordered lists
+Here we represent a set as list of its elements in which no element appears more
+than once. As we are going to represent sets as ordered lists, we name this
+representation as unordered list representation.
+
+As we mentioned ~adjoin-set~ should adjoin member if and only if member is not
+already ~element-of-set?~:
+#+BEGIN_SRC scheme
+(define (adjoin-set x set)
+  (if (element-of-set? x set)
+      set
+      (cons x set)))
+#+END_SRC
+
+Then ~element-of-set?~ get straightforward:
+#+BEGIN_SRC scheme
+(define (element-of-set? x set)
+  (cond ((null? set) false)
+        ((equal? x (car set)) true)
+        (else (element-of-set? x (cdr set)))))
+#+END_SRC
+
+For the ~intersection-set~ we can rely on induction on either of each arguments:
+#+BEGIN_SRC scheme
+(define (intersection-set set1 set2)
+  (cond ((or (null? set1) (null? set2)) '())
+        ((element-of-set? (car set1) set2)
+         (cons (car set1)
+               (intersection-set (cdr set1) set2)))
+        (else (intersection-set (cdr set1) set2))))
+#+END_SRC
+**** Exercise 2.59
+Finally, ~union-set~ can be implemented as append-like procedure:
+#+BEGIN_SRC scheme
+(define (union-set set1 set2)
+  (cond ((null? set1) set2)
+        (else (adjoin-set (car set1)
+                          (union-set (cdr set1) set2)))))
+#+END_SRC
+This procedure has \Theta(n^{2}) step complexity as ~intersection-set~.
+**** Exercise 2.60
+What if we represent a set as a list allowed to be duplicate? We don't need to
+check if the member already in the given set to adjoin:
+#+BEGIN_SRC scheme
+(define (adjoin-set x set)
+  (cons x set))
+#+END_SRC
+
+And others doesn't have to change at all but the complexity change. As
+~adjoin-set~ became \Theta(1) of step complexity, ~union-set~, which depends on
+~adjoin-set~, get to have \Theta(n) of step complexity, where n is the size of ~set1~.
+
+The complexity of the others-- ~element-of-set?~, ~intersection-set~-- doesn't
+change at all but now the concept of size of set has changed; although it is
+same along with the specification, the size of it can depend on representation,
+e.g. ~{1,2,1,1,1,1}~ has two member in it--1,2-- and also it is ~{1,2}~ but
+those differ in size--6, 2 respectively.
+
+If we use ~adjoin-set~ (and ~union-set~) a lot and sarcely ~element-of-set~ (or
+~intersection-set~) then current version would be more efficient than previous
+one, vice versa.
+**** Sets as ordered lists
+To simplify our discussion, we consider only the case where the set elements are
+numbers. This section is well documented in text book. So we just jot down
+necessary procedures here:
+#+BEGIN_SRC scheme
+(define (element-of-set? x set)
+  (cond ((null? set) false)
+        ((= x (car set)) true)
+        ((< x (car set)) false)
+        (else (element-of-set? x (cdr set)))))
+
+(define (intersection-set set1 set2)
+  (if (or (null? set1) (null? set2))
+      '()
+      (let ((x1 (car set1))
+            (x2 (car set2)))
+        (cond ((= x1 x2) (cons x1 (intersection-set (cdr set1)
+                                                    (cdr set2))))
+              ((< x1 x2) (intersection-set (cdr set1) set2))
+              ((> x1 x2) (intersection-set set1 (cdr set2)))))))
+#+END_SRC
+**** Exercise 2.61
+We know that if the member, which we are about to adjoin in given set, is
+smaller then the ~(car set)~ then the member are not contained in given set;
+if the member equals to ~(car set)~ then we don't have to do anything,
+else we should look up the ~cdr~ of set recursively. Then we end up with
+base case--nil of set; we just ~cons~ our member with nil:
+#+BEGIN_SRC scheme
+(define (adjoin-set x set)
+  (if (null? set)
+      (list x)
+      (let ((hd (car set)))
+        (cond ((< x hd) (cons set))
+              ((= x hd) set)
+              (else
+               (adjoin-set x (cdr set)))))))
+#+END_SRC
+**** Exercise 2.62
+To give \Theta(n) growth ~union-set~, we exploit the idea behind the
+~intersection-set~. I've got quite bored with jotting down all the rules that
+governs the algorithm; as this implementation is straightforward, let me just
+show them:
+#+BEGIN_SRC scheme
+(define (union-set set1 set2)
+  (cond ((null? set1) set2)
+        ((null? set2) set1)
+        (let ((x1 (car set1))
+              (x2 (car set2)))
+          (cond ((= x1 x2) (cons x1 (union-set (cdr set1) (cdr set2))))
+                ((< x1 x2) (cons x1 (union-set (cdr set1) set2)))
+                ((> x1 x2) (cons x2 (union-set set1 (cdr set2))))))))
+#+END_SRC
+**** Sets as binary trees
+Here we represent sets as binary trees--composed by entry, left branch, right
+branch. In turns, we have to represent the binary tree which satisfy following
+axioms:
+- ~(entry (make-tree entry left right))~ equals to ~entry~
+- ~(left-branch (make-tree entry left right))~ equals to ~left~
+- ~(right-branch (make-tree entry left right))~ equals to ~right~
+
+
+Here is one of representation that satisfy above axioms:
+#+BEGIN_SRC scheme
+(define (entry tree) (car tree))
+(define (left-branch tree) (cadr tree))
+(define (right-branch tree) (caddr tree))
+(define (make-tree entry left right)
+  (list entry left right))
+#+END_SRC
+
+Given with above, we can write ~element-of-set?~ procedure:
+#+BEGIN_SRC scheme
+(define (element-of-set? x set)
+  (if (null? set)
+      false
+      (let ((hd (entry set)))
+        (cond ((= x hd) true)
+              ((< x hd) (element-of-set? x (left-branch set)))
+              ((> x hd) (element-of-set? x (right-branch set)))))))
+#+END_SRC
+
+For the ~adjoin-set~ we recursively branching down the tree whether entry is
+equals to given member or not; if there is no such entry, it end up with empty
+tree, at that point, we should construct new tree and put the all pieces
+together appropriately:
+#+BEGIN_SRC scheme
+(define (adjoin-set x set)
+  (if (null? set)
+      (make-tree x '() '())
+      (let ((hd (entry set)))
+        (cond ((= x hd) set)
+              ((< x hd) (make-tree hd
+                                   (adjoin-set x (left-branch set))
+                                   (right-branch set)))
+              ((> x hd) (make-tree hd
+                                   (left-branch set)
+                                   (adjoin-set x (right-branch set))))))))
+#+END_SRC
+**** Exercise 2.63
+#+BEGIN_SRC scheme
+(define (tree->list-1 tree)
+  (if (null? tree)
+      '()
+      (append (tree->list-1 (left-branch tree))
+              (cons (entry tree)
+                    (tree->list-1 (right-branch tree))))))
+
+(define (tree->list-2 tree)
+  (define (copy-to-list tree result-list)
+    (if (null? tree)
+        result-list
+        (copy-to-list (left-branch tree)
+                      (cons (entry tree)
+                            (copy-to-list (right-branch tree)
+                                          result-list)))))
+  (copy-to-list tree '()))
+#+END_SRC
+***** a.
+We prove both produce the same result-- ordered list.
+For the former, we can prove the assertion by induction on the depth of tree.
+For the latter, we prove the assertion by using the invariance that
+~copy-to-list~ returns ordered list of given tree with appending the
+~result-list~ at the end.
+
+As consequence, the figure 2.16 end up with ~(1 2 3 4 5 6 7)~.
+***** b.
+For the former, if we estimate the size of input as number of entries of tree,
+then we get the following differential equation:
+\[f \left( n \right) - 2 f \left( n/2 \right) = \Theta \left( n/2 \right)\],
+which end up with
+\[f \left( n \right) = \Theta(n) + \Theta (n \log n)\].
+As consequence, we got $\Theta(n \log n)$ step complexity.
+
+For the latter, it becomes
+\[ f(n) - 2 f(n/2) = \Theta (1) \];
+it can be concluded as
+\[f(n) = \Theta(n) + \Theta(\log n) = \Theta(n)\], i.e. $\Theta(n)$ step complexity.
+**** Exercise 2.64
+#+BEGIN_SRC scheme
+(define (list->tree elements)
+  (car (partial-tree elements (length elements))))
+(define (partial-tree elts n)
+  (if (= n 0)
+      (cons '() elts)
+      (let ((left-size (quotient (- n 1) 2)))
+        (let ((left-result (partial-tree elts left-size)))
+          (let ((left-tree (car left-result))
+                (non-left-elts (cdr left-result))
+                (right-size (- n (+1 left-size))))
+            (let ((this-entry (car non-left-elts))
+                  (right-result (partial-tree (cdr non-left-elts)
+                                              right-size)))
+              (let ((right-tree (car right-result))
+                    (remaining-elts (cdr right-result)))
+                (cons (make-tree this-entry
+                                 left-tree
+                                 right-tree)
+                      remaining-elts))))))))
+#+END_SRC
+***** a.
+The ~partial-tree~'s behavior is as follows
+- given with ordered list ~elts~ it returns pair that contains balanced tree
+  with first ~n~ elements from the ~elts~ with ordered list but first ~n~ elements.
+
+
+This is just specification that we want to implement for ~list->tree~. Then how
+to implement it? We have the powerful strategy, wishful thinking:
+Let we assume that for all inputs that has less than ~n~ ~partial-tree~
+implemented by John. Our task is to complete the ~partial-tree~ for the inputs
+with ~n~. Here is the idea:
+1. First, build the left half tree with the ~elts~.
+2. And then, take one element from the remaining ~elts~ from step 1.
+3. Using the rest elements construct right half tree.
+4. Build whole tree using ~make-tree~ with above left tree, entry, right tree
+   from 1, 2, 3, respectively.
+5. Returns pair consisting the tree built from step 4 with remaining elements
+   from step 3.
+
+
+The straightforward implementation is shown above. Note that we used for the
+~left-size~ since we have to satisfy the relation-- $n - 1 \ge 2 ~\text{left-size}$.
+***** b.
+Analogous to [[Exercise 2.63][previous exercise]], we can deduce that the order of growth of this
+implementation is \Theta(n).
+**** Exercise 2.65
+***** ~intersection-set~
+After I've played with some examples, I concluded that the ordered list version
+of it is quite ideal implementation than using tree. Given with exercise 2.63,
+we can revert the (balanced) tree to ordered list.
+
+Then we simply put together all the modules:
+#+BEGIN_SRC scheme
+(define (intersection-set set1 set2)
+  (let ((ol1 (tree->list-2 set1))
+        (ol2 (tree->list-2 set2)))
+    (list->tree (intersection-setl ol1 ol2))))
+#+END_SRC
+Here I rephrase the previous version of ~intersection-set~ as
+~intersection-setl~ for denoting ordered list.
+
+Similarly, we can do same thing to ~union-set~:
+#+BEGIN_SRC scheme
+(define (union-set set1 set2)
+  (let ((ol1 (tree->list-2 set1))
+        (ol2 (tree->list-2 set2)))
+    (list->tree (union-setl ol1 ol2))))
+#+END_SRC
+
+These have all \Theta(n) order of growth.
+**** Exercise 2.66
+As we know that ~lookup~ is analogous to ~element-of-set?~, here also we can
+implement using that observation:
+#+BEGIN_SRC scheme
+(define (lookup given-key set)
+  (if (null? set)
+      false
+      (let ((hd (key (entry set))))
+        (cond ((= given-key hd) true)
+              ((< given-key hd) (lookup given-key (left-branch set)))
+              ((> given-key hd) (lookup given-key (right-branch set)))))))
+#+END_SRC
+*** Example: Huffman Encoding trees
+**** Representing Huffman trees
+Here we represent Huffman tree as weighted tree. The leaf can be represented as
+#+BEGIN_SRC scheme
+(define (make-leaf symbol weight)
+  (list 'leaf symbol weight))
+(define (leaf? object)
+  (eq? (car object) 'leaf))
+(define (symbol-leaf x) (cadr x))
+(define (weight-leaf x) (caddr x))
+#+END_SRC
+
+A general tree will be a list of left branch, a right branch, a set of symbols,
+and as weight. The set of symbols will be simply a list of the symbols, which
+contains all the symbols of leaves under the tree. And weight will be number
+which indicate sum of leaves' weights under the tree. As I noted before, the
+~append~ operation is very similar to ~union~. Here, as we represent the set of
+symbols as just list, we can get the behavior of ~union~ using ~append~:
+#+BEGIN_SRC scheme
+(define (make-code-tree left right)
+  (list left
+        right
+        (append (symbols left) (symbols right))
+        (+ (weight left) (weight right))))
+#+END_SRC
+
+The other interface procedures determined by this representation:
+#+BEGIN_SRC scheme
+(define (left-branch tree) (car tree))
+(define (right-branch tree) (cadr tree))
+(define (symbols tree)
+  (if (leaf? tree)
+      (list (symbol-leaf tree))
+      (caddr tree)))
+(define (weight tree)
+  (if (leaf? tree)
+      (weight-leaf tree)
+      (cadddr tree)))
+#+END_SRC
+**** The decoding procedure
+Given bits with Huffman tree, we can start decode with each bit from the
+leftmost bit to determine how to choose next branch in the tree. If we
+encountered with leaf, then it means we decoded one symbol in message.
+Repeatedly decoding the symbols, and accumulating the symbols in list, we
+complete the decoding process. It is natural to decompose this decoding
+procedure to decoding one symbol, procedure to choose branch with the current
+bit and branch of tree, accumulating the result symbols and determining
+termination condition. Here is one possible implementation:
+#+BEGIN_SRC scheme
+(define (decode bits tree)
+  (define (decode-1 bits current-branch)
+    (if (null? bits)
+        '()
+        (let ((next-branch
+               (choose-branch (car bits) current-branch)))
+          (if (leaf? next-branch)
+              (cons (symbol-leaf next-branch)
+                    (decode-1 (cdr bits) tree))
+              (decode-1 (cdr bits) next-branch)))))
+  (decode-1 bits tree))
+
+(define (choose-branch bit branch)
+  (cond ((= bit 0) (left-branch branch))
+        ((= bit 1) (right-branch branch))
+        (else (error "bat bit -- CHOOSE-BRANCH" bit))))
+#+END_SRC
+
+Here we merged somehow decode one symbol with accumulating & terminating; we
+found that it is way more concise than bothering to decompose with the described
+fashion.
+**** Sets of weighted elements
+The tree-generating algorithm requires to choose smallest nodes in the set. To
+do this, it is more convenient to represent a set as an ordered list as we did
+before. However, in this situation, provided that the element being adjoined to
+the set is not in the set. Using this fact we can ~adjoin-set~ more efficiently:
+#+BEGIN_SRC scheme
+(define (adjoin-set x set)
+  (cond ((null? set) (list x))
+        ((< (weight x) (weight (car set))) (cons x set))
+        (else (cons (car set)
+                    (adjoin-set x (cdr set))))))
+#+END_SRC
+
+Using this, we can construct the ordered list of pairs, which contains symbol
+with frequency:
+#+BEGIN_SRC scheme
+(define (make-leaf-set pairs)
+  (if (null? pairs)
+      '()
+      (let ((pair (car pairs)))
+        (adjoin-set (make-leaf (car pair) ;symbol
+                               (cadr pair)) ;frequency
+                    (make-leaf-set (cdr pairs))))))
+#+END_SRC
+**** Exercise 2.67
+#+BEGIN_SRC scheme
+(define sample-tree
+  (make-code-tree (make-leaf 'A 4)
+                  (make-code-tree
+                   (make-leaf 'B 2)
+                   (make-code-tree (make-leaf 'D 1)
+                                   (make-leaf 'C 1)))))
+(define sample-message '(0 1 1 0 0 1 0 1 0 1 1 1 0))
+;; test
+(decode sample-message sample-tree)     ;(a d a b b c a)
+#+END_SRC
+**** Exercise 2.68
+The ~encode~ process can be decomposed as
+#+BEGIN_SRC scheme
+(define (encode message tree)
+  (if (null? message)
+      '()
+      (append (encode-symbol (car message) tree)
+              (encode (cdr message) tree))))
+#+END_SRC
+
+Then we should implement the ~encode-symbol~ procedure that encode one symbol as
+sequence of bits. This procedure also should raise exception when there is not
+such symbol in the tree. We can deduce the algorithm by playing with it:
+1. Test whether the symbol included in tree.
+2. If not raise error, else choose next branch that contains given symbol.
+3. If we get all the way down to the leaf (which also contains given symbol by
+   contract) return the accumulated bits.
+
+
+When we code this algorithm, we get
+#+BEGIN_SRC scheme
+(define (element-of-set? x set)
+  (cond ((null? set) false)
+        ((equal? x (car set)) true)
+        (else (element-of-set? x (cdr set)))))
+
+(define (encode-symbol symbol tree)
+  (define (encode-1 current-branch)
+    (if (leaf? current-branch)
+        '()
+        (if (element-of-set? symbol
+                             (symbols (left-branch current-branch)))
+            (cons 0
+                  (encode-1 (left-branch current-branch)))
+            (cons 1
+                  (encode-1 (right-branch current-branch))))))
+  (if (not (element-of-set? symbol (symbols tree)))
+      (error "bad symbol -- ENCODE-SYMBOL" symbol)
+      (encode-1 tree)))
+;; test
+(encode (decode sample-message sample-tree) sample-tree) ;(0 1 1 0 0 1 0 1 0 1 1 1 0)
+#+END_SRC
+**** Exercise 2.69
+I've designed in my personal note. The result:
+#+BEGIN_SRC scheme
+(define (generate-huffman-tree pairs)
+  (successive-merge (make-leaf-set pairs)))
+
+(define (successive-merge leaf-set)     ;provided that leaf-set is list
+  (cond ((null? leaf-set) '())
+        ((null? (cdr leaf-set)) (car leaf-set)) ;termination condition
+        (else                                   ;provided that it has atleast 2 leaves in this
+         (let ((leaf1 (car leaf-set))
+               (leaf2 (cadr leaf-set))
+               (rest-set (cddr leaf-set)))
+         (successive-merge (adjoin-set (make-code-tree leaf1 leaf2)
+                                       rest-set))))))
+;;test
+(define sample-pairs '((A 4) (B 2) (C 1) (D 1)))
+(decode sample-message (generate-huffman-tree sample-pairs)) ;(a d a b b c a)
+#+END_SRC
+**** Exercise 2.70
+If we do the instructions, we get
+#+BEGIN_SRC scheme
+(define rock-pairs '((A 2) (BOOM 1) (GET 2) (JOB 2) (NA 16) (SHA 3) (YIP 9) (WAH 1)))
+(define rock-tree (generate-huffman-tree rock-pairs))
+(define rock-message '(Get a job
+                           Sha na na na na na na na na
+                           Get a job
+                           Sha na na na na na na na na
+                           Wah yip yip yip yip yip yip yip yip yip
+                           Sha boom))
+(define rock-code (encode rock-message rock-tree))
+(length rock-code)                      ;84
+#+END_SRC
+
+In Huffman encoding, we need 84 bits for encoding the message. If we have used
+fixed-length code for eight-symbol alphabet--we need at least 3 bits per
+symbol, we get ~(* 3 (length rock-message))~ that evaluated to 108. We saved
+about 22% bits for encoding the message.
+**** Exercise 2.71
+We can prove by induction on /n/ or on depth of tree that the most frequent
+symbol requires 1 bit to encode and for the least frequent one /n-1/ bits.
+**** Exercise 2.72
+For the given special case, we can prove that for the most frequent one the
+order of growth is \Theta(n) and for the least frequent one \Theta(n^{2}) at the
+worst case.
 * Footnotes
 
 [fn:2] Note that we naturally inherit the lisp's power, that is, of manipulating

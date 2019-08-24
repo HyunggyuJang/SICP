@@ -917,11 +917,11 @@
         ((and (null? xs) (not (null? ys))) ;base case
          false) (else (and (eq? (car xs) (car ys)) ;recursive case
                    (eqList? (cdr xs) (cdr ys))))))
-(define (equal? s1 s2)
-  (or (and (symbol? s1)
-           (symbol? s2)
-           (eq? s1 s2))
-      (eqList? s1 s2)))
+;; (define (equal? s1 s2)
+;;   (or (and (symbol? s1)
+;;            (symbol? s2)
+;;            (eq? s1 s2))
+;;       (eqList? s1 s2)))
 
 ;; Symbolic Differentiation
 (define (deriv exp var)
@@ -1204,3 +1204,278 @@
 
 ;; test
 ;; (deriv '(x ** 4 * (x * 2 + y + 2)) 'x)  ;((((x * 2) + (y + 2)) * (4 * (x ** 3))) + (2 * (x ** 4)))
+
+;; Section 2.3.3
+;; unordered lists representation
+(define (element-of-set? x set)
+  (cond ((null? set) false)
+        ((equal? x (car set)) true)
+        (else (element-of-set? x (cdr set)))))
+
+(define (adjoin-set x set)
+  (if (element-of-set? x set)
+      set
+      (cons x set)))
+
+(define (intersection-set set1 set2)
+  (cond ((or (null? set1) (null? set2)) '())
+        ((element-of-set? (car set1) set2)
+         (cons (car set1)
+               (intersection-set (cdr set1) set2)))
+        (else (intersection-set (cdr set1) set2))))
+
+;; Exercise 2.59
+(define (union-set set1 set2)
+  (cond ((null? set1) set2)
+        (else (adjoin-set (car set1)
+                          (union-set (cdr set1) set2)))))
+;; Exercise 2.60
+(define (adjoin-set x set)
+  (cons x set))
+
+;; Set as ordered lists
+(define (element-of-set? x set)
+  (cond ((null? set) false)
+        ((= x (car set)) true)
+        ((< x (car set)) false)
+        (else (element-of-set? x (cdr set)))))
+
+(define (intersection-setl set1 set2)
+  (if (or (null? set1) (null? set2))
+      '()
+      (let ((x1 (car set1))
+            (x2 (car set2)))
+        (cond ((= x1 x2) (cons x1 (intersection-setl (cdr set1)
+                                                    (cdr set2))))
+              ((< x1 x2) (intersection-setl (cdr set1) set2))
+              ((> x1 x2) (intersection-setl set1 (cdr set2)))))))
+
+;; Exercise 2.61
+(define (adjoin-set x set)
+  (if (null? set)
+      (list x)
+      (let ((hd (car set)))
+        (cond ((< x hd) (cons set))
+              ((= x hd) set)
+              (else
+               (adjoin-set x (cdr set)))))))
+
+;; Exercise 2.62
+(define (union-setl set1 set2)
+  (cond ((null? set1) set2)
+        ((null? set2) set1)
+        (else
+         (let ((x1 (car set1))
+               (x2 (car set2)))
+           (cond ((= x1 x2) (cons x1 (union-setl (cdr set1) (cdr set2))))
+                 ((< x1 x2) (cons x1 (union-setl (cdr set1) set2)))
+                 ((> x1 x2) (cons x2 (union-setl set1 (cdr set2)))))))))
+
+;; Sets as binary trees
+(define (entry tree) (car tree))
+(define (left-branch tree) (cadr tree))
+(define (right-branch tree) (caddr tree))
+(define (make-tree entry left right)
+  (list entry left right))
+
+(define (element-of-set? x set)
+  (if (null? set)
+      false
+      (let ((hd (entry set)))
+        (cond ((= x hd) true)
+              ((< x hd) (element-of-set? x (left-branch set)))
+              ((> x hd) (element-of-set? x (right-branch set)))))))
+
+(define (adjoin-set x set)
+  (if (null? set)
+      (make-tree x '() '())
+      (let ((hd (entry set)))
+        (cond ((= x hd) set)
+              ((< x hd) (make-tree hd
+                                   (adjoin-set x (left-branch set))
+                                   (right-branch set)))
+              ((> x hd) (make-tree hd
+                                   (left-branch set)
+                                   (adjoin-set x (right-branch set))))))))
+
+;; Exercise 2.63
+(define (tree->list-1 tree)
+  (if (null? tree)
+      '()
+      (append (tree->list-1 (left-branch tree))
+              (cons (entry tree)
+                    (tree->list-1 (right-branch tree))))))
+
+(define (tree->list-2 tree)
+  (define (copy-to-list tree result-list)
+    (if (null? tree)
+        result-list
+        (copy-to-list (left-branch tree)
+                      (cons (entry tree)
+                            (copy-to-list (right-branch tree)
+                                          result-list)))))
+  (copy-to-list tree '()))
+
+;; Exercise 2.64
+(define (list->tree elements)
+  (car (partial-tree elements (length elements))))
+(define (partial-tree elts n)
+  (if (= n 0)
+      (cons '() elts)
+      (let ((left-size (quotient (- n 1) 2)))
+        (let ((left-result (partial-tree elts left-size)))
+          (let ((left-tree (car left-result))
+                (non-left-elts (cdr left-result))
+                (right-size (- n (+1 left-size))))
+            (let ((this-entry (car non-left-elts))
+                  (right-result (partial-tree (cdr non-left-elts)
+                                              right-size)))
+              (let ((right-tree (car right-result))
+                    (remaining-elts (cdr right-result)))
+                (cons (make-tree this-entry
+                                 left-tree
+                                 right-tree)
+                      remaining-elts))))))))
+
+;; Exercise 2.65
+(define (intersection-set set1 set2)
+  (let ((ol1 (tree->list-2 set1))
+        (ol2 (tree->list-2 set2)))
+    (list->tree (intersection-setl ol1 ol2))))
+
+(define (union-set set1 set2)
+  (let ((ol1 (tree->list-2 set1))
+        (ol2 (tree->list-2 set2)))
+    (list->tree (union-setl ol1 ol2))))
+
+;; Exercise 2.66
+(define (lookup given-key set)
+  (if (null? set)
+      false
+      (let ((hd (key (entry set))))
+        (cond ((= given-key hd) true)
+              ((< given-key hd) (lookup given-key (left-branch set)))
+              ((> given-key hd) (lookup given-key (right-branch set)))))))
+
+;; Representing Huffman trees
+(define (make-leaf symbol weight)
+  (list 'leaf symbol weight))
+(define (leaf? object)
+  (eq? (car object) 'leaf))
+(define (symbol-leaf x) (cadr x))
+(define (weight-leaf x) (caddr x))
+
+(define (make-code-tree left right)
+  (list left
+        right
+        (append (symbols left) (symbols right))
+        (+ (weight left) (weight right))))
+
+(define (left-branch tree) (car tree))
+(define (right-branch tree) (cadr tree))
+(define (symbols tree)
+  (if (leaf? tree)
+      (list (symbol-leaf tree))
+      (caddr tree)))
+(define (weight tree)
+  (if (leaf? tree)
+      (weight-leaf tree)
+      (cadddr tree)))
+
+(define (decode bits tree)
+  (define (decode-1 bits current-branch)
+    (if (null? bits)
+        '()
+        (let ((next-branch
+               (choose-branch (car bits) current-branch)))
+          (if (leaf? next-branch)
+              (cons (symbol-leaf next-branch)
+                    (decode-1 (cdr bits) tree))
+              (decode-1 (cdr bits) next-branch)))))
+  (decode-1 bits tree))
+
+(define (choose-branch bit branch)
+  (cond ((= bit 0) (left-branch branch))
+        ((= bit 1) (right-branch branch))
+        (else (error "bat bit -- CHOOSE-BRANCH" bit))))
+
+(define (adjoin-set x set)
+  (cond ((null? set) (list x))
+        ((< (weight x) (weight (car set))) (cons x set))
+        (else (cons (car set)
+                    (adjoin-set x (cdr set))))))
+
+(define (make-leaf-set pairs)
+  (if (null? pairs)
+      '()
+      (let ((pair (car pairs)))
+        (adjoin-set (make-leaf (car pair) ;symbol
+                               (cadr pair)) ;frequency
+                    (make-leaf-set (cdr pairs))))))
+
+;; Exercise 2.67
+(define sample-tree
+  (make-code-tree (make-leaf 'A 4)
+                  (make-code-tree
+                   (make-leaf 'B 2)
+                   (make-code-tree (make-leaf 'D 1)
+                                   (make-leaf 'C 1)))))
+(define sample-message '(0 1 1 0 0 1 0 1 0 1 1 1 0))
+;; test
+(decode sample-message sample-tree)     ;(a d a b b c a)
+
+;; Exercise 2.68
+(define (encode message tree)
+  (if (null? message)
+      '()
+      (append (encode-symbol (car message) tree)
+              (encode (cdr message) tree))))
+
+(define (element-of-set? x set)
+  (cond ((null? set) false)
+        ((equal? x (car set)) true)
+        (else (element-of-set? x (cdr set)))))
+
+(define (encode-symbol symbol tree)
+  (define (encode-1 current-branch)
+    (if (leaf? current-branch)
+        '()
+        (if (element-of-set? symbol
+                             (symbols (left-branch current-branch)))
+            (cons 0
+                  (encode-1 (left-branch current-branch)))
+            (cons 1
+                  (encode-1 (right-branch current-branch))))))
+  (if (not (element-of-set? symbol (symbols tree)))
+      (error "bad symbol -- ENCODE-SYMBOL" symbol)
+      (encode-1 tree)))
+;; test
+;; (encode (decode sample-message sample-tree) sample-tree) ;(0 1 1 0 0 1 0 1 0 1 1 1 0)
+
+;; Exercise 2.69
+(define (generate-huffman-tree pairs)
+  (successive-merge (make-leaf-set pairs)))
+
+(define (successive-merge leaf-set)     ;provided that leaf-set is list
+  (cond ((null? leaf-set) '())
+        ((null? (cdr leaf-set)) (car leaf-set)) ;termination condition
+        (else                                   ;provided that it has atleast 2 leaves in this
+         (let ((leaf1 (car leaf-set))
+               (leaf2 (cadr leaf-set))
+               (rest-set (cddr leaf-set)))
+         (successive-merge (adjoin-set (make-code-tree leaf1 leaf2)
+                                       rest-set))))))
+;;test
+(define sample-pairs '((A 4) (B 2) (C 1) (D 1)))
+(decode sample-message (generate-huffman-tree sample-pairs)) ;(a d a b b c a)
+
+;; Exercise 2.70
+(define rock-pairs '((A 2) (BOOM 1) (GET 2) (JOB 2) (NA 16) (SHA 3) (YIP 9) (WAH 1)))
+(define rock-tree (generate-huffman-tree rock-pairs))
+(define rock-message '(Get a job
+                           Sha na na na na na na na na
+                           Get a job
+                           Sha na na na na na na na na
+                           Wah yip yip yip yip yip yip yip yip yip
+                           Sha boom))
+(define rock-code (encode rock-message rock-tree))
