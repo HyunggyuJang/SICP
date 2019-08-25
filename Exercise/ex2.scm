@@ -1479,3 +1479,102 @@
                            Wah yip yip yip yip yip yip yip yip yip
                            Sha boom))
 (define rock-code (encode rock-message rock-tree))
+
+;; Exercise 2.73
+(define (deriv exp var)
+  (cond ((number? exp) 0)
+        ((variable? exp) (if (same-variable? exp var) 1 0))
+        (else ((get 'deriv (operator exp)) (operands exp) var))))
+
+(define (operator exp) (car exp))
+(define (operands exp) (cdr exp))
+
+(define (install-sum--package)
+  ;; constructor
+  (define (make-sum a1 a2)
+    (cond ((=number? a1 0) a2)
+          ((=number? a2 0) a1)
+          ((and (number? a1) (number? a2)) (+ a1 a2))
+          (else (list '+ a1 a2))))
+  ;; selectors
+  (define (addend operands) (car operands))
+  (define (augend operands) (cadr operands))
+  ;; interface to the rest of the system.
+  (put 'make '+ make-sum)
+  (put 'addend '+ addend)
+  (put 'augend '+ augend)
+  ;; For differential algebraic system.
+  (put 'deriv '+
+       (lambda (operands var) (make-sum (deriv (addend operands) var)
+                                        (deriv (augend operands) var))))
+  'done)
+
+(define (install-product-package)
+  ;;constructor
+  (define (make-product m1 m2)
+    (cond ((or (=number? m1 0) (=number? m2 0)) 0)
+          ((=number? m1 1) m2)
+          ((=number? m2 1) m1)
+          ((and (number? m1) (number? m2))
+           (* m1 m2))
+          (else (list '* m1 m2))))
+  ;;selectors
+  (define (multiplier p) (car p))
+  (define (multiplicand p) (cadr p))
+  ;; interface to the rest of the system.
+  (put 'make '* make-product)
+  (put 'multiplier '* multiplier)
+  (put 'multiplicand '* multiplicand)
+  ;; For differential algebraic system
+  (put 'deriv '*
+       (lambda (operands var)
+         ((get 'make '+)
+          (make-product (multiplier operands)
+                        (deriv (multiplicand operands) var))
+          (make-product (deriv (multiplier operands) var)
+                        (muliplicand operands)))))
+  'done)
+
+(define (install-exponentiation-package)
+  ;; constructor
+  (define (make-exponentiation base exponent)
+    (cond ((=number? exponent 0) 1)
+          ((=number? exponent 1) base)
+          ((and (number? base) (number? exponent))
+           (expt base exponent))
+          (else (list '** base exponent))))
+  ;; selectors
+  (define (base ex)
+    (car ex))
+
+  (define (exponent ex)
+    (cadr ex))
+
+  ;; differentiation
+  (define (deriv-expt operands var)
+    (let ((make-product (get 'make '*)))
+      (make-product (make-product (exponent operands)
+                                  (make-exponentiation (base operands) (- (exponent operands) 1)))
+                    (deriv (base operands) var))))
+  ;; interface
+  (put 'make '** make-exponentiation)
+  (put 'base '** base)
+  (put 'exponent '** exponent)
+  (put 'deriv '** deriv-expt)
+  'done)
+
+;; Exercise 2.74
+(define (get-record record-file employee-name)
+  (let ((division (type-tag record-file))) ;we assume that each file has division name as its type.
+    ((get 'get-record division) employee-name)))
+
+(define (get-salary record)
+  (let ((division (type-tag record)))
+    ((get 'get-salary division) record)))
+
+(define (find-employee-record division-files employee-name)
+  (fold-left (lambda (x y) (or x y))
+             false
+             (map (lambda (division-file)
+                    (get-record division-file employee-name))
+                  division-files)))
