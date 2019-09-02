@@ -4712,32 +4712,37 @@ existing code to make sense. Here is the final code:
 (define (sparse-empty-termlist) ((get 'the-empty-termlist 'sparse)))
 (define (make-term order coeff) ((get 'make 'term) order coeff))
 
-(define (gather-termlist v es)          ;=> termlist
+(define (gather-termlist v es)                       ;=> termlist
   (cond ((empty-expansion? es) (the-empty-termlist)) ;base case 1
+        ((number-expansion-list? es) (adjoin-term (make-term 0 (rearrange es)) ;base case 2
+                                                  (the-empty-termlist)))
         (else
          (let ((t (highest-priority-term es)))
            (if (not (variable=? v (var t)))
-               (adjoin-term (make-term 0 (rearrange es)) ;base case 2
+               (adjoin-term (make-term 0 (rearrange es)) ;base case 3
                             (the-empty-termlist))
                (let ((unarranged-result (gather t es)))
                  (let ((gathered (car unarranged-result))
                        (rest (cadr unarranged-result)))
-                   (adjoin-term (make-term (order t)
+                   (adjoin-term (make-term (var-order t)
                                            (rearrange gathered))
                                 (gather-termlist v rest)))))))))
 
 (define (gather t es)
-  (if (empty-expansion? es)
-      (list (the-empty-expansion) (the-empty-expansion))
-      (let ((t1 (highest-priority-term es)))
-        (if (or (not (term=? t t1)))
-            (list (the-empty-expansion) es)
-            (let ((result (gather t (rest-expansion es))))
-              (list (adjoin-term-list-to-expansion
-                      (term-list-except-first-var
-                        (first-term-list es))
-                      (car result))
-                    (cadr result)))))))
+  (cond ((number-expansion-list? es)
+         (list (the-empty-expansion) es))
+        ((empty-expansion? es)
+         (list (the-empty-expansion) (the-empty-expansion)))
+        (else
+         (let ((t1 (highest-priority-term es)))
+           (if (or (not (term=? t t1)))
+               (list (the-empty-expansion) es)
+               (let ((result (gather t (rest-expansion es))))
+                 (list (adjoin-term-list-to-expansion
+                        (term-list-except-first-var
+                         (first-term-list es))
+                        (car result))
+                       (cadr result))))))))
 
 (define (term-list-except-first-var ts)
   (make-term-list (tail-terms (var-terms ts))
@@ -4837,7 +4842,94 @@ accomplish the multiplication:
          (mul-term-list-by-all-term-lists L1 (rest-expansion e))))))
 #+END_SRC
 Which conclude our example.
+****** Deploy
+All we have to do is wrap around what we built as pacakge that extends
+polynomial pacakge:
+#+BEGIN_SRC scheme
+(define (install-multivariate-polynomial-package)
+  ,*** What we built
+  ;; interface to rest of system
+  (define (tag p) (attach-tag 'polynomial p)) ;for reattach the tag for working with this package
+  (put 'add '(polynomial polynomial) (lambda (p1 p2) (mul-poly-add (tag p1) (tag p2))))
+  (put 'mul '(polynomial polynomial) (lambda (p1 p2) (mul-poly-mul (tag p1) (tag p2))))
+  (put 'sub '(polynomial polynomial) (lambda (p1 p2) (mul-poly-add (tag p1) (neg (tag p2))))) ;exploit generic operator, neg
+  ;; test fragment
+  ;; (define test '(polynomial x sparse (term 3 (polynomial y dense (polynomial y dense 5 0 0) 0)) (term 1 (polynomial y dense (polynomial x dense 3 0 0) 0 0 0))))
+  ;; (define test1 '(polynomial y sparse (term 3 (polynomial y dense (polynomial y dense 5 0 0) 0)) (term 1 (polynomial y dense (polynomial x dense 3 0 0) 0 0 0))))
+  ;; (add test test1)
+  ;; (sub test test1)
+  ;; (mul test test1)
+ )
+#+END_SRC
+**** Lecture 4B: Generic Operators
+In this section, 2.5, we built our system primarily relying on data-directed
+programming; using this scheme, we were able to inherit automatically the
+ability to compute multivariate polynomial (in limited sense, as we noted
+before) by just implementing univariate polynomial arithmetic system and
+integrate that in our generic arithmetic system.
+
+In this programming style, we get rid of the "manager" and automated with
+generic procedure called =apply-generic=. By doing that, we allowed to develop
+our own package without consulting with other package developer; we only needed
+to add appropriate procedure in operator table so that =apply-generic= look for
+and dispatch on type appropriately.
+
+So far, we are quite happy with our craft; however we start to realize there are
+some unfortunate things even in this genuine strategy: As noted in the lecture,
+the individual package procedures can freeze the higher level procedure by
+adding some procedure that is constrained in some fashion. This "unfortunate"
+due to the highly decentralized structure of our programming scheme; for
+instance we couldn't decide where specific coercion procedure should be
+included: We end up with making up other kind operator table that contains
+coercion procedure and we had to modify =apply-generic= accordingly. Even with
+that, our coercion scheme is limited in that we had to supply explicitly how our
+arithmetic types related each other-- =tower=. It's a very poorly structured
+hierarchical system.
+
+Further more, in following exercise, we are about to convert rational number to
+generic rational object, which encompass all the object that has structure like
+rational number-- object that have numerator and denominator with satisfying
+rational arithmetic axioms. That allows complex numbered rational object and
+rational polynomials and so on, "automatically"; however obvious there is no
+"GCD" operators for these. One way to deal with this problem is to give up to
+reduce the numerator and denominator to its lowest term, which leads to our
+rational number system also to be not the conventional rational number, which we
+learned in elementary school.
+
+On the other hand, this generic approach also leads some insight about the
+abstract algebra: As polynomial has its own "GCD" like operation as its division
+has a lot of analogy with integer division, we can abstract out the object that
+we have considered in concrete manner in the more generic context, which can be
+used in another specific field that have not considered previously. The other
+method for this problem, as I hinted already, use the generic properties of
+rational object, that is, to formulate the axioms objects should satisfy to have
+rational type; also we have to impose that condition to our rational arithmetic
+package to ensure the made rational object can be supplied to any other
+arithmetic operations as expected.
+
+Finally, the alternative approach have been adopted in many modern programming
+language: OOP. In that approach we can solve the hierarchical structure
+elegantly using super type and sub type relation. And more, the strictly typed
+language exploit this paradigm to maximize the flexibility, which constrained by
+the compile time type checking. Also this scheme capture the ADT concept as
+special expression called /class/ using that structure, we can achieve the guts
+of ADT more elegantly. Now days, it seems like people found this scheme as most
+practical one[fn:5].
+**** Exercise 2.93
+We can do what text indicated straightforwardly. Then we can test the given
+code:
+#+BEGIN_SRC scheme
+(define p1 (make-polynomial 'x '(sparse (term 2 1) (term 0 1))))
+(define p2 (make-polynomial 'x '(sparse (term 3 1) (term 0 1))))
+(define rf (make-rational p2 p1))
+;Value: (rational (polynomial x dense 1 0 0 1) polynomial x dense 1 0 1)
+(add rf rf)
+#+END_SRC
+
 * Footnotes
+
+[fn:5] There is yet another approach, namely type class being adopted and
+introduced in Haskell.
 
 [fn:4] The definition of sparse and dense polynomials are defined in the text book.
 
@@ -4848,6 +4940,7 @@ list. That means we don't have to parse all the expression to get the token,
 which we have to do usually when we implement the complier or interpreter.
 
 [fn:1] Well, there are several candidates for doing this like [[http://plantuml.com/en/][plantUML]], [[https://www.graphviz.org/][dot]]
-, etc. If I can afford to learn those, I'd like to upload these study note as well someday.
+, etc. If I can afford to learn those, I'd like to upload these study note as
+well someday.
 
 #  LocalWords:  SICP

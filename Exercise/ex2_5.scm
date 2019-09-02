@@ -661,22 +661,23 @@
   (define (numer x) (car x))
   (define (denom x) (cdr x))
   (define (make-rat n d)
-    (let ((g (gcd n d)))
-      (cons (/ n g) (/ d g))))
+    (cons n d))
+    ;; (let ((g (gcd n d)))
+    ;;   (cons (/ n g) (/ d g))))
   (define (add-rat x y)
-    (make-rat (+ (* (numer x) (denom y))
-                 (* (numer y) (denom x)))
-              (* (denom x) (denom y))))
+    (make-rat (add (mul (numer x) (denom y))
+                 (mul (numer y) (denom x)))
+              (mul (denom x) (denom y))))
   (define (sub-rat x y)
-    (make-rat (- (* (numer x) (denom y))
-                 (* (numer y) (denom x)))
-              (* (denom x) (denom y))))
+    (make-rat (sub (mul (numer x) (denom y))
+                 (mul (numer y) (denom x)))
+              (mul (denom x) (denom y))))
   (define (mul-rat x y)
-    (make-rat (* (numer x) (numer y))
-              (* (denom x) (denom y))))
+    (make-rat (mul (numer x) (numer y))
+              (mul (denom x) (denom y))))
   (define (div-rat x y)
-    (make-rat (* (numer x) (denom y))
-              (* (denom x) (numer y))))
+    (make-rat (mul (numer x) (denom y))
+              (mul (denom x) (numer y))))
   ;; interface to rest of the system
   (define (tag x) (attach-tag 'rational x))
   (put 'add '(rational rational)
@@ -1080,6 +1081,7 @@
   (install-raise)
   (install-project)
   (install-polynomial-package)
+  (install-multivariate-polynomial-package)
   'doneAll)
 ;; Exercise 2.88
 (define (neg x) (apply-generic 'neg x))
@@ -1109,7 +1111,6 @@
   (put 'empty-termlist? '(sparse) empty-termlist?)
   (put 'the-empty-termlist 'sparse (lambda () (tag (the-empty-termlist))))
   )
-
 ;; Exercise 2.89
 (define (install-dense-termlist)
   ;; dependency
@@ -1162,263 +1163,286 @@
 ;;      (make-polynomial 'x '(sparse (term 5 1) (term 4 2) (term 1 1))))
 
 ;; Exercise 2.92
+(define (install-multivariate-polynomial-package)
+  ;; dependency
+  (install-polynomial-package)
+  (define (variable p) (apply-generic 'variable p))
+  (define (term-list p) (apply-generic 'term-list p))
+  ;; expansion
+  (define (append-expansion e1 e2)
+    (if (empty-expansion? e1)
+        e2
+        (add-term-list-to-expansion (first-term-list e1)
+                                    (append-expansion (rest-expansion e1) e2))))
 
-;; dependency
-(install-polynomial-package)
-(define (variable p) (apply-generic 'variable p))
-(define (term-list p) (apply-generic 'term-list p))
-;; expansion
-(define (append-expansion e1 e2)
-  (if (empty-expansion? e1)
-      e2
-      (add-term-list-to-expansion (first-term-list e1)
-                                  (append-expansion (rest-expansion e1) e2))))
+  (define (expand nested-poly)
+    (cond ((not (polynomial? nested-poly))
+           (add-term-list-to-expansion
+             (make-term-list-with-num nested-poly)
+             (the-empty-expansion)))
+          (else
+            (expand-at-level (variable nested-poly) (term-list nested-poly)))))
 
-(define (expand nested-poly)
-  (cond ((not (polynomial? nested-poly))
-         (add-term-list-to-expansion
-          (make-term-list-with-num nested-poly)
-          (the-empty-expansion)))
-        (else
-         (expand-at-level (variable nested-poly) (term-list nested-poly)))))
+  ;; import from dependent package
+  (define (empty-termlist? L) (apply-generic 'empty-termlist? L))
+  (define (first-term L) (apply-generic 'first-term L))
+  (define (rest-terms L) (apply-generic 'rest-terms L))
+  (define (coeff t) (apply-generic 'coeff t))
 
-;; import from dependent package
-(define (empty-termlist? L) (apply-generic 'empty-termlist? L))
-(define (first-term L) (apply-generic 'first-term L))
-(define (rest-terms L) (apply-generic 'rest-terms L))
-(define (coeff t) (apply-generic 'coeff t))
+  (define (expand-at-level x L)
+    (cond ((empty-termlist? L) (the-empty-expansion))
+          (else
+            (let ((t (first-term L)) (tl (rest-terms L)))
+              (append-expansion
+                (collapse-term-to-each (make-var-term x (var-order t))
+                                       (expand (coeff t)))
+                (expand-at-level x tl))))))
 
-(define (expand-at-level x L)
-  (cond ((empty-termlist? L) (the-empty-expansion))
-        (else
-         (let ((t (first-term L)) (tl (rest-terms L)))
-           (append-expansion
-            (collapse-term-to-each (make-var-term x (order t))
-                                   (expand (coeff t)))
-            (expand-at-level x tl))))))
-
-(define (collapse-term-to-each term expansion-list)
-  (if (= 0 (order term))                ;constant clause
-      expansion-list
-      (map (lambda (term-list) (collapse-term term term-list)) expansion-list)))
-
-
-;; predicate for polynomial
-(define (polynomial? p) (eq? 'polynomial (type-tag p)))
+  (define (collapse-term-to-each term expansion-list)
+    (if (= 0 (var-order term))          ;constant clause
+        expansion-list
+        (map (lambda (term-list) (collapse-term term term-list)) expansion-list)))
 
 
-;; representation for expansion
-(define (the-empty-expansion) '())
-;; predicate
-(define (empty-expansion? e) (null? e))
-;; selectors
-(define (first-term-list e) (car e))
-(define (rest-expansion e) (cdr e))
-;; constructor
-(define (add-term-list-to-expansion term-list expansion-list)
-  (if (empty-expansion? expansion-list)
-      (list term-list)
-      (let ((L (first-term-list expansion-list)))
-        (cond ((term-list<? L term-list)
-               (adjoin-term-list-to-expansion term-list expansion-list))
-              ((term-list<? term-list L)
-               (adjoin-term-list-to-expansion L (add-term-list-to-expansion
-                                                 term-list
-                                                 (rest-expansion expansion-list))))
-              (else (adjoin-term-list-to-expansion
-                     (add-term-list term-list L)
-                     (rest-expansion expansion-list)))))))
-
-(define (adjoin-term-list-to-expansion term-list expansion-list)
-  (cons term-list expansion-list))
+  ;; predicate for polynomial
+  (define (polynomial? p) (eq? 'polynomial (type-tag p)))
 
 
-(define (add-term-list L1 L2)
-  (make-term-list (var-terms L1) (add (num-term L1) (num-term L2))))
+  ;; representation for expansion
+  (define (the-empty-expansion) '())
+  ;; predicate
+  (define (empty-expansion? e) (null? e))
+  ;; selectors
+  (define (first-term-list e) (car e))
+  (define (rest-expansion e) (cdr e))
+  ;; constructor
+  (define (add-term-list-to-expansion term-list expansion-list)
+    (if (empty-expansion? expansion-list)
+        (list term-list)
+        (let ((L (first-term-list expansion-list)))
+          (cond ((term-list<? L term-list)
+                 (adjoin-term-list-to-expansion term-list expansion-list))
+                ((term-list<? term-list L)
+                 (adjoin-term-list-to-expansion L (add-term-list-to-expansion
+                                                    term-list
+                                                    (rest-expansion expansion-list))))
+                (else (adjoin-term-list-to-expansion
+                        (add-term-list term-list L)
+                        (rest-expansion expansion-list)))))))
 
-;; term-list representation
-(define (the-empty-list-term) '())
-;; predicate
-(define (empty-var-term-list? L) (null? L))
-(define (term-list<? L1 L2)
-  (var-term-list<? (var-terms L1) (var-terms L2)))
+  (define (adjoin-term-list-to-expansion term-list expansion-list)
+    (if (=zero? (num-term term-list))   ;analogous to adjoin-term
+        expansion-list
+        (cons term-list expansion-list)))
 
-(define (var-term-list<? L1 L2)
-  (cond ((empty-var-term-list? L1) (not (empty-var-term-list? L2)))
-        ((empty-var-term-list? L2) false)
-        (else
-         (let ((t1 (head-term L1)) (t2 (head-term L2)))
-           (cond ((variable<? (var t1) (var t2))
-                  true)
-                 ((variable<? (var t2) (var t1))
-                  false)
-                 ((< (order t1) (order t2)) true)
-                 ((> (order t1) (order t2)) false)
-                 (else
-                  (var-term-list<? (tail-terms L1) (tail-terms L2))))))))
-;; constructor
-(define (make-term-list-with-num num-term) (make-term-list '() num-term))
-(define (make-term-list var-terms num-term) (cons var-terms num-term))
-(define (adjoin-var-term t L)
-  (cons t L))
-(define (collapse-term-list L1 L2)      ;provided that L1 L2 is not empty
-  (make-term-list
-   (collapse-var-term-list (var-terms L1)
-                           (var-terms L2))
-   (mul (num-term L1)
-        (num-term L2))))
 
-(define (collapse-var-term-list vs1 vs2)
-  (cond ((empty-var-term-list? vs1) vs2)
-        ((empty-var-term-list? vs2) vs1)
-        (else
-         (let ((t1 (head-term vs1))
-               (t2 (head-term vs2)))
-           (cond ((variable<? (var t1) (var t2))
-                  (adjoin-var-term
-                   t2
-                   (collapse-var-term-list vs1 (tail-terms vs2))))
-                 ((variable<? (var t2) (var t1))
-                  (adjoin-var-term
-                   t1
-                   (collapse-var-term-list (tail-terms vs1) vs2)))
-                 ((variable=? (var t1) (var t2))
-                  (adjoin-var-term (make-var-term (var t1)
-                                                  (+ (order t1)
-                                                     (order t2)))
-                                   (collapse-var-term-list
-                                    (tail-terms vs1)
-                                    (tail-terms vs2)))))))))
+  (define (add-term-list L1 L2)
+    (make-term-list (var-terms L1) (add (num-term L1) (num-term L2))))
 
-(define (collapse-term var-term term-list)
-  (make-term-list
-   (collapse-var-term var-term (var-terms term-list))
-   (num-term term-list)))
-(define (collapse-var-term term term-list)
-  (cond ((empty-var-term-list? term-list) (adjoin-var-term term (the-empty-list-term)))
-        (else
-         (let ((t (head-term term-list)))
-           (cond ((variable<? (var t) (var term))
-                  (adjoin-var-term term term-list))
-                 ((variable<? (var term) (var t))
-                  (adjoin-var-term t
-                        (collapse-var-term term
-                                       (tail-terms term-list))))
-                 ((variable=? (var t) (var term))
-                  (adjoin-var-term (make-var-term (var term)
-                                       (+ (order term)
-                                          (order t)))
-                        (tail-terms term-list))))))))
-;; selectors
-(define (var-terms term-list) (car term-list))
-(define (num-term term-list) (cdr term-list))
-(define (head-term L) (car L))
-(define (tail-terms L) (cdr L))
+  ;; term-list representation
+  (define (the-empty-list-term) '())
+  ;; predicate
+  (define (empty-var-term-list? L) (null? L))
+  (define (term-list<? L1 L2)
+    (var-term-list<? (var-terms L1) (var-terms L2)))
 
-;; term representation
-(define (make-var-term var order) (list var order))
-;; predicate
-(define (variable<? v1 v2)
-  (symbol>? v1 v2))
+  (define (var-term-list<? L1 L2)
+    (cond ((empty-var-term-list? L1) (not (empty-var-term-list? L2)))
+          ((empty-var-term-list? L2) false)
+          (else
+            (let ((t1 (head-term L1)) (t2 (head-term L2)))
+              (cond ((variable<? (var t1) (var t2))
+                     true)
+                    ((variable<? (var t2) (var t1))
+                     false)
+                    ((< (var-order t1) (var-order t2)) true)
+                    ((> (var-order t1) (var-order t2)) false)
+                    (else
+                      (var-term-list<? (tail-terms L1) (tail-terms L2))))))))
+  ;; constructor
+  (define (make-term-list-with-num num-term) (make-term-list '() num-term))
+  (define (make-term-list var-terms num-term) (cons var-terms num-term))
+  (define (adjoin-var-term t L)
+    (cons t L))
+  (define (collapse-term-list L1 L2)    ;provided that L1 L2 is not empty
+    (make-term-list
+      (collapse-var-term-list (var-terms L1)
+                              (var-terms L2))
+      (mul (num-term L1)
+           (num-term L2))))
 
-(define (variable=? v1 v2)
-  (symbol=? v1 v2))
+  (define (collapse-var-term-list vs1 vs2)
+    (cond ((empty-var-term-list? vs1) vs2)
+          ((empty-var-term-list? vs2) vs1)
+          (else
+            (let ((t1 (head-term vs1))
+                  (t2 (head-term vs2)))
+              (cond ((variable<? (var t1) (var t2))
+                     (adjoin-var-term
+                       t2
+                       (collapse-var-term-list vs1 (tail-terms vs2))))
+                    ((variable<? (var t2) (var t1))
+                     (adjoin-var-term
+                       t1
+                       (collapse-var-term-list (tail-terms vs1) vs2)))
+                    ((variable=? (var t1) (var t2))
+                     (adjoin-var-term (make-var-term (var t1)
+                                                     (+ (var-order t1)
+                                                        (var-order t2)))
+                                      (collapse-var-term-list
+                                        (tail-terms vs1)
+                                        (tail-terms vs2)))))))))
 
-;; selectors
-(define (var term) (car term))
-(define (order term) (cadr term))
+  (define (collapse-term var-term term-list)
+    (make-term-list
+      (collapse-var-term var-term (var-terms term-list))
+      (num-term term-list)))
+  (define (collapse-var-term term term-list)
+    (cond ((empty-var-term-list? term-list) (adjoin-var-term term (the-empty-list-term)))
+          (else
+            (let ((t (head-term term-list)))
+              (cond ((variable<? (var t) (var term))
+                     (adjoin-var-term term term-list))
+                    ((variable<? (var term) (var t))
+                     (adjoin-var-term t
+                                      (collapse-var-term term
+                                                         (tail-terms term-list))))
+                    ((variable=? (var t) (var term))
+                     (adjoin-var-term (make-var-term (var term)
+                                                     (+ (var-order term)
+                                                        (var-order t)))
+                                      (tail-terms term-list))))))))
+  ;; selectors
+  (define (var-terms term-list) (car term-list))
+  (define (num-term term-list) (cdr term-list))
+  (define (head-term L) (car L))
+  (define (tail-terms L) (cdr L))
 
-; (restart 1)
-; (expand '(polynomial y sparse (term 3 (polynomial y dense (polynomial y dense 5 0 0) 0)) (term 1 (polynomial y dense (polynomial x dense 3 0 0) 0 0 0))))
-; (term-list<? '(((x 2) (y 4)) . 3) '(((y 6)) . 5))
-; (add-term-list-to-expansion '(((y 6)) . 5) '((((x 2) (y 4)) . 3)))
-; (add-term-list-to-expansion '(((x 2) (y 4)) . 3) '((((y 6)) . 5)))
-; (first-term-list '((((y 6)) . 5)))
-;; rearrange: expansion-list => num | polynomial
+  ;; term representation
+  (define (make-var-term var var-order) (list var var-order))
+  ;; predicate
+  (define (variable<? v1 v2)
+    (symbol>? v1 v2))
 
-(define (rearrange expansion-list)
-  (cond ((number-expansion-list? expansion-list)
-         (get-number expansion-list))   ; => num
-        (else
-         (let ((x (var (highest-priority-term expansion-list))))
-           (make-polynomial x (gather-termlist x expansion-list)))))) ; => polynomial
+  (define (variable=? v1 v2)
+    (symbol=? v1 v2))
 
-(define (highest-priority-term es)
-  (head-term (var-terms (first-term-list es))))
+  ;; selectors
+  (define (var term) (car term))
+  (define (var-order term) (cadr term))
 
-(define (number-expansion-list? expansion-list)
-  (and (empty-var-term-list?
-        (var-terms (first-term-list expansion-list)))
-       (empty-expansion? (rest-expansion expansion-list))))
+  ; (restart 1)
+  ; (expand '(polynomial y sparse (term 3 (polynomial y dense (polynomial y dense 5 0 0) 0)) (term 1 (polynomial y dense (polynomial x dense 3 0 0) 0 0 0))))
+  ; (term-list<? '(((x 2) (y 4)) . 3) '(((y 6)) . 5))
+  ; (add-term-list-to-expansion '(((y 6)) . 5) '((((x 2) (y 4)) . 3)))
+  ; (add-term-list-to-expansion '(((x 2) (y 4)) . 3) '((((y 6)) . 5)))
+  ; (first-term-list '((((y 6)) . 5)))
+  ;; rearrange: expansion-list => num | polynomial
 
-(define (get-number e) (num-term (first-term-list e)))
+  (define (rearrange expansion-list)
+    (cond ((number-expansion-list? expansion-list)
+           (get-number expansion-list)) ; => num
+          (else
+            (let ((x (var (highest-priority-term expansion-list))))
+              (make-polynomial x (gather-termlist x expansion-list)))))) ; => polynomial
 
-;; dependency
-(define (adjoin-term t L) (apply-generic 'adjoin-term t L))
-(define (the-empty-termlist) (sparse-empty-termlist))
-(define (sparse-empty-termlist) ((get 'the-empty-termlist 'sparse)))
-(define (make-term order coeff) ((get 'make 'term) order coeff))
+  (define (highest-priority-term es)
+    (head-term (var-terms (first-term-list es))))
 
-(define (gather-termlist v es)          ;=> termlist
-  (cond ((empty-expansion? es) (the-empty-termlist)) ;base case 1
-        (else
-         (let ((t (highest-priority-term es)))
-           (if (not (variable=? v (var t)))
-               (adjoin-term (make-term 0 (rearrange es)) ;base case 2
-                            (the-empty-termlist))
-               (let ((unarranged-result (gather t es)))
-                 (let ((gathered (car unarranged-result))
-                       (rest (cadr unarranged-result)))
-                   (adjoin-term (make-term (order t)
-                                           (rearrange gathered))
-                                (gather-termlist v rest)))))))))
+  (define (number-expansion-list? expansion-list)
+    (and (empty-var-term-list?
+           (var-terms (first-term-list expansion-list)))
+         (empty-expansion? (rest-expansion expansion-list))))
 
-(define (gather t es)
-  (if (empty-expansion? es)
-      (list (the-empty-expansion) (the-empty-expansion))
-      (let ((t1 (highest-priority-term es)))
-        (if (or (not (term=? t t1)))
-            (list (the-empty-expansion) es)
-            (let ((result (gather t (rest-expansion es))))
-              (list (adjoin-term-list-to-expansion
-                      (term-list-except-first-var
-                        (first-term-list es))
-                      (car result))
-                    (cadr result)))))))
+  (define (get-number e) (num-term (first-term-list e)))
 
-(define (term-list-except-first-var ts)
-  (make-term-list (tail-terms (var-terms ts))
-                  (num-term ts)))
+  ;; dependency
+  (define (adjoin-term t L) (apply-generic 'adjoin-term t L))
+  (define (the-empty-termlist) (sparse-empty-termlist))
+  (define (sparse-empty-termlist) ((get 'the-empty-termlist 'sparse)))
+  (define (make-term order coeff) ((get 'make 'term) order coeff))
 
-(define (term=? t1 t2)
-  (and (variable=? (var t1) (var t2))
-       (= (order t1) (order t2))))
-; (define test (expand '(polynomial x sparse (term 3 (polynomial y dense (polynomial y dense 5 0 0) 0)) (term 1 (polynomial y dense (polynomial x dense 3 0 0) 0 0 0)))))
-; (rearrange test)
+  (define (gather-termlist v es)                       ;=> termlist
+    (cond ((empty-expansion? es) (the-empty-termlist)) ;base case 1
+          ((number-expansion-list? es) (adjoin-term (make-term 0 (rearrange es)) ;base case 2
+                                                    (the-empty-termlist)))
+          (else
+            (let ((t (highest-priority-term es)))
+              (if (not (variable=? v (var t)))
+                  (adjoin-term (make-term 0 (rearrange es)) ;base case 3
+                               (the-empty-termlist))
+                  (let ((unarranged-result (gather t es)))
+                    (let ((gathered (car unarranged-result))
+                          (rest (cadr unarranged-result)))
+                      (adjoin-term (make-term (var-order t)
+                                              (rearrange gathered))
+                                   (gather-termlist v rest)))))))))
 
-;; mutivariate poly arithmetic
-;; addition
-(define (mul-poly-add p1 p2)
-  (rearrange (append-expansion (expand p1)
-                               (expand p2))))
+  (define (gather t es)
+    (cond ((number-expansion-list? es)
+           (list (the-empty-expansion) es))
+          ((empty-expansion? es)
+           (list (the-empty-expansion) (the-empty-expansion)))
+          (else
+            (let ((t1 (highest-priority-term es)))
+              (if (or (not (term=? t t1)))
+                  (list (the-empty-expansion) es)
+                  (let ((result (gather t (rest-expansion es))))
+                    (list (adjoin-term-list-to-expansion
+                            (term-list-except-first-var
+                              (first-term-list es))
+                            (car result))
+                          (cadr result))))))))
 
-;; multiplication
+  (define (term-list-except-first-var ts)
+    (make-term-list (tail-terms (var-terms ts))
+                    (num-term ts)))
 
-(define (mul-poly-mul p1 p2)
-  (rearrange
-   (mul-expansion (expand p1) (expand p2))))
+  (define (term=? t1 t2)
+    (and (variable=? (var t1) (var t2))
+         (= (var-order t1) (var-order t2))))
+                                        ; (define test (expand '(polynomial x sparse (term 3 (polynomial y dense (polynomial y dense 5 0 0) 0)) (term 1 (polynomial y dense (polynomial x dense 3 0 0) 0 0 0)))))
+                                        ; (rearrange test)
 
-(define (mul-expansion e1 e2)
-  (if (empty-expansion? e1)
-      (the-empty-expansion)
-      (append-expansion (mul-term-list-by-all-term-lists
-                         (first-term-list e1) e2)
-                        (mul-expansion (rest-expansion e1) e2))))
+  ;; mutivariate poly arithmetic
+  ;; addition
+  (define (mul-poly-add p1 p2)
+    (rearrange (append-expansion (expand p1)
+                                 (expand p2))))
 
-(define (mul-term-list-by-all-term-lists L1 e)
-  (if (empty-expansion? e)
-      (the-empty-expansion)
-      (let ((L2 (first-term-list e)))
-        (adjoin-term-list-to-expansion
-         (collapse-term-list L1 L2)
-         (mul-term-list-by-all-term-lists L1 (rest-expansion e))))))
+  ;; multiplication
+
+  (define (mul-poly-mul p1 p2)
+    (rearrange
+     (mul-expansion (expand p1) (expand p2))))
+
+  (define (mul-expansion e1 e2)
+    (if (empty-expansion? e1)
+        (the-empty-expansion)
+        (append-expansion (mul-term-list-by-all-term-lists
+                           (first-term-list e1) e2)
+                          (mul-expansion (rest-expansion e1) e2))))
+
+  (define (mul-term-list-by-all-term-lists L1 e)
+    (if (empty-expansion? e)
+        (the-empty-expansion)
+        (let ((L2 (first-term-list e)))
+          (adjoin-term-list-to-expansion
+           (collapse-term-list L1 L2)
+           (mul-term-list-by-all-term-lists L1 (rest-expansion e))))))
+
+  ;; interface to rest of system
+  (define (tag p) (attach-tag 'polynomial p)) ;for reattach the tag for working with this package
+  (put 'add '(polynomial polynomial) (lambda (p1 p2) (mul-poly-add (tag p1) (tag p2))))
+  (put 'mul '(polynomial polynomial) (lambda (p1 p2) (mul-poly-mul (tag p1) (tag p2))))
+  (put 'sub '(polynomial polynomial) (lambda (p1 p2) (mul-poly-add (tag p1) (neg (tag p2))))) ;exploit generic operator, neg
+  ;; (define test '(polynomial x sparse (term 3 (polynomial y dense (polynomial y dense 5 0 0) 0)) (term 1 (polynomial y dense (polynomial x dense 3 0 0) 0 0 0))))
+  ;; (define test1 '(polynomial y sparse (term 3 (polynomial y dense (polynomial y dense 5 0 0) 0)) (term 1 (polynomial y dense (polynomial x dense 3 0 0) 0 0 0))))
+  ;; (add test test1)
+  ;; (sub test test1)
+  ;; (mul test test1)
+  )
+
+; (define p1 (make-polynomial 'x '(sparse (term 2 1) (term 0 1))))
+; (define p2 (make-polynomial 'x '(sparse (term 3 1) (term 0 1))))
+; (define rf (make-rational p2 p1))
