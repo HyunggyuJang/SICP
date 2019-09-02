@@ -4394,7 +4394,7 @@ code accordingly:
         (if (> (order t2) (order t1))
             (list (the-empty-termlist) L1)
             (let ((new-c (div (coeff t1) (coeff t2)))
-                  (new-o (div (- (order t1) (order t2)))))
+                  (new-o (- (order t1) (order t2))))
               (let ((rest-of-result
                      (div-terms (sub-terms L1
                                            (mul-term-by-all-terms
@@ -4884,7 +4884,14 @@ included: We end up with making up other kind operator table that contains
 coercion procedure and we had to modify =apply-generic= accordingly. Even with
 that, our coercion scheme is limited in that we had to supply explicitly how our
 arithmetic types related each other-- =tower=. It's a very poorly structured
-hierarchical system.
+hierarchical system. An obvious example of the freezing generic operation by
+user defined structure is [[Exercise 2.94][exercise 2.94]]; previously we defined "simplifying
+procedure"-- =drop= -- and integrated in our =apply-generic=. But as we (user)
+extends the rational arithmetic system to accommodate all the object that
+satisfy the rational arithmetic axioms (see below), the =drop= procedure, which
+is specific to number system, start to not work at all. That root from our
+crude handling for hierarchical structure with too immense flexibility that we
+can not tether.
 
 Further more, in following exercise, we are about to convert rational number to
 generic rational object, which encompass all the object that has structure like
@@ -4924,8 +4931,48 @@ code:
 (define rf (make-rational p2 p1))
 ;Value: (rational (polynomial x dense 1 0 0 1) polynomial x dense 1 0 1)
 (add rf rf)
+;Value: (rational (polynomial x dense 2 0 2 2 0 2) polynomial x dense 1 0 2 0 1)
+#+END_SRC
+**** Exercise 2.94
+We can support "GCD" procedure in univariate polynomial version by adding
+following code to polynomial package:
+#+BEGIN_SRC scheme
+  (define (gcd-terms a b)
+    (if (empty-termlist? b)
+        a
+        (gcd-terms b (remainder-terms a b))))
+
+  (define (remainder-terms a b)
+    (cadr (div-terms a b)))
+
+  (define gcd-poly
+    (arith-poly gcd-terms "GCD-POLY"))
+
+  (put 'gcd '(polynomial polynomial)
+       (lambda (p1 p2) (tag (gcd-poly p1 p2))))
 #+END_SRC
 
+And we also implement GCD for integer number in scheme number package:
+#+BEGIN_SRC scheme
+  (define (gcd a b)
+    (if (= b 0)
+        a
+        (gcd b (remainder a b))))
+
+  (put 'gcd '(integer integer) gcd)
+#+END_SRC
+
+Then rest is the add GCD procedure to our disposal:
+#+BEGIN_SRC scheme
+(define greatest-common-divisor (make-generic-op 'gcd))
+#+END_SRC
+
+Make our rational arithmetic package to exploit this generic operator:
+#+BEGIN_SRC scheme
+  (define (make-rat n d)
+    (let ((g (greatest-common-divisor n d)))
+      (cons (div n g) (div d g))))
+#+END_SRC
 * Footnotes
 
 [fn:5] There is yet another approach, namely type class being adopted and

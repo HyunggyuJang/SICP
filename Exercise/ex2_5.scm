@@ -424,13 +424,16 @@
       (cond (proc (apply proc (map contents args)))
             ((have-same-types? type-tags) (raise-exception)) ;error
             ((all-in-tower? type-tags)
-             (drop (apply
-                    apply-generic
-                    (cons op
-                          (do-until raise-minimum
-                                    (lambda (args)
-                                      (have-same-types? (map type-tag args)))
-                                    (raise-minimum args))))))
+             ;; (drop
+              (apply
+               apply-generic
+               (cons op
+                     (do-until raise-minimum
+                               (lambda (args)
+                                 (have-same-types? (map type-tag args)))
+                               (raise-minimum args))))
+              ;; )
+             )
             (else
              (coerce-and-apply op args type-tags raise-exception))))))
 
@@ -456,6 +459,12 @@
 (define (raise x) (apply-generic 'raise x))
 
 (define (install-scheme-number-package)
+  ;;;from section 1.2.5, for Section 2.1.1
+  (define (gcd a b)
+    (if (= b 0)
+        a
+        (gcd b (remainder a b))))
+
   (define (scheme-number-type num)      ;actually this means we implemented abstract class scheme-number.
     (cond ((and (integer? num) (exact? num)) 'integer)       ;inter? -> exact? for cope with (raise (raise (raise 5)))
           ((real? num) 'real)
@@ -465,6 +474,7 @@
   (put 'make 'integer inexact->exact)
   ;; we need to change this accordingly to the polynomial division.
   (put 'div '(integer integer) quotient)
+  (put 'gcd '(integer integer) gcd)
   (put 'div '(real real) /)
   (define subtypes '(real integer))
   (for-each
@@ -524,12 +534,6 @@
 ;; I didn't realize this is supported by homepage.
 ;;; CODE FROM OTHER CHAPTERS OF STRUCTURE AND INTERPRETATION OF
 ;;;  COMPUTER PROGRAMS NEEDED BY CHAPTER 2
-
-;;;from section 1.2.5, for Section 2.1.1
-(define (gcd a b)
-  (if (= b 0)
-      a
-      (gcd b (remainder a b))))
 
 ;;;from section 1.2.2, for Section 2.2.3
 (define (fib n)
@@ -648,6 +652,7 @@
 (define sub (make-generic-op 'sub))
 (define mul (make-generic-op 'mul))
 (define div (make-generic-op 'div))
+(define greatest-common-divisor (make-generic-op 'gcd))
 
 (define (real-part z) (apply-generic 'real-part z))
 (define (imag-part z) (apply-generic 'imag-part z))
@@ -661,16 +666,15 @@
   (define (numer x) (car x))
   (define (denom x) (cdr x))
   (define (make-rat n d)
-    (cons n d))
-    ;; (let ((g (gcd n d)))
-    ;;   (cons (/ n g) (/ d g))))
+    (let ((g (greatest-common-divisor n d)))
+      (cons (div n g) (div d g))))
   (define (add-rat x y)
     (make-rat (add (mul (numer x) (denom y))
-                 (mul (numer y) (denom x)))
+                   (mul (numer y) (denom x)))
               (mul (denom x) (denom y))))
   (define (sub-rat x y)
     (make-rat (sub (mul (numer x) (denom y))
-                 (mul (numer y) (denom x)))
+                   (mul (numer y) (denom x)))
               (mul (denom x) (denom y))))
   (define (mul-rat x y)
     (make-rat (mul (numer x) (numer y))
@@ -709,57 +713,57 @@
   ((get 'make 'rational) n d))
 
 (define (install-complex-package)
-  ;; imported procedures from rectangular and polar packages
-  (define (make-from-real-imag x y)
-    ((get 'make-from-real-imag 'rectangular) x y))
-  (define (make-from-mag-ang r a)
-    ((get 'make-from-mag-ang 'polar) r a))
-  ;; internal procedures
-  (define (add-complex z1 z2)
-    (make-from-real-imag (add (real-part z1) (real-part z2))
-                         (add (imag-part z1) (imag-part z2))))
-  (define (sub-complex z1 z2)
-    (make-from-real-imag (sub (real-part z1) (real-part z2))
-                         (sub (imag-part z1) (imag-part z2))))
-  (define (mul-complex z1 z2)
-    (make-from-mag-ang (mul (magnitude z1) (magnitude z2))
-                       (add (angle z1) (angle z2))))
-  (define (div-complex z1 z2)
-    (make-from-mag-ang (div (magnitude z1) (magnitude z2))
-                       (sub (angle z1) (angle z2))))
-  (define (complex-equ? c1 c2)
-    (and (equ? (real-part c1) (real-part c2))
-         (equ? (imag-part c1) (imag-part c2))))
-  ;; interface to rest of the system
-  (define (tag z) (attach-tag 'complex z))
-  (put 'add '(complex complex)
-       (lambda (z1 z2) (tag (add-complex z1 z2))))
-  (put 'sub '(complex complex)
-       (lambda (z1 z2) (tag (sub-complex z1 z2))))
-  (put 'mul '(complex complex)
-       (lambda (z1 z2) (tag (mul-complex z1 z2))))
-  (put 'div '(complex complex)
-       (lambda (z1 z2) (tag (div-complex z1 z2))))
-  (put 'make-from-real-imag 'complex
-       (lambda (x y) (tag (make-from-real-imag x y))))
-  (put 'make-from-mag-ang 'complex
-       (lambda (r a) (tag (make-from-mag-ang r a))))
-  (put 'real-part '(complex) real-part)
-  (put 'imag-part '(complex) imag-part)
-  (put 'magnitude '(complex) magnitude)
-  (put 'angle '(complex) angle)
-  ;; equ? pacakge
-  (put 'equ? '(complex complex) complex-equ?)
-  ;; =zero? package
-  ;; recursive definition in data type
-  (put '=zero? '(complex) (lambda (c) (and (=zero? (real-part c))
-                                           (=zero? (imag-part c)))))
-  (put 'neg '(complex) (lambda (c) (tag (make-from-real-imag ((neg (real-part c))
-                                                              (neg (imag-part c)))))))
-  'done)
+;; imported procedures from rectangular and polar packages
+(define (make-from-real-imag x y)
+  ((get 'make-from-real-imag 'rectangular) x y))
+(define (make-from-mag-ang r a)
+  ((get 'make-from-mag-ang 'polar) r a))
+;; internal procedures
+(define (add-complex z1 z2)
+  (make-from-real-imag (add (real-part z1) (real-part z2))
+                       (add (imag-part z1) (imag-part z2))))
+(define (sub-complex z1 z2)
+  (make-from-real-imag (sub (real-part z1) (real-part z2))
+                       (sub (imag-part z1) (imag-part z2))))
+(define (mul-complex z1 z2)
+  (make-from-mag-ang (mul (magnitude z1) (magnitude z2))
+                     (add (angle z1) (angle z2))))
+(define (div-complex z1 z2)
+  (make-from-mag-ang (div (magnitude z1) (magnitude z2))
+                     (sub (angle z1) (angle z2))))
+(define (complex-equ? c1 c2)
+  (and (equ? (real-part c1) (real-part c2))
+       (equ? (imag-part c1) (imag-part c2))))
+;; interface to rest of the system
+(define (tag z) (attach-tag 'complex z))
+(put 'add '(complex complex)
+     (lambda (z1 z2) (tag (add-complex z1 z2))))
+(put 'sub '(complex complex)
+     (lambda (z1 z2) (tag (sub-complex z1 z2))))
+(put 'mul '(complex complex)
+     (lambda (z1 z2) (tag (mul-complex z1 z2))))
+(put 'div '(complex complex)
+     (lambda (z1 z2) (tag (div-complex z1 z2))))
+(put 'make-from-real-imag 'complex
+     (lambda (x y) (tag (make-from-real-imag x y))))
+(put 'make-from-mag-ang 'complex
+     (lambda (r a) (tag (make-from-mag-ang r a))))
+(put 'real-part '(complex) real-part)
+(put 'imag-part '(complex) imag-part)
+(put 'magnitude '(complex) magnitude)
+(put 'angle '(complex) angle)
+;; equ? pacakge
+(put 'equ? '(complex complex) complex-equ?)
+;; =zero? package
+;; recursive definition in data type
+(put '=zero? '(complex) (lambda (c) (and (=zero? (real-part c))
+                                         (=zero? (imag-part c)))))
+(put 'neg '(complex) (lambda (c) (tag (make-from-real-imag ((neg (real-part c))
+                                                            (neg (imag-part c)))))))
+'done)
 
 (define (make-complex-from-real-imag x y)
-  ((get 'make-from-real-imag 'complex) x y))
+((get 'make-from-real-imag 'complex) x y))
 (define (make-complex-from-mag-ang r a)
   ((get 'make-from-mag-ang 'complex) r a))
 
@@ -962,7 +966,7 @@
           (if (> (order t2) (order t1))
               (list (the-empty-termlist) L1)
               (let ((new-c (div (coeff t1) (coeff t2)))
-                    (new-o (div (- (order t1) (order t2)))))
+                    (new-o (- (order t1) (order t2))))
                 (let ((rest-of-result
                        (div-terms (sub-terms L1
                                              (mul-term-by-all-terms
@@ -972,6 +976,15 @@
                   (list (adjoin-term (make-term new-o new-c)
                                      (car rest-of-result))
                         (cadr rest-of-result))))))))
+
+  ;; Exercise 2.93
+  (define (gcd-terms a b)
+    (if (empty-termlist? b)
+        a
+        (gcd-terms b (remainder-terms a b))))
+
+  (define (remainder-terms a b)
+    (cadr (div-terms a b)))
 
   (define add-poly
     (arith-poly add-terms "ADD-POLY"))
@@ -985,6 +998,9 @@
   ;; Exercise 2.91
   (define div-poly
     (arith-poly (lambda (p1 p2) (car (div-terms p1 p2))) "DIV-POLY"))
+
+  (define gcd-poly
+    (arith-poly gcd-terms "GCD-POLY"))
 
   ;; equ package
   (define (equ-poly? p1 p2)
@@ -1055,6 +1071,8 @@
        (lambda (p1 p2) (tag (sub-poly p1 p2))))
   (put 'div '(polynomial polynomial)
        (lambda (p1 p2) (tag (div-poly p1 p2))))
+  (put 'gcd '(polynomial polynomial)
+       (lambda (p1 p2) (tag (gcd-poly p1 p2))))
   (put 'make 'polynomial
        (lambda (var terms) (tag (make-poly var terms))))
   (put 'variable '(polynomial) variable)
