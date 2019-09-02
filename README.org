@@ -4973,6 +4973,158 @@ Make our rational arithmetic package to exploit this generic operator:
     (let ((g (greatest-common-divisor n d)))
       (cons (div n g) (div d g))))
 #+END_SRC
+
+Then let we test this with given example:
+#+BEGIN_SRC scheme
+(define p1 (make-polynomial 'x '(sparse (term 4 1) (term 3 -1) (term 2 -2) (term 1 2))))
+(define p2 (make-polynomial 'x '(sparse (term 3 1) (term 1 -1))))
+(greatest-common-divisor p1 p2)
+#+END_SRC
+
+That end up into infinite loop, which was due to the integer division in the
+generic operator =div=:
+#+BEGIN_SRC scheme
+,*** In scheme number package
+(put 'div '(integer integer) quotient)
+#+END_SRC
+This leads to zero coefficient in =div-terms=; in turn, =mul-term-by-all-terms=
+with that term is =zero=. As consequence it end up looping with the same =L1=
+and =L2= in the =div-terms=.
+
+This kind of error is hard to extract even with this relatively small project.
+I should think this situation as chance to try bisection debugging method as
+scheme's debugger can not work in this situation since this program does not
+halt. This time, I've used =display= procedure to debug somewhat, but
+systematically. I've tried to reason about the code rather than to approach the
+bug with systematic using bisection search. If we encounter with next chance I
+should try out the smarter debugging method rather than frustrating with the
+behavior of program.
+
+After fixing the bug, we can get result:
+#+BEGIN_SRC scheme
+(greatest-common-divisor p1 p2)
+;Value: (polynomial x dense -10 0)
+#+END_SRC
+
+Is it correct? Let we calculate the greatest common divisor of =p1= and =p2= by
+hand:
+- =p1= = $x^{4} - x^{3} - 2x^{2} + 2x$ = $\left( x^{2} - 2 \right) \left( x^{2} -
+x \right) = \left( x^{2} -2 \right) x \left( x - 1 \right)$
+- =p2= = $x^{3} - x$ = $x \left( x + 1 \right) \left( x - 1 \right)$
+
+
+So, GCD of =p1= and =p2= should be $x \left( x - 1 \right)$ not $-10 x$ like our
+program. Yeah! Another bug! As soon as I mentioned, it comes out! Let we try out
+the bisection search method to debug.
+
+1. Let we prepare test case, which we know what is the correct expected value at
+   each step of computation. To do this in our GCD case, we use above test case
+   for this; we should calculate each step that =greatest-common-divisor=
+   process by hand.
+2. Then add the probe procedure, =display= in =gcd-terms=:
+   #+BEGIN_SRC scheme
+  (define (gcd-terms a b)
+    (display a)
+    (if (empty-termlist? b)
+        a
+        (gcd-terms b (remainder-terms a b))))
+   #+END_SRC
+   It produces =(dense 1 -1 -2 2 0)(dense 1 0 -1 0)(dense 1 3 0)(sparse (term 1
+   -10))=.
+3. Compare with the expected value. By hand calculation, we expect to have
+   =(dense -1 3 0)= for the remainder of =p1= and =p2=; however we got =(dense 1
+   3 0)=. This means our =remainder-terms= malfunctions. As this function just
+   select the relevant part from =div-terms=, in turn, it means the bug in =div-terms=.
+4. As the remainder of =div-terms= produced by successive =sub-terms=, we can
+    deduce that the divergence of the result from what we expected is due to
+   =sub-terms= part. To inspect the value produced by successive subtraction we
+   add probe code to =div-terms=:
+   #+BEGIN_SRC scheme
+(define (div-terms L1 L2)
+  (if (empty-termlist? L1)
+      (list (the-empty-termlist) (the-empty-termlist))
+      (let ((t1 (first-term L1))
+            (t2 (first-term L2)))
+        (if (> (order t2) (order t1))
+            (list (the-empty-termlist) L1)
+            (let ((new-c (div (coeff t1) (coeff t2)))
+                  (new-o (- (order t1) (order t2))))
+              (let ((rest-of-result
+                     (div-terms (sub-terms L1
+                                           (mul-term-by-all-terms
+                                            (make-term new-o new-c)
+                                            L2))
+                                L2)))
+                (display L1)
+                (list (adjoin-term (make-term new-o new-c)
+                                   (car rest-of-result))
+                      (cadr rest-of-result))))))))
+   #+END_SRC
+   Then remove the previous probe code in step 2. Let's run this code with our
+   test code; it produces =(dense -1 1 -2 0)(dense 1 -1 -2 2 0)(dense 3 -1
+   0)(dense 1 0 -1 0)(dense 3 0)(dense 1 3 0)=. It get to be obvious that
+   the subtraction is the reason for this erroneous behavior.
+5. We narrowed down the bug to =sub-terms=. We could run the bisection search
+   until we end up single unit that compute just one step; but here we realized
+   that the first clause in recursive process of =sub-terms= is ill-defined. We
+   should code
+   #+BEGIN_SRC scheme
+  (define (sub-terms L1 L2)
+    (cond ((empty-termlist? L1) (neg-terms L2))
+          ((empty-termlist? L2) L1)
+          (else
+           (let ((t1 (first-term L1)) (t2 (first-term L2)))
+             (cond ((< (order t1) (order t2))
+                    (adjoin-term
+                     (make-term (order t2)
+                                (neg (coeff t2)))
+                     (sub-terms L1
+                                (rest-terms L2))))
+                   ((> (order t1) (order t2))
+                    (adjoin-term
+                     t1
+                     (sub-terms (rest-terms L1)
+                                L2)))
+                   (else
+                    (adjoin-term
+                     (make-term (order t1)
+                                (sub (coeff t1) (coeff t2)))
+                     (sub-terms (rest-terms L1)
+                                (rest-terms L2)))))))))
+   #+END_SRC
+   not
+   #+BEGIN_SRC scheme
+  (define (sub-terms L1 L2)
+    (cond ((empty-termlist? L1) (neg-terms L2))
+          ((empty-termlist? L2) L1)
+          (else
+           (let ((t1 (first-term L1)) (t2 (first-term L2)))
+             (cond ((< (order t1) (order t2))
+                    (adjoin-term
+                     t2
+                     (sub-terms L1
+                                (rest-terms L2))))
+                   ((> (order t1) (order t2))
+                    (adjoin-term
+                     t1
+                     (sub-terms L2
+                                (rest-terms L1))))
+                   (else
+                    (adjoin-term
+                     (make-term (order t1)
+                                (sub (coeff t1) (coeff t2)))
+                     (sub-terms (rest-terms L1)
+                                (rest-terms L2)))))))))
+   #+END_SRC
+   I've not fully considered the difference between =sub-terms= and =add-terms=
+   when I defining =sub-terms= using analogy with =add-terms=.
+
+   After this fixing, our test code barfage
+   #+BEGIN_SRC scheme
+(greatest-common-divisor p1 p2)
+;Value: (polynomial x dense -1 1 0)
+   #+END_SRC
+   as we expected.
 * Footnotes
 
 [fn:5] There is yet another approach, namely type class being adopted and
