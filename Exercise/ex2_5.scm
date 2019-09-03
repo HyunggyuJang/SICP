@@ -456,14 +456,13 @@
 (define (raise x) (apply-generic 'raise x))
 
 (define (install-scheme-number-package)
-  ;;;from section 1.2.5, for Section 2.1.1
-  (define (gcd a b)
-    (if (= b 0)
-        a
-        (gcd b (remainder a b))))
+;;; Exercise 2.97 b.
+  (define (reduce-integers n d)
+    (let ((g (gcd n d)))
+      (list (/ n g) (/ d g))))
 
-  (define (scheme-number-type num)      ;actually this means we implemented abstract class scheme-number.
-    (cond ((and (integer? num) (exact? num)) 'integer)       ;inter? -> exact? for cope with (raise (raise (raise 5)))
+  (define (scheme-number-type num) ;actually this means we implemented abstract class scheme-number.
+    (cond ((and (integer? num) (exact? num)) 'integer) ;inter? -> exact? for cope with (raise (raise (raise 5)))
           ((real? num) 'real)
           (else (error "Unknown scheme number -- SCHEME-NUMBER-TYPE" num))))
   (put 'type 'scheme-number scheme-number-type) ;for type tag
@@ -472,6 +471,7 @@
   ;; we need to change this accordingly to the polynomial division.
   ;; (put 'div '(integer integer) quotient)       ;due to this, the greatest-common-divisor doesn't work
   (put 'div '(integer integer) /)
+  (put 'reduce '(integer integer) reduce-integers)
   (put 'gcd '(integer integer) gcd)
   (put 'div '(real real) /)
   (define subtypes '(real integer))
@@ -486,7 +486,7 @@
          (list (cons 'add +) (cons 'sub -) (cons 'mul *))))
       subtypes)
      (put 'equ? (list t1 t1) (lambda (e1 e2) (= e1 e2))) ;from the equ-package
-     (put '=zero? (list t1) (lambda (e) (= e 0)))    ;from the =zero? package
+     (put '=zero? (list t1) (lambda (e) (= e 0))) ;from the =zero? package
      (put 'neg (list t1) (lambda (e) (- e))))
    subtypes)
   'done)
@@ -663,10 +663,9 @@
 (define (install-rational-package)
   ;; internal procedures
   (define (numer x) (car x))
-  (define (denom x) (cdr x))
+  (define (denom x) (cadr x))
   (define (make-rat n d)
-    (let ((g (greatest-common-divisor n d)))
-      (cons (div n g) (div d g))))
+    (reduce n d))
   (define (add-rat x y)
     (make-rat (add (mul (numer x) (denom y))
                    (mul (numer y) (denom x)))
@@ -977,11 +976,82 @@
                                      (car rest-of-result))
                         (cadr rest-of-result))))))))
 
+  ;; Exercise 2.96
+;;; a
+  (define (scalar-terms s L)
+    (map-terms-using (the-empty-termlist) adjoin-term
+                     (lambda (term)
+                       (make-term (order term)
+                                  (mul s (coeff term))))
+                     L))
+
+  (define (pseudoremainder-terms L1 L2)
+    (if (empty-termlist? L1)
+        (the-empty-termlist)
+        (let ((t1 (first-term L1)) (t2 (first-term L2)))
+          (if (> (order t2) (order t1))
+              L1                        ;do nothing
+              (remainder-terms
+               (scalar-terms (expt (coeff t2)
+                                   (+ 1
+                                      (- (order t1)
+                                         (order t2))))
+                             L1)
+               L2)))))
+
+;;; b
+  (define (map-terms-using nil cons f L)
+    (define (construct L)
+      (if (empty-termlist? L)
+          nil
+          (cons (f (first-term L))
+                (construct (rest-terms L)))))
+    (construct L))
+
+  (define (map-terms-to-list f L)       ;term-list => list
+    (map-terms-using '() cons f L))
+
+  (define (common-factor L)
+    (if (empty-termlist? L)
+        (error "invalid input term list -- COMMON-FACTOR" L)
+        (let ((coeffs (map-terms-to-list coeff L)))
+          (fold-left (lambda (x y) (greatest-common-divisor x y))
+                     (car coeffs)
+                     (cdr coeffs)))))
+
+  (define (scalar-div-terms L c)
+    (map-terms-using (the-empty-termlist) adjoin-term
+                     (lambda (term)
+                       (make-term (order term)
+                                  (div (coeff term) c)))
+                     L))
+
+  (define (reduce-termlist L)
+    (scalar-div-terms L (common-factor L)))
+
+  ;; Exercise 2.97
+;;; a.
+  (define (reduce-terms n d)
+    (if (or (empty-termlist? n) (empty-termlist? d)) ;do nothing
+        (list n d)
+        (let ((g (gcd-terms n d)) ;step 1
+              (O1 (max (order (first-term n))
+                       (order (first-term d)))))
+          (let ((t2 (first-term g)))
+            (let ((c (expt (coeff t2) (1+ (- O1 (order t2))))))
+              (let ((nn (car (div-terms (scalar-terms c n) g)))
+                    (dd (car (div-terms (scalar-terms c d) g)))) ;step 2
+                (let ((common (greatest-common-divisor
+                               (common-factor nn)
+                               (common-factor dd))))
+                  (list (scalar-div-terms nn common)
+                        (scalar-div-terms dd common))))))))) ;step 3
+
   ;; Exercise 2.93
   (define (gcd-terms a b)
     (if (empty-termlist? b)
-        a
-        (gcd-terms b (remainder-terms a b))))
+        (reduce-termlist a)
+        (gcd-terms b (pseudoremainder-terms a b))))
 
   (define (remainder-terms a b)
     (cadr (div-terms a b)))
@@ -999,11 +1069,18 @@
   (define div-poly
     (arith-poly (lambda (p1 p2) (car (div-terms p1 p2))) "DIV-POLY"))
 
-  ; (define rem-poly
-  ;   (arith-poly remainder-terms "REM-POLY"))
+                                        ; (define rem-poly
+                                        ;   (arith-poly remainder-terms "REM-POLY"))
 
   (define gcd-poly
     (arith-poly gcd-terms "GCD-POLY"))
+
+  (define (reduce-poly p1 p2)
+      (if (same-variable? (variable p1) (variable p2))
+          (map (lambda (t) (make-poly (variable p1) t))
+               (reduce-terms (term-list p1)
+                             (term-list p2)))
+          (error "Polys not in the same var -- REDUCE-POLY" (list p1 p2))))
 
   ;; equ package
   (define (equ-poly? p1 p2)
@@ -1074,10 +1151,12 @@
        (lambda (p1 p2) (tag (sub-poly p1 p2))))
   (put 'div '(polynomial polynomial)
        (lambda (p1 p2) (tag (div-poly p1 p2))))
-  ; (put 'rem '(polynomial polynomial)
-  ;      (lambda (p1 p2) (tag (rem-poly p1 p2))))
+                                        ; (put 'rem '(polynomial polynomial)
+                                        ;      (lambda (p1 p2) (tag (rem-poly p1 p2))))
   (put 'gcd '(polynomial polynomial)
        (lambda (p1 p2) (tag (gcd-poly p1 p2))))
+  (put 'reduce '(polynomial polynomial)
+       (lambda (p1 p2) (map tag (reduce-poly p1 p2))))
   (put 'make 'polynomial
        (lambda (var terms) (tag (make-poly var terms))))
   (put 'variable '(polynomial) variable)
@@ -1086,6 +1165,7 @@
   (put '=zero? '(polynomial) (lambda (p) (empty-termlist? (term-list p))))
   (put 'neg '(polynomial) (lambda (p) (tag (neg-poly p))))
   'done)
+
 
 (define (make-polynomial var terms)
   ((get 'make 'polynomial) var terms))
@@ -1466,7 +1546,20 @@
   ;; (mul test test1)
   )
 
-;; (define p1 (make-polynomial 'x '(sparse (term 4 1) (term 3 -1) (term 2 -2) (term 1 2))))
-;; (define p2 (make-polynomial 'x '(sparse (term 3 1) (term 1 -1))))
-;; (greatest-common-divisor p1 p2)
-; (div '(polynomial x sparse (term 5 1) (term 0 -1)) '(polynomial x sparse (term 2 1) (term 0 -1)))
+;; Exercise 2.95
+;; (define p1 '(polynomial x dense 1 -2 1))
+;; (define p2 '(polynomial x dense 11 0 7))
+;; (define p3 '(polynomial x dense 13 5))
+;; (define q1 (mul p1 p2))
+;; (define q2 (mul p1 p3))
+
+;;; Exercise 2.97 b.
+(define (reduce n d) (apply-generic 'reduce n d))
+;;; test
+;; (define p1 (make-polynomial 'x '(sparse (term 1 1) (term 0 1))))
+;; (define p2 (make-polynomial 'x '(sparse (term 3 1) (term 0 -1))))
+;; (define p3 (make-polynomial 'x '(sparse (term 1 1))))
+;; (define p4 (make-polynomial 'x '(sparse (term 2 1) (term 0 -1))))
+;; (define rf1 (make-rational p1 p2))
+;; (define rf2 (make-rational p3 p4))
+;; (add rf1 rf2)

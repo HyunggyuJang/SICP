@@ -4981,15 +4981,18 @@ Then let we test this with given example:
 (greatest-common-divisor p1 p2)
 #+END_SRC
 
-That end up into infinite loop, which was due to the integer division in the
-generic operator =div=:
+That end up into infinite loop, which was +due to the integer division in the
+generic operator =div=:+ due to the ill-defined =div-terms=; however if we stick
+our integer division operation in our generic division operation, we will end up
+with above situation when we involves non-integer division in =div-terms=. So
+for now let we prevent that circumstance by following discussion.
 #+BEGIN_SRC scheme
 ,*** In scheme number package
 (put 'div '(integer integer) quotient)
 #+END_SRC
-This leads to zero coefficient in =div-terms=; in turn, =mul-term-by-all-terms=
-with that term is =zero=. As consequence it end up looping with the same =L1=
-and =L2= in the =div-terms=.
+This would leads to zero coefficient in =div-terms= if we try to non-integer
+division; in turn, =mul-term-by-all-terms= with that term is =zero=. As
+consequence it end up looping with the same =L1= and =L2= in the =div-terms=.
 
 This kind of error is hard to extract even with this relatively small project.
 I should think this situation as chance to try bisection debugging method as
@@ -5125,7 +5128,234 @@ the bisection search method to debug.
 ;Value: (polynomial x dense -1 1 0)
    #+END_SRC
    as we expected.
+**** Exercise 2.95
+We can easily encode given formula to our polynomial expression:
+#+BEGIN_SRC scheme
+(define p1 '(polynomial x dense 1 -2 1))
+(define p2 '(polynomial x dense 11 0 7))
+(define p3 '(polynomial x dense 13 5))
+(define q1 (mul p1 p2))
+(define q2 (mul p1 p3))
+#+END_SRC
+
+And then, to inspect what's going to happen in the =gcd-terms= we insert the
+probe code as we did before:
+#+BEGIN_SRC scheme
+  (define (gcd-terms a b)
+    (newline)
+    (display a)
+    (if (empty-termlist? b)
+        a
+        (gcd-terms b (remainder-terms a b))))
+#+END_SRC
+Then let's run our code: =(greatest-common-divisor q1 q2)=. And it produce
+following:
+#+BEGIN_SRC scheme
+(dense 11 -22 18 -14 7)
+(dense 13 -21 3 5)
+(sparse (term 2 8.627218934911243) (term 1 -17.254437869822485) (term 0 8.627218934911243))
+;Value: (polynomial x dense 8.627218934911243 -17.254437869822485 8.627218934911243)
+#+END_SRC
+
+Intuitively we expected that the output would be same as =p1= but not; it is due
+to the non-integer operation-- more precisely real division -- in GCD
+computation. Fortunately the output agree with our intuition in that given
+output is differ in constant factor from our expectation; it was mainly due to
+our previous amender to prevent to fall in infinite loop in =div-terms=.
+**** Exercise 2.96
+First, we can prove the fact involving the /integerizing factor/
+c^{1+O_{1}-O_{2}} using induction on O_{1} - O_{2}. As we proved the fact that
+if we multiply dividend by integerizing factor then the resulting polynomial can
+be divided by divisor using the =div-terms= without introducing any fractions,
+we can now use that fact to fix our previous malfunction.
+***** a.
+We can implement given task with the existing code[fn:6]:
+#+BEGIN_SRC scheme
+(define (pseudoremainder-terms L1 L2)
+    (if (empty-termlist? L1)
+        (the-empty-termlist)
+        (let ((t1 (first-term L1)) (t2 (first-term L2)))
+          (if (> (order t2) (order t1))
+              L1                        ;do nothing
+              (remainder-terms
+               (mul-term-by-all-terms (make-term 0
+                                                 (expt (coeff t2)
+                                                       (+ 1
+                                                          (- (order t1)
+                                                             (order t2)))))
+                                      L1)
+               L2)))))
+#+END_SRC
+
+Then we should modify =gcd-terms= as follow
+#+BEGIN_SRC scheme
+  (define (gcd-terms a b)
+    (if (empty-termlist? b)
+        a
+        (gcd-terms b (pseudoremainder-terms a b))))
+#+END_SRC
+
+Let's test:
+#+BEGIN_SRC scheme
+(greatest-common-divisor q1 q2)
+;Value: (polynomial x dense 1458 -2916 1458)
+#+END_SRC
+We progressed: It returns polynomial with integer coefficient
+***** b.
+First, let we extract common factor of given term list:
+#+BEGIN_SRC scheme
+  (define (map-terms f L)               ;term-list => list
+    (if (empty-termlist? L)
+        '()
+        (cons (f (first-term L))
+              (map-terms f (rest-terms L)))))
+
+  (define (common-factor L)
+    (if (empty-termlist? L)
+        (error "invalid input term list -- COMMON-FACTOR" L)
+        (let ((coeffs (map-terms coeff L)))
+          (fold-left (lambda (x y) (greatest-common-divisor x y))
+                     (car coeffs)
+                     (cdr coeffs)))))
+#+END_SRC
+
+Using this, we can reduce term list to its lowest term:
+#+BEGIN_SRC scheme
+  (define (map-terms-using nil cons f L)
+    (define (construct L)
+      (if (empty-termlist? L)
+          nil
+          (cons (f (first-term L))
+                (construct (rest-terms L)))))
+    (construct L))
+
+  (define (map-terms-to-list f L)               ;term-list => list
+    (map-terms-using '() cons f L))
+
+  (define (common-factor L)
+    (if (empty-termlist? L)
+        (error "invalid input term list -- COMMON-FACTOR" L)
+        (let ((coeffs (map-terms-to-list coeff L)))
+          (fold-left (lambda (x y) (greatest-common-divisor x y))
+                     (car coeffs)
+                     (cdr coeffs)))))
+
+  (define (reduce-terms L)
+    (let ((c (common-factor L)))
+      (map-terms-using (the-empty-termlist) adjoin-term
+                       (lambda (term)
+                         (make-term (order term)
+                                    (div (coeff term) c)))
+                       L)))
+#+END_SRC
+Here, we generalized =map-terms= to produce any list like structure type.
+
+The rest:
+#+BEGIN_SRC scheme
+  (define (gcd-terms a b)
+    (if (empty-termlist? b)
+        (reduce-terms a)
+        (gcd-terms b (pseudoremainder-terms a b))))
+#+END_SRC
+
+And it produce the expected output:
+#+BEGIN_SRC scheme
+(greatest-common-divisor q1 q2)
+;Value: (polynomial x dense 1 -2 1)
+#+END_SRC
+**** Exercise 2.97
+***** a.
+As the algorithm needed to implement already supplied by text book, all we need
+to do is just encode that algorithm using scheme. When you really understand the
+guts of specified algorithm, then you should easily implement that without trouble.
+
+Here is the result:
+#+BEGIN_SRC scheme
+  (define (scalar-div-terms L c)
+    (map-terms-using (the-empty-termlist) adjoin-term
+                     (lambda (term)
+                       (make-term (order term)
+                                  (div (coeff term) c)))
+                     L))
+
+  (define (reduce-terms n d)
+    (if (or (empty-termlist? n) (empty-termlist? d)) ;do nothing
+        (list n d)
+        (let ((g (greatest-common-divisor n d)) ;step 1
+              (O1 (max (order (first-term n))
+                       (order (first-term d)))))
+          (let ((t2 (first-term g)))
+            (let (c (expt (coeff t2) (1+ (- O1 (order t2)))))
+              (let ((nn (div-terms (scalar-terms c n) g))
+                    (dd (div-terms (scalar-terms c d) g))) ;step 2
+                (let ((common (gcd-terms
+                               (common-factor nn)
+                               (common-factor dd))))
+                  (list (scalar-div-terms nn common)
+                        (scalar-div-terms dd common))))))))) ;step 3
+#+END_SRC
+***** b.
+=reduce-poly= is straightforward:
+#+BEGIN_SRC scheme
+  (define (reduce-poly p1 p2)
+      (if (same-variable? (variable p1) (variable p2))
+          (map (lambda (t) (make-poly (variable p1) t))
+               (reduce-terms (term-list p1)
+                             (term-list p2)))
+          (error "Polys not in the same var -- REDUCE-POLY" (list p1 p2))))
+#+END_SRC
+
+If we have done with the interfacing with the system, the left is modify
+constructor of rational number:
+#+BEGIN_SRC scheme
+  (define (numer x) (car x))
+  (define (denom x) (cadr x))
+  (define (make-rat n d)
+    (reduce n d))
+#+END_SRC
+
+Then our test code run as expected:
+#+BEGIN_SRC scheme
+(define p1 (make-polynomial 'x '(sparse (term 1 1) (term 0 1))))
+(define p2 (make-polynomial 'x '(sparse (term 3 1) (term 0 -1))))
+(define p3 (make-polynomial 'x '(sparse (term 1 1))))
+(define p4 (make-polynomial 'x '(sparse (term 2 1) (term 0 -1))))
+(define rf1 (make-rational p1 p2))
+;Value: (rational (polynomial x dense -1 -1) (polynomial x dense -1 0 0 1))
+(define rf2 (make-rational p3 p4))
+;Value: (rational (polynomial x dense -1 0) (polynomial x dense -1 0 1))
+(add rf1 rf2)
+;Value: (rational (polynomial x dense -1 -2 -3 -1) (polynomial x dense -1 -1 0 1 1))
+#+END_SRC
+but negated. It origin our crude =gcd=:
+#+BEGIN_SRC scheme
+  (define (gcd a b)
+    (if (= b 0)
+        a
+        (gcd b (remainder a b))))
+(gcd 5 -1)
+;Value: -1
+#+END_SRC
+
+To fix this unfortunate, we can just remove above code from =scheme-number=
+package: Use primitive =gcd=. This fix our problem:
+#+BEGIN_SRC scheme
+rf1
+;Value: (rational (polynomial x dense 1 1) (polynomial x dense 1 0 0 -1))
+rf2
+;Value: (rational (polynomial x dense 1 0) (polynomial x dense 1 0 -1))
+(add rf1 rf2)
+;Value: (rational (polynomial x dense 1 2 3 1) (polynomial x dense 1 1 0 -1 -1))
+#+END_SRC
+
+
 * Footnotes
+
+[fn:6] We could have implement this multiplying integerizing factor to dividend by
+introducing new procedure that multiply scalar factor to term list using analogy
+with =neg-terms=; however we chose not to: We just wanted to experiment with
+this feature and after that, if we find this feature was the neck of efficiency
+then, at the very that point, we can improve this with described algorithm.
 
 [fn:5] There is yet another approach, namely type class being adopted and
 introduced in Haskell.
