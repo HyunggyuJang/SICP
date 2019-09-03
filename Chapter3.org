@@ -1,0 +1,176 @@
+#+TITLE: Chapter 3 Modularity, Objects, and State
+* Assignment and Local State
+We now introduce "state" in our programming language at length. By introduction
+this concept, we get to model real world system more naturally and modularly
+combining with message passing programming.
+** Local State Variables
+To introduce the local state variable, we need to special expression that can
+change the state of variable. More specifically, that expression has to update
+value of the state variable. For this, scheme has special syntax called =(set!
+<name> <new-value>)=.
+*** Exercise 3.1
+Using the general scheme that combines local variable with =set!= expression, we
+can easily implement what we asked:
+#+BEGIN_SRC scheme
+(define (make-accumulator sum)
+  (lambda (num)
+    (set! sum (+ sum num))
+    sum))
+#+END_SRC
+*** Exercise 3.2
+Let we first specify what the =make-monitored= should satisfy:
+- It should use the message passing programming to dispatch on input to
+  implement the special symbol input.
+- It should have local variable, say count, to count the number of calls of its
+  procedure argument =f=; it should use =set!= to change the value of its
+  internal state variable.
+
+
+Then we can encode that specification directly:
+#+BEGIN_SRC scheme
+(define (make-monitored f)
+  (let ((count 0))
+    (define (dispatch m)
+      (cond ((eq? m 'how-many-calls?) count)
+            ((eq? m 'reset-count) (set! count 0))
+            (else
+             (set! count (1+ count))
+             (f m))))))
+#+END_SRC
+*** Exercise 3.3
+We can do what we should do by slightly amending the procedure defined in text:
+#+BEGIN_SRC scheme
+(define (make-account balance password)
+  (define (withdraw amount)
+    (if (>= balance amount)
+        (begin (set! balance (- balance amount))
+               balance)
+        "Insufficient funds"))
+  (define (deposit amount)
+    (set! balance (+ balance amount))
+    balance)
+  (define (dispatch pd m)
+    (if (eq? pd password)
+        (cond ((eq? m 'withdraw) withdraw)
+              ((eq? m 'deposit) deposit)
+              (else (error "Unknown request -- MAKE-ACCOUNT"
+                           m)))
+        "Incorrect password")))
+#+END_SRC
+
+Unfortunately this code doesn't pass the test case =((acc 'some-other-password
+'deposit) 50)=, which returns
+#+BEGIN_SRC scheme
+;The object "Incorrect password" is not applicable.
+;To continue, call RESTART with an option number:
+; (RESTART 2) => Specify a procedure to use in its place.
+; (RESTART 1) => Return to read-eval-print level 1.
+#+END_SRC
+not what expected:
+#+BEGIN_SRC scheme
+"Incorrect password"
+#+END_SRC
+
+We can fix this by using type analysis: we should return procedure not the
+primitive data:
+#+BEGIN_SRC scheme
+(define (make-account balance password)
+  (define (withdraw amount)
+    (if (>= balance amount)
+        (begin (set! balance (- balance amount))
+               balance)
+        "Insufficient funds"))
+  (define (deposit amount)
+    (set! balance (+ balance amount))
+    balance)
+  (define (dispatch pd m)
+    (if (eq? pd password)
+        (cond ((eq? m 'withdraw) withdraw)
+              ((eq? m 'deposit) deposit)
+              (else (error "Unknown request -- MAKE-ACCOUNT"
+                           m)))
+        (lambda (x) "Incorrect password")))
+  dispatch)
+#+END_SRC
+
+Then it pass all the test specified in text book.
+*** Exercise 3.4
+This problem can be solved conjunction with the two previous exercises: 3.2 with 3.3.
+
+To implement what we requested, first let we code the test cases, which encodes
+all the specifications it should satisfy:
+#+BEGIN_SRC scheme
+;; Test code
+;;; consequetive call case
+(define acc (make-account 100 'secret-password))
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'some-other-password 'deposit) 50)
+"call-the-cops"
+;;; reset count
+((acc 'secret-password 'withdraw) 40)
+60
+;;; interposed case
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'secret-password 'withdraw) 40)
+20
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'some-other-password 'deposit) 50)
+"call-the-cops"
+#+END_SRC
+
+Then modify the code of exercise 3.3:
+#+BEGIN_SRC scheme
+(define (make-account balance password)
+  (define (withdraw amount)
+    (if (>= balance amount)
+        (begin (set! balance (- balance amount))
+               balance)
+        "Insufficient funds"))
+  (define (deposit amount)
+    (set! balance (+ balance amount))
+    balance)
+  (let ((n-incorrect 0))
+    (define (dispatch pd m)
+      (if (eq? pd password)
+          (begin
+            (set! n-incorrect 0)        ;reset the counter
+            (cond ((eq? m 'withdraw) withdraw)
+                  ((eq? m 'deposit) deposit)
+                  (else (error "Unknown request -- MAKE-ACCOUNT"
+                               m))))
+          (lambda (x)
+            (set! n-incorrect (1+ n-incorrect))
+            (if (>= n-incorrect 7)
+                "call-the-cops"
+                "Incorrect password"))))
+    dispatch))
+#+END_SRC
+
+It passes all the test case.
