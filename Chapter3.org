@@ -174,3 +174,472 @@ Then modify the code of exercise 3.3:
 #+END_SRC
 
 It passes all the test case.
+** The Benefits of Introducing Assignment
+In the text book, it explane the benefits of introducing assignment expression
+in our language taking Monte Carlo test as example. Without using assignment, we
+should handle explicitly the state of each experiment that use random number;
+it results into leaking the guts of state over the most higher level of
+language: Monte Carlo test. No more general Monte Carlo test, only the specific
+instance of that kind.
+*** Exercise 3.5
+We can implement this exercise directly or we can do using what we learned so
+far, data abstraction:
+#+BEGIN_SRC scheme
+;; top level
+(define (estimate-integral P rect trials)
+  (* (rect 'area)
+     (monte-carlo trials
+                  (lambda () (P (random-in-rect rect))))))
+;; dependency
+(define (monte-carlo trials experiment)
+  (define (iter trials-remaining trials-passed)
+    (cond ((= trials-remaining 0)
+           (/ trials-passed trials))
+          ((experiment)
+           (iter (- trials-remaining 1) (+ trials-passed 1)))
+          (else
+           (iter (- trials-remaining 1) trials-passed))))
+  (iter trials 0))
+#+END_SRC
+Here we captured the upper and lower bounds as rectangle; also we exploit that
+structure in generating random point in that rectangle. In this way, our program
+start to self-document what we are trying to do. With this, we can test this
+unit by
+#+BEGIN_SRC scheme
+;;; test estimate-integral
+(define p1 (make-point -1 -1))
+(define p2 (make-point 1 1))
+(define r (make-rect p1 p2))
+(define (P pt) (<= (+ (square (x-coor pt))
+                      (square (y-coor pt)))
+                   1))
+(estimate-integral P r 100)
+;; it should converge to 3.141592...
+#+END_SRC
+It's true that we can not test this code until implement the lower level
+language but it is important to note that we can write the unit test.
+
+Then we can implement the other levels of language:
+#+BEGIN_SRC scheme
+;; middle level
+(define (random-in-rect rect)
+  (let ((points (list (bottom-left rect) (top-right rect))))
+    (make-point (random-in-range
+                 (map exact->inexact (map x-coor points)))
+                (random-in-range
+                 (map exact->inexact (map y-coor points))))))
+;; dependency
+(define (random-in-range low high)
+  (let ((range (- high low)))
+    (+ low (random range))))
+
+;;; test random-in-rect
+(define p1 (make-point 3 4))
+(define p2 (make-point 8 7))
+(define r (make-rect p1 p2))
+(random-in-rect r)
+;; some float point in rect
+#+END_SRC
+
+... and so on
+#+BEGIN_SRC scheme
+;; low-middle level
+(define (make-rect bl tr)
+  (define area
+    (* (- (x-coor (tr) (bl)))
+       (- (y-coor (tr) (bl)))))
+  (define (dispatch m)
+    (cond ((eq? m 'top-right) tr)
+          ((eq? m 'bottom-left) bl)
+          ((eq? m 'area) area)
+          (else (error "Undefined request -- MAKE-RECT" m))))
+  dispatch)
+
+(define (top-right rect) (rect 'top-right))
+(define (bottom-left rect) (rect 'bottom-left))
+
+;;; test rect
+(define p1 (make-point 3 4))
+(define p2 (make-point 8 7))
+(define r (make-rect p1 p2))
+(r 'area)
+;; 15
+(top-right rect)
+;; (8 . 7)
+(bottom-left rect)
+;; (3 . 4)
+(rect 'unknown-message)
+;; Undefined request -- MAKE-RECT unknown-message
+
+;; lowest level
+(define (make-point x y)
+  (cons x y))
+(define (x-coor pt) (car pt))
+(define (y-coor pt) (cdr pt))
+
+;;; test point
+(define a (make-point 5 3))
+(x-coor a)
+;; 5
+(y-coor a)
+;; 3
+#+END_SRC
+
+Then we start the unit tests from the bottom. We failed in the =rect= level:
+#+BEGIN_SRC scheme
+(define r (make-rect p1 p2))
+;The object (3 . 4) is not applicable.
+#+END_SRC
+
+As soon as we inspect the code of =make-rect=, we realize what the problem was.
+We can fix this easily:
+#+BEGIN_SRC scheme
+,*** in make-rect
+  (define area
+    (* (- (x-coor tr) (x-coor bl))
+       (- (y-coor tr) (y-coor bl))))
+#+END_SRC
+
+Run our test again: this time, we got by
+#+BEGIN_SRC scheme
+(top-right rect)
+;Unbound variable: rect
+#+END_SRC
+
+It was due to the test code itself: we defined =r= to be rectangle but we called
+=rect=. Fix and run. Then again we caught by =random-in-rect=:
+#+BEGIN_SRC scheme
+1 (user) => (random-in-rect r)
+;The procedure #[compound-procedure 38 random-in-range] has been called with 1 argument; it requires exactly 2 arguments.
+#+END_SRC
+
+We should have used =apply= in the =random-in-rect= procedure to apply
+=random-in-range= to argument list; after amending, it produce:
+#+BEGIN_SRC scheme
+1 (user) => (random-in-rect r)
+;Value: (5.225704578484133 . 5.665006074331469)
+#+END_SRC
+
+Looks fine.
+
+Then we move up the top level. It produce:
+#+BEGIN_SRC scheme
+1 (user) => (estimate-integral P r 100)
+;Value: 76/25
+#+END_SRC
+If we convert that value to inexact number:
+#+BEGIN_SRC scheme
+1 (user) => (exact->inexact 76/25)
+;Value: 3.04
+#+END_SRC
+
+To produce the floating-point number at first, we need to give the x and y
+coordinates with floating-point number. Let's do more trials:
+#+BEGIN_SRC scheme
+1 (user) => (estimate-integral P r 1000)
+;Value: 2.98
+1 (user) => (estimate-integral P r 10000)
+;Value: 3.158
+1 (user) => (estimate-integral P r 100000)
+;Value: 3.14068
+#+END_SRC
+
+It really slowly converge to 3.141592..., \pi.
+*** Exercise 3.6
+We can design what we requested using the message-passing programming strategy
+as we did in =make-rect=. First let we code the test:
+#+BEGIN_SRC scheme
+;;; test rend
+(rand 'generate)
+<some-random-number>
+((rand 'reset) 5)
+(rand 'generate)
+<specific-random-number>
+(rand 'generate)
+<some-other-random-number>
+((rand 'reset) 5)
+(rand 'generate)
+<specific-random-number>
+#+END_SRC
+
+Then implement:
+#+BEGIN_SRC scheme
+(define rand
+  (let ((x random-init))
+    (define (dispatch m)
+      (cond ((eq? m 'generate)
+             (set! x (rand-update x))
+             x)
+            ((eq? m 'reset)
+             (lambda (new-x)
+               (set! x new-x)))
+            (else
+             error "Unknown request -- RAND" m)))))
+#+END_SRC
+
+As soon as I run the test:
+#+BEGIN_SRC scheme
+1 (user) => (rand 'generate)
+;Unassigned variable: rand
+#+END_SRC
+
+I should have to return =dispatch= as its return value.
+
+Let we run test again:
+#+BEGIN_SRC scheme
+1 (user) => (rand 'generate)
+;Value: 88
+1 (user) => ((rand 'reset) 5)
+;Value: 88
+1 (user) => (rand 'generate)
+;Value: 34
+1 (user) => (rand 'generate)
+;Value: 55
+1 (user) => ((rand 'reset) 5)
+;Value: 55
+1 (user) => (rand 'generate)
+;Value: 34
+#+END_SRC
+
+It works as expected.
+** The Costs of Introducing Assignment
+Allowing assignment expression in our language, introduce more profound
+complication namely, what is the object and what is the sameness. It is more
+alike philosophical concept. As noted in the text, to identify the sameness we
+experiment by changing one object and observe the other; however in turns, to
+define the "change" of one object we should first define "sameness." As
+consequence, we need /a priori/ notion of sameness to identify whether the
+objects that we are compare with is same.
+*** Exercise 3.7
+Let we first code the test:
+#+BEGIN_SRC scheme
+;;; test make-joint
+(define peter-acc (make-account 100 'open-sesame))
+(define paul-acc (make-joint peter-acc 'open-sesame 'rosebud))
+((paul-acc 'rosebud 'withdraw) 50)
+;; 50
+((peter-acc 'open-sesame 'deposit) 30)
+;; 80
+(define opaque (make-joint paul-acc 'open-sesame 'this-should-not-work?))
+#+END_SRC
+The last line is undefined because our specification does not regulate this
+ambiguity. This looseness leads us to choose the implementation detail from
+several possibilities:
+- Let the last line of the test be valid :: This would imply to joint account,
+     all we need to do is add new password to password list and then make change
+     in =make-account= to check whether the password is correct use password
+     list instead single password.
+- Let the last line of the test be invalid :: This means that only the balance
+     variable should be shared between the joint accounts, which also indicates
+     that
+     #+BEGIN_SRC scheme
+((peter-acc 'rosebug 'deposit) 30)
+     #+END_SRC
+     should not work.
+
+
+Let we explore the two possibilities by implementing both version.
+
+- First version:
+  #+BEGIN_SRC scheme
+(define (make-account1 balance password)
+  (define (withdraw amount)
+    (if (>= balance amount)
+        (begin (set! balance (- balance amount))
+               balance)
+        "Insufficient funds"))
+  (define (deposit amount)
+    (set! balance (+ balance amount))
+    balance)
+  (let ((n-incorrect 0)
+        (pw-list (list password)))
+    (define (dispatch pd m)
+      (if (mem? pd pw-list)
+          (begin
+            (set! n-incorrect 0)        ;reset the counter
+            (cond ((eq? m 'withdraw) withdraw)
+                  ((eq? m 'deposit) deposit)
+                  ((eq? m 'joint) (lambda (new-pw)
+                                    (set! pw-list (cons new-pw pw-list))
+                                    dispatch))
+                  (else (error "Unknown request -- MAKE-ACCOUNT1"
+                               m))))
+          (lambda (x)
+            (set! n-incorrect (1+ n-incorrect))
+            (if (>= n-incorrect 7)
+                "call-the-cops"
+                "Incorrect password"))))
+    dispatch))
+
+(define (make-joint acc old-pw new-pw)
+  ((acc old-pw 'joint) new-pw))
+
+;; general helper function
+(define (mem? el S)
+  (if (null? S) false
+      (or (eq? el (car S))
+          (mem? el (cdr S)))))
+  #+END_SRC
+
+  Then let's test:
+  #+BEGIN_SRC scheme
+1 (user) => (define peter-acc (make-account1 100 'open-sesame))
+
+;Value: peter-acc
+
+1 (user) => (define paul-acc (make-joint peter-acc 'open-sesame 'rosebud))
+
+;Value: paul-acc
+
+1 (user) => ((paul-acc 'rosebud 'withdraw) 50)
+
+;Value: 50
+
+1 (user) => ((peter-acc 'open-sesame 'deposit) 30)
+
+;Value: 80
+
+1 (user) => (define opaque (make-joint paul-acc 'open-sesame 'this-should-not-work?))
+
+;Value: opaque
+
+1 (user) => ((opaque 'this-should-not-work? 'withdraw) 80)
+
+;Value: 0
+  #+END_SRC
+- For the second version, as it is more tricky than the first one, first we
+  should specify what we want. We want that the return account from =make-joint=
+  should not share the password state variable with the account, with which
+  =make-joint= called; yet want to share balance state variable among the
+  two account. To accomplish this, we should have =make-account= with the
+  following properties:
+  1. We make object with unprotected account.
+  2. Given that instance, we can convert that account to protected account with
+     password.
+
+  By restructuring =make-account= like this, we can easily implement the
+  =make-joint=:
+  #+BEGIN_SRC scheme
+(define (make-account balance)
+  (define (withdraw amount)
+    (if (>= balance amount)
+        (begin (set! balance (- balance amount))
+               balance)
+        "Insufficient funds"))
+  (define (deposit amount)
+    (set! balance (+ balance amount))
+    balance)
+  (define (make-protected password)
+    (let ((n-incorrect 0))
+      (define (protected-dispatch pd m)
+        (if (eq? pd password)
+            (begin
+              (set! n-incorrect 0)      ;reset the counter
+              (cond ((eq? m 'withdraw) withdraw)
+                    ((eq? m 'deposit) deposit)
+                    ((eq? m 'joint) (lambda (new-pw)
+                                      ((dispatch 'make-protected) new-pw)))
+                    (else (error "Unknown request -- MAKE-PROTECTED"
+                                 m))))
+            (lambda (x)
+              (set! n-incorrect (1+ n-incorrect))
+              (if (>= n-incorrect 7)
+                  "call-the-cops"
+                  "Incorrect password"))))
+      protected-dispatch))
+  (define (dispatch m)
+    (cond ((eq? m 'withdraw) withdraw)
+          ((eq? m 'deposit) deposit)
+          ((eq? m 'make-protected) make-protected)
+          (else (error "Unknown request -- MAKE-ACCOUNT"
+                       m))))
+  dispatch)
+
+(define (make-account2 balance password)
+  (((make-account balance) 'make-protected) password))
+  #+END_SRC
+
+  And here is the test:
+  #+BEGIN_SRC scheme
+1 (user) => (define peter-acc (make-account2 100 'open-sesame))
+
+;Value: peter-acc
+
+1 (user) => (define paul-acc (make-joint peter-acc 'open-sesame 'rosebud))
+
+;Value: paul-acc
+
+1 (user) => ((paul-acc 'rosebud 'withdraw) 50)
+
+;Value: 50
+
+1 (user) => ((peter-acc 'open-sesame 'deposit) 30)
+
+;Value: 80
+
+1 (user) => (define opaque (make-joint paul-acc 'open-sesame 'this-should-not-work?))
+
+;Value: opaque
+
+1 (user) => opaque
+
+;Value: "Incorrect password"
+  #+END_SRC
+
+
+From this exercise, we can think procedure as an object in that notion of modern
+programming language. Note that in second version of =make-account=, we used
+procedure =dispatch= to call the parent object or the =self= in the modern
+programming scheme.
+*** Exercise 3.8
+Note that to implement such =f=
+- We should use assignment expression otherwise it doesn't depend on the
+  evaluation order.
+- As the arguments of =+= should be number and the procedure =+= is referential
+  transparent, the specification can be divided as pure imperative part and pure
+  functional part; that is, we can think the evaluation order left to right as
+  imperative part:
+  #+BEGIN_SRC scheme
+evaluate (f 0) => a
+evaluate (f 1) => b
+  #+END_SRC
+  with functional part:
+  #+BEGIN_SRC scheme
+(+ a b) = 0
+  #+END_SRC
+
+
+Here is the sample implementation such =f=:
+#+BEGIN_SRC scheme
+(define f
+  (let ((x 0))
+    (lambda (n)
+      (if (= n 0)
+          x
+          (begin (set! x n) 0)))))
+#+END_SRC
+
+Or more imperative-oriented version:
+#+BEGIN_SRC scheme
+(define f
+  (let ((x 0))
+    (lambda (n)
+      (let ((temp x))
+        (begin (set! x n)
+               temp)))))
+#+END_SRC
+
+Then we can test the interpreter:
+#+BEGIN_SRC scheme
+1 (user) => (+ (f 0) (f 1))
+
+;Value: 1
+
+,*** reevaluate f
+
+1 (user) => (+ (f 1) (f 0))
+
+;Value: 0
+#+END_SRC
+
+So, our interpreter evaluate augend first.
