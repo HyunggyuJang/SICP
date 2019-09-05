@@ -345,3 +345,131 @@
 ;; test f
 ;; (+ (f 0) (f 1))
 ;; (+ (f 1) (f 0))
+
+;; Exercise 3.16
+
+(define (count-pairs x)
+  (if (not (pair? x))
+      0
+      (+ (count-pairs (car x))
+         (count-pairs (cdr x))
+         1)))
+
+(define list1 (list 1 2 3))
+(define list2
+  (let ((tList (list 1 2 3)))
+    (let ((tPointer (cdr tList)))
+      (set-car! tPointer (cdr tPointer))
+      tList)))
+(define list3
+  (let ((tList (list 1 2 3)))
+    (let ((tPointer (cdr tList)))
+      (set-car! tPointer (cdr tPointer))
+      (set-car! tList (cdr tList))
+      tList)))
+(define list4
+  (let ((tList (list 1 2 3)))
+    (set-car! tList tList)
+    tList))
+
+;; Exercise 3.17
+(define (count-pairs1 x)
+  (define (without-loop x visited)
+    (if (or (mem? x visited) (not (pair? x)))
+        (list 0 visited)
+        (let ((result-of-one
+               (without-loop (cdr x) (cons x visited))))
+          (let ((result-of-the-other
+                 (without-loop (car x) (cadr result-of-one))))
+            (list (+ (car result-of-one)
+                     (car result-of-the-other)
+                     1)
+                  (cadr result-of-the-other))))))
+  (car (without-loop x '())))
+
+(define (count-pairs2 x)
+  (define recorded
+    (let ((visited '()))
+      (lambda (x)
+        (if (or (mem? x visited)
+                (not (pair? x)))
+            0
+            (begin (set! visited (cons x visited))
+                   (+ (recorded (car x))
+                      (recorded (cdr x))
+                      1))))))
+  (recorded x))
+
+;; test code
+;; (count-pairs1 list1)
+;; 3
+;; (count-pairs1 list2)
+;; 3
+;; (count-pairs1 list3)
+;; 3
+;; (count-pairs1 list4)
+;; 3
+
+;; Exercise 3.18
+
+(define (cycle? x)
+  (define iter
+    (let ((visited '()))
+      (lambda (x)
+        (cond ((null? x) false)
+              ((mem? x visited) true)
+              (else
+               (set! visited (cons x visited))
+               (iter (cdr x)))))))
+  (iter x))
+
+;; test for cycle?
+(define (make-cycle x)
+  (set-cdr! (last-pair x) x)
+  x)
+
+(define (last-pair x)
+  (if (null? (cdr x))
+      x
+      (last-pair (cdr x))))
+
+(define list5 (make-cycle (list 1 2 3 4)))
+(define list6 (append '(a b c d) list5))
+(define list7
+  (let ((tList '(a b c d)))
+    (set-cdr! tList tList)
+    tList))
+
+;; (cycle? list1)
+;; #f
+;; (cycle? list2)
+;; #f
+;; (cycle? list3)
+;; #f
+;; (cycle? list4)
+;; #f
+;; (cycle? list5)
+;; #t
+;; (cycle? list6)
+;; #t
+;; (cycle? list7)
+;; #t
+
+;; Exercise 3.19
+(define (cycle1? x)
+  (define first-man
+    (let ((prev '()))
+      (lambda (current)
+        (define second-man
+          (let ((prev2 '()))
+            (lambda (current2)
+              (if (eq? current current2)
+                  (eq? prev prev2)
+                  (begin (set! prev2 current2)
+                         (second-man (cdr current2)))))))
+        (cond ((null? current) false)
+              ((not (second-man x)) true)
+              (else
+               (set! prev current)
+               (first-man (cdr current)))))))
+  (first-man x))

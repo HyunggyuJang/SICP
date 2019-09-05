@@ -643,3 +643,315 @@ Then we can test the interpreter:
 #+END_SRC
 
 So, our interpreter evaluate augend first.
+* Modeling with Mutable Data
+** Mutable List Structure
+*** Exercise 3.16
+#+BEGIN_SRC scheme
+(define (count-pairs x)
+  (if (not (pair? x))
+      0
+      (+ (count-pairs (car x))
+         (count-pairs (cdr x)))))
+
+(define list1 (list 1 2 3))
+(define list2
+  (let ((tList (list 1 2 3)))
+    (let ((tPointer (cdr tList)))
+      (set-car! tPointer (cdr tPointer))
+      tList)))
+(define list3
+  (let ((tList (list 1 2 3)))
+    (let ((tPointer (cdr tList)))
+      (set-car! tPointer (cdr tPointer))
+      (set-car! tList (cdr tList))
+      tList)))
+(define list4
+  (let ((tList (list 1 2 3)))
+    (set-car! tList tList)))
+#+END_SRC
+These list are all made up of exactly three pairs; but =count-pairs= returns
+differently:
+#+BEGIN_SRC scheme
+1 (user) => (count-pairs list1)
+
+;Value: 3
+
+1 (user) => (count-pairs list2)
+
+;Value: 4
+
+1 (user) => (count-pairs list3)
+
+;Value: 7
+
+1 (user) => (count-pairs list4)
+
+;Aborting!: maximum recursion depth exceeded
+#+END_SRC
+*** Exercise 3.17
+Then our version should solve the problem Ben Bitdiddle encountered.
+We can implement either of the paradigm, functional or imperative.
+Functional:
+#+BEGIN_SRC scheme
+(define (count-pairs x)
+  (define (without-loop x visited)
+    (if (or (mem? x visited) (not (pair? x)))
+        0
+        (let ((new-visited (cons x visited)))
+          (+ (without-loop (car x) new-visited)
+             (without-loop (cdr x) new-visited)
+             1))))
+  (without-loop x '()))
+#+END_SRC
+
+Unfortunately, this won't work:
+#+BEGIN_SRC scheme
+1 (user) => (count-pairs1 list1)
+
+;Value: 3
+
+1 (user) => (count-pairs1 list2)
+
+;Value: 4
+
+1 (user) => (count-pairs1 list3)
+
+;Value: 7
+
+1 (user) => (count-pairs1 list4)
+
+;Value: 3
+#+END_SRC
+
+The problem is that in the recursive branch, each of it doesn't share the
+=visited= argument. We can fix it by using local variable with assignment:
+#+BEGIN_SRC scheme
+(define (count-pairs2 x)
+  (define recorded
+    (let ((visited '()))
+      (lambda (x)
+        (if (or (mem? x visited)
+                (not (pair? x)))
+            0
+            (begin (set! visited (cons x visited))
+                   (+ (recorded (car x))
+                      (recorded (cdr x))
+                      1))))))
+  (recorded x))
+#+END_SRC
+As expected, it solved the problem:
+#+BEGIN_SRC scheme
+1 (user) => (count-pairs2 list1)
+
+;Value: 3
+
+1 (user) => (count-pairs2 list2)
+
+;Value: 3
+
+1 (user) => (count-pairs2 list3)
+
+;Value: 3
+
+1 (user) => (count-pairs2 list4)
+
+;Value: 3
+#+END_SRC
+
+Let we revise our functional version. To fix that, we should traverse the tree
+structure like depth first search; we one of the branch should wait until the
+other branch terminate its search. We should access the =visited= argument from
+returned value of one branch to propagate that argument to other branch. By
+returning tuple that contains =visited= with the counter, we can do the right thing:
+#+BEGIN_SRC scheme
+(define (count-pairs1 x)
+  (define (without-loop x visited)
+    (if (or (mem? x visited) (not (pair? x)))
+        (list 0 visited)
+        (let ((result-of-one
+               (without-loop (cdr x) (cons x visited))))
+          (let ((result-of-the-other
+                 (without-loop (car x) (cadr result-of-one))))
+            (list (+ (car result-of-one)
+                     (car result-of-the-other)
+                     1)
+                  (cadr result-of-the-other))))))
+  (car (without-loop x '())))
+#+END_SRC
+#+BEGIN_SRC scheme
+1 (user) => (count-pairs1 list1)
+
+;Value: 3
+
+1 (user) => (count-pairs1 list2)
+
+;Value: 3
+
+1 (user) => (count-pairs1 list3)
+
+;Value: 3
+
+1 (user) => (count-pairs1 list4)
+
+;Value: 3
+#+END_SRC
+
+Implicitly, we used the induction on depth of =x= to construct this algorithm.
+*** Exercise 3.18
+This algorithm should look like that of previous exercise. Let we first code the
+test:
+#+BEGIN_SRC scheme
+(define (make-cycle x)
+  (set-cdr! (last-pair x) x)
+  x)
+
+(define (last-pair x)
+  (if (null? (cdr x))
+      x
+      (last-pair (cdr x))))
+
+(define list5 (make-cycle (list 1 2 3 4)))
+(define list6 (append '(a b c d) list5))
+
+(cycle? list1)
+#f
+(cycle? list2)
+#f
+(cycle? list3)
+#f
+(cycle? list4)
+#f
+(cycle? list5)
+#t
+(cycle? list6)
+#t
+(cycle? list7)
+#t
+#+END_SRC
+
+Here is the code that exploits local state variable:
+#+BEGIN_SRC scheme
+(define (cycle? x)
+  (define iter
+    (let ((visited '()))
+      (lambda (x)
+        (cond ((null? x) false)
+              ((mem? x visited) true)
+              (else
+               (set! visited (cons x visited))
+               (iter (cdr x)))))))
+  (iter x))
+#+END_SRC
+... And test:
+#+BEGIN_SRC scheme
+1 (user) => (cycle? list1)
+
+;Value: #f
+
+1 (user) => (cycle? list2)
+
+;Value: #f
+
+1 (user) => (cycle? list3)
+
+;Value: #f
+
+1 (user) => (cycle? list4)
+
+;Value: #f
+
+1 (user) => (cycle? list5)
+
+;Value: #t
+
+1 (user) => (cycle? list6)
+
+;Value: #t
+
+1 (user) => (cycle? list7)
+
+;Value: #t
+#+END_SRC
+
+As we wrote our test to be as exhaustive as possible, we can be quite confidence
+about our program: We tested the extremum case such as =list7= with normal case
+=list6= and =list5=.
+*** Exercise 3.19
+The keyword is *constant amount of space*; it implies we should code our code
+iterative. And also since we operate on list, we need to fully understand what
+the properties list structure possesses. If we focus on the convention that we
+traverse list structure one way only-- =cdr= ing down, we could come up with the
+"very clever" idea as noted in text book:
+1. Send one person to stride one step further by =cdr= in each iteration where
+2. Send the other one until the place where the first person stand checking
+   whether the each pointer is same as of first person.
+3. If it is, and if the two pointer located differently in examining list, then
+   it is cycled list.
+4. otherwise second person stride one step further.
+5. If the second one reach the first one without trouble then first one stride
+   one step further.
+6. Loop from 2 to 5 until the first one reach nil pointer. If it reaches nil
+   pointer then return false.
+
+
+As this algorithm inherently evolve as iterative process, we got the algorithm
+that we wanted. To implement the check algorithm that whether two pointer is
+same but in different place, we could assign each pointer to number, namely the
+step needed to get reached to that place. However, although it is subtle, this
+strategy doesn't assure this assigned number doesn't grow in space: It would be
+consume more space when the step get huge number. To cope with this situation we
+can exploit the observation that, as our program return as soon as it found the
+first cycle point, the different place but same pointer should have different
+previous place where visited just before the current place.
+
+Here is the code:
+#+BEGIN_SRC scheme
+(define (cycle1? x)
+  (define first-man
+    (let ((prev '()))
+      (lambda (current)
+        (define second-man
+          (let ((prev2 '()))
+            (lambda (current2)
+              (if (eq? current current2)
+                  (eq? prev prev2)
+                  (begin (set! prev2 current2)
+                         (second-man (cdr current2)))))))
+        (cond ((null? current) false)
+              ((not (second-man x)) true)
+              (else
+               (set! prev current)
+               (first-man (cdr current)))))))
+  (first-man x))
+#+END_SRC
+
+And the test:
+#+BEGIN_SRC scheme
+1 (user) => (cycle1? list1)
+
+;Value: #f
+
+1 (user) => (cycle1? list2)
+
+;Value: #f
+
+1 (user) => (cycle1? list3)
+
+;Value: #f
+
+1 (user) => (cycle1? list4)
+
+;Value: #f
+
+1 (user) => (cycle1? list5)
+
+;Value: #t
+
+1 (user) => (cycle1? list6)
+
+;Value: #t
+
+1 (user) => (cycle1? list7)
+
+;Value: #t
+#+END_SRC
