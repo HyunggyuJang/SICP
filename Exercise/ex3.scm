@@ -456,6 +456,7 @@
 ;; #t
 
 ;; Exercise 3.19
+;; imperative version
 (define (cycle1? x)
   (define first-man
     (let ((prev '()))
@@ -473,3 +474,37 @@
                (set! prev current)
                (first-man (cdr current)))))))
   (first-man x))
+;; functional version
+(define (cycle2? x)
+  (define (first-man prev current)
+    (define (second-man prev2 current2)
+      (if (eq? current current2)
+          (eq? prev prev2)
+          (second-man current2 (cdr current2))))
+    (cond ((null? current) false)
+          ((not (second-man '() x)) true)
+          (else
+           (first-man current (cdr current)))))
+  (first-man '() x))
+
+(define (cycle3? x)
+  (let ((first-man
+         (lambda (prev current)
+           (let ((second-man
+                  (lambda (prev2 current2)
+                    (if (eq? current current2)
+                        (eq? prev prev2)
+                        (second-man current2 (cdr current2))))))
+             (cond ((null? current) false)
+                   ((not (second-man '() x)) true)
+                   (else
+                    (first-man current (cdr current))))))))
+    (first-man '() x)))
+
+;; Lecture 5A: Assignment, State, and Side-effects
+;; Understanding define
+(define test
+  (let ((t 1))
+    (define t1 (+ t 1))
+    (define t1 (+ t1 1))
+    t))

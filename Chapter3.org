@@ -955,3 +955,161 @@ And the test:
 
 ;Value: #t
 #+END_SRC
+
+Or functional version:
+#+BEGIN_SRC scheme
+(define (cycle2? x)
+  (define (first-man prev current)
+    (define (second-man prev2 current2)
+      (if (eq? current current2)
+          (eq? prev prev2)
+          (second-man current2 (cdr current2))))
+    (cond ((null? current) false)
+          ((not (second-man '() x)) true)
+          (else
+           (first-man current (cdr current)))))
+  (first-man '() x))
+#+END_SRC
+
+We could use less =define= notation:
+#+BEGIN_SRC scheme
+(define (cycle3? x)
+  (let ((first-man
+         (lambda (prev current)
+           (let ((second-man
+                  (lambda (prev2 current2)
+                    (if (eq? current current2)
+                        (eq? prev prev2)
+                        (second-man current2 (cdr current2))))))
+             (cond ((null? current) false)
+                   ((not (second-man '() x)) true)
+                   (else
+                    (first-man current (cdr current))))))))
+    (first-man '() x)))
+#+END_SRC
+
+Unfortunately, this won't work:
+#+BEGIN_SRC scheme
+1 (user) => (cycle3? list7)
+
+;Unbound variable: first-man
+#+END_SRC
+
+To understand why, we can desugar =(let ((<var> <val>)) body)= expression as
+=((lambda (<var>) body) <val>)=: The =lambda= expression in the first =let=
+notation, there is no way to reference =first-man= in the body of =lambda=
+expression of right-hand side; we need define to abstract this.
+*** Lecture 5A: Assignment, State, and Side-effects
+I've got quite intrigued by that if we can replace all the =set!= expression
+with =define= ? (well, we supposed to not to do)
+
+Let's experiment:
+#+BEGIN_SRC scheme
+1 (user) => (define t 1)
+
+;Value: t
+
+1 (user) => (define t (+ t 1))
+
+;Value: t
+
+1 (user) => t
+
+;Value: 2
+#+END_SRC
+
+Seems like we could replace the use of =set!=; but:
+#+BEGIN_SRC scheme
+(define test
+  (let ((t 1))
+    (define t (+ t 1))
+    t))
+#+END_SRC
+
+This definition won't work:
+#+BEGIN_SRC scheme
+1 (user) => (define test
+  (let ((t 1))
+    (define t (+ t 1))
+    t))
+
+;Unassigned variable: t
+#+END_SRC
+
+Do more experiment to grasp what's going on here:
+#+BEGIN_SRC scheme
+1 (user) => (define test
+  (let ((t 1))
+    (define t1 (+ t 1))
+    (define t1 (+ t1 1))
+    t))
+
+;duplicate internal definitions for (#[uninterned-symbol 38 t1]) in |#[let-procedure]|
+#+END_SRC
+
+From these sequence of experiments, we can deduce that the effect of =define=,
+which is similar with =set!=, is only allowed to REPL; in other words, only in
+global environment. Within the evaluation model we learned so far, we can not
+understand fully the behavior of =define=.
+
+In lecture, professor start to define what means by the word "bound":
+#+BEGIN_QUOTE
+We say that a variable, V, is "bound in an expression", E, if the meaning of E
+is unchanged by the uniform replacement of a variable, W, not occurring in E,
+for every occurrence of V in E.
+#+END_QUOTE
+
+And also "free variable":
+#+BEGIN_QUOTE
+We say that a variable, V, is "free in and expression", E, if the meaning of E
+is changed by the uniform replacement of a variable, W, not occurring in E, for
+every occurrence of V in E.
+#+END_QUOTE
+
+By consequence of this, we have concept named "scope":
+#+BEGIN_QUOTE
+If x is a bound variable in E then there is a lambda expression where it is
+bound. We call the list of formal parameters of the lambda expression the "bound
+variable list" and we say that the lambda expression "binds" the variables
+"declared" in its bound variable list. In addition, those parts of the
+expression where a variable has a value defined by the lambda expression which
+binds it is called the "scope" of the variable.
+#+END_QUOTE
+
+The evaluation rule 1:
+#+BEGIN_QUOTE
+A procedure object is applied to a set of arguments by constructing a frame,
+binding the formal parameters of the procedure to the actual arguments of the
+call, and then evaluating the body of the procedure in the context of the new
+environment constructed. The new fram has as its enclosing environment the
+environment part of the procedure object being applied.
+#+END_QUOTE
+
+The evaluation rule 2:
+#+BEGIN_QUOTE
+A lambda-expression is evaluated relative to a given environment as follows: A
+new procedure object is formed, combining the text (code) of the lambda
+expression with a pointer to the environment of evaluation.
+#+END_QUOTE
+
+The terminologis about actions and identity:
+#+BEGIN_QUOTE
+We say that an action, A, had an effect on an object, X, (or equivalently, that
+X was changed by A) if some property, P, which was true of X before A became
+false of X after A.
+
+We say that two objects, X and Y, are the same if any action which has an effect
+on X has the same effect on Y.
+#+END_QUOTE
+
+Professor end the lecture with following quote:
+
+Mr. Gilbert and Sullivan said,
+#+BEGIN_QUOTE
+Things are seldom what they seem, 
+Skim milk masquerades as cream...
+#+END_QUOTE
+
+He wanted to implies, I guess, the stream concept that would come up with following lecture; 
+if we consider the meaning of quote in this specific context but it will convolve a lot more
+profound meaning I think.
