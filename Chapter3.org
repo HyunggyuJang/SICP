@@ -1698,3 +1698,215 @@ Test for /deque/:
 
 ;Value: #t
 #+END_SRC
+** Representing Tables
+In chapter 2, we exploited a lot the data structure named /table/. /Table/ was
+the backbone our data-directed programming scheme. Table is so general data
+structure to the extent many of the "practical" programming languages provides
+table as one of the primitive data structure. In Lisp, we don't have any table
+like structure for granted. But we can implement that data structure by our own
+if we allowed to use assignment.
+
+Then what is table? What data structure we think as table? Here we define what
+we think as table informally:
+- We should be able to retrieve the registered value in the table by its key.
+- We should be able to insert new entry, which contains key value pair-like
+  structure, to the table.
+
+
+More formally table should satisfy following axioms:
+- =(lookup key (begin (insert! (make-entry key value) table) table))=
+  returns =value=.
+
+
+What value =(lookup not-in-the-table table)= should returns is implementation
+detail. The implementor can choose whatever value we want unless the specifier
+doesn't specify to that extent.
+
+For the implementation detail, we need to use /headed/ list as the backbone of
+our table to insert given entry to the given table; without this, we couldn't
+locate the locus of the table's contents.
+
+Here is the sample implementation in text book:
+#+BEGIN_SRC scheme
+;;; constructor
+(define (make-table)
+  (list '*table*))
+
+;;; selector + predicate
+(define (lookup key table)
+  (let ((record (assoc key (cdr table))))
+    (if record
+        (cdr record)
+        false)))
+;;; dependency
+;;; we represent contents of table as A-list
+(define (assoc key records)
+  (cond ((null? records) false)
+        ((equal? key (caar records)) (car records))
+        (else (assoc key (cdr records)))))
+
+;;; mutator
+(define (insert! key value table)
+  (let ((record (assoc key records)))
+    (if record
+        (set-cdr! record value)
+        (set-cdr! table
+                  (cons (cons key value)
+                        (cdr table)))))
+  'ok)
+#+END_SRC
+
+*** Two-dimensional tables
+We can extend one-dimensional table above to two-dimensional table by observing
+that each value of one-dimensional table could be A-list. As the key of the
+subtables performs as header, we don't need any auxiliary header as we did in
+one-dimensional table.
+
+As we noted above, all the left is to implement two dimensional lookup procedure
+and insert accordingly:
+#+BEGIN_SRC scheme
+(define (lookup key-1 key-2 table)
+  (let ((subtable (assoc key-1 (cdr table))))
+    (if subtable
+        (let ((record (assoc key-2 (cdr subtable))))
+          (if record
+              (cdr record)
+              false))
+        false)))
+
+(define (insert! key-1 key-2 value table)
+  (let ((subtable (assoc key-1 (cdr table))))
+    (if subtable
+        (let ((record (assoc key-2 (cdr subtable))))
+          (if record
+              (set-cdr! record value)
+              (set-cdr! subtable
+                        (cons (cons key-2 value)
+                              (cdr subtable)))))
+        (set-cdr! table
+                  (cons (list key-1
+                              (cons key-2 value))
+                        (cdr table)))))
+  'ok)
+#+END_SRC
+*** Creating local tables
+We can convert our concrete representation to message-passing:
+#+BEGIN_SRC scheme
+(define (make-table2)
+  (let ((local-table (list '*table*)))
+    (define (lookup key-1 key-2)
+      (let ((subtable (assoc key-1 (cdr local-table))))
+        (if subtable
+            (let ((record (assoc key-2 (cdr subtable))))
+              (if record
+                  (cdr record)
+                  false))
+            false)))
+    (define (insert! key-1 key-2 value)
+      (let ((subtable (assoc key-1 (cdr local-table))))
+        (if subtable
+            (let ((record (assoc key-2 (cdr subtable))))
+              (if record
+                  (set-cdr! record value)
+                  (set-cdr! subtable
+                            (cons (cons key-2 value)
+                                  (cdr subtable)))))
+            (set-cdr! local-table
+                      (cons (list key-1
+                                  (cons key-2 value))
+                            (cdr local-table)))))
+      'ok)
+    (define (dispatch m)
+      (cond ((eq? m 'lookup-proc) lookup)
+            ((eq? m 'insert-proc!) insert!)
+            (else (error "Unknown operation -- TABLE" m))))
+    dispatch))
+#+END_SRC
+*** Exercise 3.24
+It is way too easy to implement we get what we want by slightly amending above
+implementation:
+#+BEGIN_SRC scheme
+(define (make-table3 same-key?)
+
+  (define (assoc key records)
+    (cond ((null? records) false)
+          ((same-key? key (caar records)) (car records))
+          (else (assoc key (cdr records)))))
+
+  (let ((local-table (list '*table*)))
+    (define (lookup key-1 key-2)
+      (let ((subtable (assoc key-1 (cdr local-table))))
+        (if subtable
+            (let ((record (assoc key-2 (cdr subtable))))
+              (if record
+                  (cdr record)
+                  false))
+            false)))
+    (define (insert! key-1 key-2 value)
+      (let ((subtable (assoc key-1 (cdr local-table))))
+        (if subtable
+            (let ((record (assoc key-2 (cdr subtable))))
+              (if record
+                  (set-cdr! record value)
+                  (set-cdr! subtable
+                            (cons (cons key-2 value)
+                                  (cdr subtable)))))
+            (set-cdr! local-table
+                      (cons (list key-1
+                                  (cons key-2 value))
+                            (cdr local-table)))))
+      'ok)
+    (define (dispatch m)
+      (cond ((eq? m 'lookup-proc) lookup)
+            ((eq? m 'insert-proc!) insert!)
+            (else (error "Unknown operation -- TABLE" m))))
+    dispatch))
+#+END_SRC
+*** Exercise 3.25
+It is equivalent to prove the behavior of the specification: Induction on depth
+of the table. If we persist with the A-list representation as before, and also
+assume that all the generalized table structured appropriately, we can easily
+extend the previous table to generalized one:
+#+BEGIN_SRC scheme
+(define (lookup key-list table)
+  (cond ((null? key-list)
+         (error "LOOKUP called with empty key-list"))
+        ((null? (cdr key-list))
+         (let ((record (assoc (car key-list) (cdr table))))
+           (if record
+               (cdr record)
+               false)))
+        (else
+         (let ((subtable (assoc (car key-list) (cdr table))))
+           (if subtable
+               (lookup (cdr key-list table))
+               false)))))
+
+(define (insert! key-list value table)
+  (cond ((null? key-list)
+         (error "INSERT! called with empty key-list"))
+        ((null? (cdr key-list))
+         (let ((record (assoc (car key-list) records)))
+           (if record
+               (set-cdr! record value)
+               (set-cdr! table
+                         (cons (cons (car key-list) value)
+                               (cdr table))))))
+        (else
+         (let ((subtable (assoc (car key-list) (cdr table))))
+           (if subtable
+               (insert! (cdr key-list) value table)
+               (set-cdr! table
+                         (cons (make-table-with key-list value)
+                               (cdr table)))))))
+  'ok)
+
+(define (make-table-with key-list value)
+  (if (null? (cdr key-list))
+      (cons (car key-list) value)
+      (list (car key-list)
+            (make-table-with (cdr key-list) value))))
+#+END_SRC
+
+I didn't tested it but it would work. Since I'm going to implement above task
+using more opaque way as lectured in [[youtube:bWJlEevfp1E?list=PL7BcsI5ueSNFPCEisbaoQ0kXIDX9rR5FF][Abstract Data Type]].
