@@ -662,3 +662,136 @@
 ;; ;Value: (#0=(b) . #0#)
 ;; ((q1 'delete-queue!))
 ;; ;Value: (() b)
+
+;; Exercise 3.23
+
+;; constructor
+(define (make-deque)
+  (let ((front-ptr '())
+        (rear-ptr '()))
+    ;; selector -- predicate
+    (define (empty-deque?) (or (null? front-ptr)
+                               (null? rear-ptr)))
+    ;; selector -- first item
+    (define (front-deque)
+      (if (empty-deque?)
+          (error "FRONT called with an empty deque -- MAKE-DEQUE" dispatch)
+          (item front-ptr)))
+    (define (rear-deque)
+      (if (empty-deque?)
+          (error "REAR called with an empty deque -- MAKE-DEQUE" dispatch)
+          (item rear-ptr)))
+    (define (rear-insert-deque! item)
+      (let ((new-node (make-node '() item '())))
+        (cond ((empty-deque?)
+               (set! front-ptr new-node)
+               (set! rear-ptr new-node)
+               dispatch)
+              (else
+               (set-next! rear-ptr new-node)
+               (set! rear-ptr new-node)
+               dispatch))))
+    (define (front-insert-deque! item)
+      (let ((new-node (make-node '() item '())))
+        (cond ((empty-deque?)
+               (set! front-ptr new-node)
+               (set! rear-ptr new-node)
+               dispatch)
+              (else
+               (set-prev! front-ptr new-node)
+               (set! front-ptr new-node)
+               dispatch))))
+    (define (front-delete-deque!)
+      (cond ((empty-deque?)
+             (error "FRONT-DELETE! called with an empty deque -- MAKE-DEQUE" dispatch))
+            (else
+             (set! front-ptr (next front-ptr))
+             dispatch)))
+    (define (rear-delete-deque!)
+      (cond ((empty-deque?)
+             (error "FRONT-DELETE! called with an empty deque -- MAKE-DEQUE" dispatch))
+            (else
+             (set! rear-ptr (prev rear-ptr))
+             dispatch)))
+    (define (dispatch m)
+      (cond ((eq? m 'empty-deque?) empty-deque?)
+            ((eq? m 'front-deque) front-deque)
+            ((eq? m 'rear-deque) rear-deque)
+            ((eq? m 'front-insert-deque!) front-insert-deque!)
+            ((eq? m 'rear-insert-deque!) rear-insert-deque!)
+            ((eq? m 'front-delete-deque!) front-delete-deque!)
+            ((eq? m 'rear-delete-deque!) rear-delete-deque!)
+            (else
+             (error "Unknown request -- MAKE-DEQUE" m))))
+    dispatch))
+;; selector -- predicate
+(define (empty-deque? deque) ((deque 'empty-deque?)))
+;; selector -- first item
+(define (front-deque deque) ((deque 'front-deque)))
+;; selector -- last item
+(define (rear-deque deque) ((deque 'rear-deque)))
+;; mutator -- insert front
+(define (front-insert-deque! deque item) ((deque 'front-insert-deque!) item))
+;; mutator -- insert rear
+(define (rear-insert-deque! deque item) ((deque 'rear-insert-deque!) item))
+;; mutator -- delete first
+(define (front-delete-deque! deque) ((deque 'front-delete-deque!)))
+;; mutator -- delete last
+(define (rear-delete-deque! deque) ((deque 'rear-delete-deque!)))
+
+;; test deque
+(define d (make-deque))
+;Value: d
+(empty-deque? d)
+;Value: #t
+(front-insert-deque! d 'a)
+(rear-deque d)
+;Value: a
+(front-deque d)
+;Value: a
+(rear-insert-deque! d 'b)
+(front-delete-deque! d)
+(front-delete-deque! d)
+(empty-deque? d)
+
+;; node representation
+;;; constructor
+(define (make-node prev item next)
+  (define (set-prev! new-prev) (set! prev new-prev))
+  (define (set-item! new-item) (set! item new-item))
+  (define (set-next! new-next) (set! next new-next))
+  (define (dispatch m)
+    (cond ((eq? m 'prev) prev)
+          ((eq? m 'item) item)
+          ((eq? m 'next) next)
+          ((eq? m 'set-prev!) set-prev!)
+          ((eq? m 'set-item!) set-item!)
+          ((eq? m 'set-next!) set-next!)
+          (else
+           (error "Unknown request -- MAKE-NODE" m))))
+  dispatch)
+
+;;; selectors
+(define (prev node) (node 'prev))
+(define (item node) (node 'item))
+(define (next node) (node 'next))
+
+;;; mutators
+(define (set-prev! node new-prev) ((node 'set-prev!) new-prev))
+(define (set-item! node new-item) ((node 'set-item!) new-item))
+(define (set-next! node new-next) ((node 'set-next!) new-next))
+
+;; test node
+;; (define n (make-node '() 2 '()))
+;; (define n2 (make-node n 3 '()))
+;; (item n)
+;; 2
+;; (item n2)
+;; 3
+;; (item (prev n2))
+;; 2
+;; (define n3 (make-node '() 4 '()))
+;; (set-next! n2 n3)
+;; (set-prev! n3 n2)
+;; (item (prev (prev n3)))
+;; 2

@@ -1464,3 +1464,237 @@ We can integrate =print-queue= to this procedure object:
 ()
 ;Value: #[compound-procedure 45 dispatch]
 #+END_SRC
+
+Note that with this local state paradigm, message passing style is more
+succinctly encode the specification than the representation using concrete data
+structure-- here pair.
+
+*** Exercise 3.23
+Not only to traverse one way-- =cdr=, we need means to traverse the opposite
+way to implement /deque/. As we requested in implementation of queue, we need to
+implement all the operation in \Theta (1) steps.
+
+Here we devise new data structure not only /deque/, also /node/ with which we
+represent /deque/. /Node/ has many analogy with primitive data structure, pair;
+it construct one chunk using several pointers together, but /node/ has three
+pointers in one chunk whereas pair has two pointers in it.
+
+Here is the specification for /node/:
+- constructor :: =(make-node prev item next)= returns node that has three
+     pointers, each of which points =prev=, =item=, =next=, respectively.
+- selectors ::
+     - =(prev node)= returns first pointer.
+     - =(item node)= returns second pointer.
+     - =(next node)= returns last pointer.
+- mutators ::
+     - =(set-prev! node new-prev)= resets its pointer that points =prev= to =new-prev=.
+     - =(set-item! node new-item)= resets its pointer that points =item= to =new-item=.
+     - =(set-next! node new-next)= resets its pointer that points =next= to =new-next=.
+
+
+Here is the implementation for /node/:
+#+BEGIN_SRC scheme
+;;; constructor
+(define (make-node prev item next)
+  (define (set-prev! new-prev) (set! prev new-prev))
+  (define (set-item! new-item) (set! item new-item))
+  (define (set-next! new-next) (set! next new-next))
+  (define (dispatch m)
+    (cond ((eq? m 'prev) prev)
+          ((eq? m 'item) item)
+          ((eq? m 'next) next)
+          ((eq? m 'set-prev!) set-prev!)
+          ((eq? m 'set-item!) set-item!)
+          ((eq? m 'set-next!) set-next!)
+          (else
+           (error "Unknown request -- MAKE-NODE" m))))
+  dispatch)
+
+;;; selectors
+(define (prev node) (node 'prev))
+(define (item node) (node 'item))
+(define (next node) (node 'next))
+
+;;; mutators
+(define (set-prev! node new-prev) ((node 'set-prev!) new-prev))
+(define (set-item! node new-item) ((node 'set-item!) new-item))
+(define (set-next! node new-next) ((node 'set-next!) new-next))
+#+END_SRC
+
+Then we can implement /deque/ using the analogy with /queue/. During
+implementing node, queue, and the other massage passing style code, I got
+intrigued by how am I going to implement the conventional array in scheme using
+massage passing style; it should access its element with \Theta (1) steps. So
+far, in message passing style, we dealt with only fixed sized argument list.
+
+One way to deal with unspecified argument list is use the primitive procedure
+syntax, e.g. =(x y . z)=; but the problem of this approach is that to access the
+contents that stored in =z=, as it is list, needs \Theta (n) steps where n is
+the size of =z=. To deal with this unfortunate, if we believe that accessing any
+variable in the frame require only \Theta(1) steps, we need to register all the
+argument of =z= (with =x= and =y= also) current environment of callee, for which
+we don't have any method.
+
+Let alone that problem let we conclude our original task. First let test our
+node code:
+#+BEGIN_SRC scheme
+1 (user) => (define n (make-node '() 2 '()))
+
+;Value: n
+
+1 (user) => (define n2 (make-node n 3 '()))
+
+;Value: n2
+
+1 (user) => (item n)
+
+;Value: 2
+
+1 (user) => (item n2)
+
+;Value: 3
+
+1 (user) => (item (prev n2))
+
+;Value: 2
+
+1 (user) => (define n3 (make-node '() 4 '()))
+
+;Value: n3
+
+1 (user) => (set-next! n2 n3)
+
+;Value: ()
+
+1 (user) => (set-prev! n3 n2)
+
+;Value: ()
+
+1 (user) => (item (prev (prev n3)))
+
+;Value: 2
+#+END_SRC
+
+And this is straightforward implementation for /deque/:
+#+BEGIN_SRC scheme
+;; constructor
+(define (make-deque)
+  (let ((front-ptr '())
+        (rear-ptr '()))
+    ;; selector -- predicate
+    (define (empty-deque?) (or (null? front-ptr)
+                               (null? rear-ptr)))
+    ;; selector -- first item
+    (define (front-deque)
+      (if (empty-deque?)
+          (error "FRONT called with an empty deque -- MAKE-DEQUE" dispatch)
+          (item front-ptr)))
+    (define (rear-deque)
+      (if (empty-deque?)
+          (error "REAR called with an empty deque -- MAKE-DEQUE" dispatch)
+          (item rear-ptr)))
+    (define (rear-insert-deque! item)
+      (let ((new-node (make-node '() item '())))
+        (cond ((empty-deque?)
+               (set! front-ptr new-node)
+               (set! rear-ptr new-node)
+               dispatch)
+              (else
+               (set-next! rear-ptr new-node)
+               (set! rear-ptr new-node)
+               dispatch))))
+    (define (front-insert-deque! item)
+      (let ((new-node (make-node '() item '())))
+        (cond ((empty-deque?)
+               (set! front-ptr new-node)
+               (set! rear-ptr new-node)
+               dispatch)
+              (else
+               (set-prev! front-ptr new-node)
+               (set! front-ptr new-node)
+               dispatch))))
+    (define (front-delete-deque!)
+      (cond ((empty-deque?)
+             (error "FRONT-DELETE! called with an empty deque -- MAKE-DEQUE" dispatch))
+            (else
+             (set! front-ptr (next front-ptr))
+             dispatch)))
+    (define (rear-delete-deque!)
+      (cond ((empty-deque?)
+             (error "FRONT-DELETE! called with an empty deque -- MAKE-DEQUE" dispatch))
+            (else
+             (set! rear-ptr (prev rear-ptr))
+             dispatch)))
+    (define (dispatch m)
+      (cond ((eq? m 'empty-deque?) empty-deque?)
+            ((eq? m 'front-deque) front-deque)
+            ((eq? m 'rear-deque) rear-deque)
+            ((eq? m 'front-insert-deque!) front-insert-deque!)
+            ((eq? m 'rear-insert-deque!) rear-insert-deque!)
+            ((eq? m 'front-delete-deque!) front-delete-deque!)
+            ((eq? m 'rear-delete-deque!) rear-delete-deque!)
+            (else
+             (error "Unknown request -- MAKE-DEQUE" m))))
+    dispatch))
+;; selector -- predicate
+(define (empty-deque? deque) ((deque 'empty-deque?)))
+;; selector -- first item
+(define (front-deque deque) ((deque 'front-deque)))
+;; selector -- last item
+(define (rear-deque deque) ((deque 'rear-deque)))
+;; mutator -- insert front
+(define (front-insert-deque! deque item) ((deque 'front-insert-deque!) item))
+;; mutator -- insert rear
+(define (rear-insert-deque! deque item) ((deque 'rear-insert-deque!) item))
+;; mutator -- delete first
+(define (front-delete-deque! deque) ((deque 'front-delete-deque!)))
+;; mutator -- delete last
+(define (rear-delete-deque! deque) ((deque 'rear-delete-deque!)))
+#+END_SRC
+
+Test for /deque/:
+#+BEGIN_SRC scheme
+1 (user) => (define d (make-deque))
+
+;Value: d
+
+1 (user) => (empty-deque? d)
+
+;Value: #t
+
+1 (user) => (front-insert-deque! d 'a)
+
+;Value: #[compound-procedure 38 dispatch]
+
+1 (user) => (rear-deque d)
+
+;Value: a
+
+1 (user) => (front-deque d)
+
+;Value: a
+
+1 (user) => (rear-insert-deque! d 'b)
+
+;Value: #[compound-procedure 38 dispatch]
+
+1 (user) => (rear-deque d)
+
+;Value: b
+
+1 (user) => (front-deque d)
+
+;Value: a
+
+1 (user) => (front-delete-deque! d)
+
+;Value: #[compound-procedure 38 dispatch]
+
+1 (user) => (front-delete-deque! d)
+
+;Value: #[compound-procedure 38 dispatch]
+
+1 (user) => (empty-deque? d)
+
+;Value: #t
+#+END_SRC
