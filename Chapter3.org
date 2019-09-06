@@ -1113,3 +1113,354 @@ Skim milk masquerades as cream...
 He wanted to implies, I guess, the stream concept that would come up with following lecture; 
 if we consider the meaning of quote in this specific context but it will convolve a lot more
 profound meaning I think.
+** Representing Queues
+As we do usually, we build our data abstraction for our queue implementation:
+- a constructor :: =(make-queue)= returns an empty queue.
+- two selectors ::
+  - =(empty-queue? <queue>)= tests if the queue is empty.
+  - =(front-queue <queue>)= returns the object at the front of the queue,
+    signaling an error if the queue is empty; it does not modify the queue.
+- two mutators ::
+  - =(insert-queue! <queue> <item>)= inserts the item at the front of the
+    queue and returns the modified queue as its value.
+  - =(delete-queue! <queue>)= removes the item at the front of the queue and
+    returns the modified queue as its value, signaling an error if the queue is
+    empty before the deletion.
+
+
+For the implementation restriction, all the operation should require \Theta (1) steps.
+
+In text book, they install additional layer, between manipulating queue
+representation and implementing queue representation using list structure:
+#+BEGIN_SRC scheme
+;;; wrapping around the queue representation
+(define (front-ptr queue) (car queue))
+(define (rear-ptr queue) (cdr queue))
+(define (set-front-ptr! queue item) (set-car! queue item))
+(define (set-rear-ptr! queue item) (set-cdr! queue item))
+
+;;; selector -- predicate
+(define (empty-queue? queue) (null? (front-ptr queue)))
+
+;;; constructor
+(define (make-queue) (cons '() '()))
+
+;;; selector -- first element
+(define (front-queue queue)
+  (if (empty-queue? queue)
+      (error "FRONT called with an empty queue" queue)
+      (car (front-ptr queue))))
+
+;;; mutator -- insert item
+(define (insert-queue! queue item)
+  (let ((new-pair (cons item '())))
+    (cond ((empty-queue? queue)
+           (set-front-ptr! queue new-pair)
+           (set-rear-ptr! queue new-pair)
+           queue)
+          (else
+           (set-cdr! (rear-ptr queue)
+                     new-pair)
+           (set-rear-ptr! queue new-pair)
+           queue))))
+
+;;; mutator -- delete item
+(define (delete-queue! queue)
+  (cond ((empty-queue? queue)
+         (error "DELETE! called with an empty queue" queue))
+        (else
+         (set-front-ptr! queue (cdr (front-ptr queue)))
+         queue)))
+#+END_SRC
+
+*** Exercise 3.21
+Eva Lu Ator denotes that it is just reachable from two different pointer not
+that =insert-queue= inserts item twice; recall the exercise [[Exercise 3.16][3.16]], where all the
+list has exactly three pairs in it but represented differently. (in both Ben
+Bitdiddle's =count-pairs= and Lisp printer)
+
+Here, to understand how the Lisp printer works, we implement the Lisp printer.
+To implement that, we use nested induction -- induction on depth of expression
+and within that, we run induction on width of expression. To deduce the
+specification of Lisp printer, we play with Lisp interpreter for a while:
+#+BEGIN_SRC scheme
+1 (user) => (cons 1 2)
+
+;Value: (1 . 2)
+
+1 (user) => (list 1 2)
+
+;Value: (1 2)
+
+1 (user) => (cons 1 (cons 2 3))
+
+;Value: (1 2 . 3)
+
+1 (user) => (cons (cons 1 2) 3)
+
+;Value: ((1 . 2) . 3)
+
+1 (user) => (cons 1 (cons 2 '()))
+
+;Value: (1 2)
+#+END_SRC
+
+And here is the implementation:
+#+BEGIN_SRC scheme
+(define (print exp)
+  (cond ((pair? exp) (print-exp exp))
+        (else                           ;not compound
+         (display exp))))
+
+(define (print-exp exp)
+  (define (iter exp)
+    (cond ((null? exp))
+          ((pair? exp)
+           (display " ")
+           (print (car exp))
+           (iter (cdr exp)))
+          (else
+           (display " . ")
+           (print exp))))
+  (display "(")
+  (print (car exp))
+  (iter (cdr exp))
+  (display ")"))
+#+END_SRC
+
+Here is the test:
+#+BEGIN_SRC scheme
+1 (user) => (print (cons 1 2))
+(1 . 2)
+;Unspecified return value
+
+1 (user) => (print (list 1 2))
+(1 2)
+;Unspecified return value
+
+1 (user) => (print (cons 1 (cons 2 3)))
+(1 2 . 3)
+;Unspecified return value
+
+1 (user) => (print (cons (cons 1 2) 3))
+((1 . 2) . 3)
+;Unspecified return value
+
+1 (user) => (print (cons 1 (cons 2 '())))
+(1 2)
+;Unspecified return value
+#+END_SRC
+
+Then here is the examples for what the Ben Bitdiddle misunderstood:
+#+BEGIN_SRC scheme
+1 (user) => (print list3)
+(((3) 3) (3) 3)
+;Unspecified return value
+
+1 (user) => (print list2)
+(1 (3) 3)
+;Unspecified return value
+#+END_SRC
+
+Consequently we can conclude that the Lisp printer display all the element
+recursively following given pointer.
+
+Actually, what version I use for now as scheme interpreter is smarter than that:
+#+BEGIN_SRC scheme
+(define q1 (make-queue))
+
+;Value: q1
+
+(insert-queue! q1 'a)
+
+;Value: (#0=(a) . #0#)
+
+(insert-queue! q1 'b)
+
+;Value: ((a . #0=(b)) . #0#)
+
+(delete-queue! q1)
+
+;Value: (#0=(b) . #0#)
+
+(delete-queue! q1)
+
+;Value: (() b)
+#+END_SRC
+
+It recognize the same pointer using, I guess, memorize all the pointer it
+encountered. But for now, let we stick the old version of printer in text book.
+
+Return to our task, =print-queue= is really simple: Just print following the
+first pointer of queue:
+#+BEGIN_SRC scheme
+(define (print-queue queue)
+  (display (front-ptr queue)))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+1 (user) => (define q1 (make-queue))
+;Value: q1
+
+1 (user) => (print-queue (insert-queue! q1 'a))
+(a)
+;Unspecified return value
+
+1 (user) => (print-queue (insert-queue! q1 'b))
+(a b)
+;Unspecified return value
+
+1 (user) => (print-queue (delete-queue! q1))
+(b)
+;Unspecified return value
+
+1 (user) => (print-queue (delete-queue! q1))
+()
+;Unspecified return value
+#+END_SRC
+
+Ben Bitdiddle should satisfy what =print-queue= display.
+*** Exercise 3.22
+We can map our previous implementation to message passing style by
+- =(front-ptr queue)= \to =front-ptr= in =make-queue=
+- =(rear-ptr queue)= \to =rear-ptr= in =make-queue=
+- ...
+
+
+It get boring to jot down all the relation; let I just show the result:
+#+BEGIN_SRC scheme
+(define (make-queue2)
+  (let ((front-ptr '())
+        (rear-ptr '()))
+    ;; selector -- predicate
+    (define (empty-queue?) (null? front-ptr))
+    ;; selector -- first item
+    (define (front-queue)
+      (if (empty-queue?)
+          (error "FRONT called with an empty queue -- MAKE-QUEUE2" dispatch)
+          (car front-ptr)))
+    (define (insert-queue! item)
+      (let ((new-pair (cons item '())))
+        (cond ((empty-queue?)
+               (set! front-ptr new-pair)
+               (set! rear-ptr new-pair)
+               dispatch)
+              (else
+               (set-cdr! rear-ptr new-pair)
+               (set! rear-ptr new-pair)
+               dispatch))))
+    (define (delete-queue!)
+      (cond ((empty-queue?)
+             (error "DELETE! called with an empty queue -- MAKE-QUEUE2" dispatch))
+            (else
+             (set! front-ptr (cdr front-ptr))
+             dispatch)))
+    (define (dispatch m)
+      (cond ((eq? m 'empty-queue?) empty-queue?)
+            ((eq? m 'front-queue) front-queue)
+            ((eq? m 'insert-queue!) insert-queue!)
+            ((eq? m 'delete-queue!) delete-queue!)
+            (else
+             (error "Unknown request -- MAKE-QUEUE2" m))))
+    dispatch))
+#+END_SRC
+
+And here is how we should use:
+#+BEGIN_SRC scheme
+1 (user) => (define q1 (make-queue2))
+
+;Value: q1
+
+1 (user) => ((q1 'insert-queue!) 'a)
+
+;Value: #[compound-procedure 44 dispatch]
+
+1 (user) => ((q1 'front-queue))
+
+;Value: a
+
+1 (user) => ((q1 'insert-queue!) 'b)
+
+;Value: #[compound-procedure 44 dispatch]
+
+1 (user) => ((q1 'front-queue))
+
+;Value: a
+
+1 (user) => ((q1 'delete-queue!))
+
+;Value: #[compound-procedure 44 dispatch]
+
+1 (user) => ((q1 'front-queue))
+
+;Value: b
+
+1 (user) => ((q1 'delete-queue!))
+
+;Value: #[compound-procedure 44 dispatch]
+
+1 (user) => ((q1 'front-queue))
+
+;FRONT called with an empty queue -- MAKE-QUEUE2 #[compound-procedure 44 dispatch]
+#+END_SRC
+
+We can integrate =print-queue= to this procedure object:
+#+BEGIN_SRC scheme
+(define (make-queue2)
+  (let ((front-ptr '())
+        (rear-ptr '()))
+    ;; selector -- predicate
+    (define (empty-queue?) (null? front-ptr))
+    ;; selector -- first item
+    (define (front-queue)
+      (if (empty-queue?)
+          (error "FRONT called with an empty queue -- MAKE-QUEUE2" dispatch)
+          (car front-ptr)))
+    (define (insert-queue! item)
+      (let ((new-pair (cons item '())))
+        (cond ((empty-queue?)
+               (set! front-ptr new-pair)
+               (set! rear-ptr new-pair)
+               (print-queue)
+               dispatch)
+              (else
+               (set-cdr! rear-ptr new-pair)
+               (set! rear-ptr new-pair)
+               (print-queue)
+               dispatch))))
+    (define (delete-queue!)
+      (cond ((empty-queue?)
+             (error "DELETE! called with an empty queue -- MAKE-QUEUE2" dispatch))
+            (else
+             (set! front-ptr (cdr front-ptr))
+             (print-queue)
+             dispatch)))
+    (define (print-queue) (display front-ptr))
+    (define (dispatch m)
+      (cond ((eq? m 'empty-queue?) empty-queue?)
+            ((eq? m 'front-queue) front-queue)
+            ((eq? m 'insert-queue!) insert-queue!)
+            ((eq? m 'delete-queue!) delete-queue!)
+            (else
+             (error "Unknown request -- MAKE-QUEUE2" m))))
+    dispatch))
+#+END_SRC
+
+#+BEGIN_SRC scheme
+1 (user) => ((q1 'insert-queue!) 'a)
+(a)
+;Value: #[compound-procedure 45 dispatch]
+
+1 (user) => ((q1 'insert-queue!) 'b)
+(a b)
+;Value: #[compound-procedure 45 dispatch]
+
+1 (user) => ((q1 'delete-queue!))
+(b)
+;Value: #[compound-procedure 45 dispatch]
+
+1 (user) => ((q1 'delete-queue!))
+()
+;Value: #[compound-procedure 45 dispatch]
+#+END_SRC

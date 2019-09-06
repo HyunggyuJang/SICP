@@ -503,8 +503,162 @@
 
 ;; Lecture 5A: Assignment, State, and Side-effects
 ;; Understanding define
-(define test
-  (let ((t 1))
-    (define t1 (+ t 1))
-    (define t1 (+ t1 1))
-    t))
+;; (define test
+;;   (let ((t 1))
+;;     (define t1 (+ t 1))
+;;     (define t1 (+ t1 1))
+;;     t))
+
+;; Representing Queues
+;;; wrapping around the queue representation
+(define (front-ptr queue) (car queue))
+(define (rear-ptr queue) (cdr queue))
+(define (set-front-ptr! queue item) (set-car! queue item))
+(define (set-rear-ptr! queue item) (set-cdr! queue item))
+
+;;; selector -- predicate
+(define (empty-queue? queue) (null? (front-ptr queue)))
+
+;;; constructor
+(define (make-queue) (cons '() '()))
+
+;;; selector -- first element
+(define (front-queue queue)
+  (if (empty-queue? queue)
+      (error "FRONT called with an empty queue" queue)
+      (car (front-ptr queue))))
+
+;;; mutator -- insert item
+(define (insert-queue! queue item)
+  (let ((new-pair (cons item '())))
+    (cond ((empty-queue? queue)
+           (set-front-ptr! queue new-pair)
+           (set-rear-ptr! queue new-pair)
+           queue)
+          (else
+           (set-cdr! (rear-ptr queue)
+                     new-pair)
+           (set-rear-ptr! queue new-pair)
+           queue))))
+
+;;; mutator -- delete item
+(define (delete-queue! queue)
+  (cond ((empty-queue? queue)
+         (error "DELETE! called with an empty queue" queue))
+        (else
+         (set-front-ptr! queue (cdr (front-ptr queue)))
+         queue)))
+;; test queue
+;; (define q1 (make-queue))
+;; ;Value: q1
+;; (insert-queue! q1 'a)
+;; ;Value: (#0=(a) . #0#)
+;; (insert-queue! q1 'b)
+;; ;Value: ((a . #0=(b)) . #0#)
+;; (delete-queue! q1)
+;; ;Value: (#0=(b) . #0#)
+;; (delete-queue! q1)
+;; ;Value: (() b)
+
+;; Exercise 3.21
+(define (print exp)
+  (cond ((pair? exp) (print-exp exp))
+        (else                           ;not compound
+         (display exp))))
+
+(define (print-exp exp)
+  (define (iter exp)
+    (cond ((null? exp))                 ;skip
+          ((pair? exp)
+           (display " ")
+           (print (car exp))
+           (iter (cdr exp)))
+          (else
+           (display " . ")
+           (print exp))))
+  (display "(")
+  (print (car exp))
+  (iter (cdr exp))
+  (display ")"))
+;; test print
+;; (print (cons 1 2))
+;; (1 . 2)
+;; (print (list 1 2))
+;; (1 2)
+;; (print (cons 1 (cons 2 3)))
+;; (1 2 . 3)
+;; (print (cons (cons 1 2) 3))
+;; ((1 . 2) . 3)
+;; (print (cons 1 (cons 2 '())))
+;; (1 2)
+
+(define (print-queue queue)
+  (display (front-ptr queue)))
+
+;; test print-queue
+;; (define q1 (make-queue))
+;; ;Value: q1
+;; (print-queue (insert-queue! q1 'a))
+;; (a)
+;; ;Unspecified return value
+;; (print-queue (insert-queue! q1 'b))
+;; (a b)
+;; ;Unspecified return value
+;; (print-queue (delete-queue! q1))
+;; (b)
+;; ;Unspecified return value
+;; (print-queue (delete-queue! q1))
+;; ()
+;; ;Unspecified return value
+
+;; Exercise 3.22
+(define (make-queue2)
+  (let ((front-ptr '())
+        (rear-ptr '()))
+    ;; selector -- predicate
+    (define (empty-queue?) (null? front-ptr))
+    ;; selector -- first item
+    (define (front-queue)
+      (if (empty-queue?)
+          (error "FRONT called with an empty queue -- MAKE-QUEUE2" dispatch)
+          (car front-ptr)))
+    (define (insert-queue! item)
+      (let ((new-pair (cons item '())))
+        (cond ((empty-queue?)
+               (set! front-ptr new-pair)
+               (set! rear-ptr new-pair)
+               (print-queue)
+               dispatch)
+              (else
+               (set-cdr! rear-ptr new-pair)
+               (set! rear-ptr new-pair)
+               (print-queue)
+               dispatch))))
+    (define (delete-queue!)
+      (cond ((empty-queue?)
+             (error "DELETE! called with an empty queue -- MAKE-QUEUE2" dispatch))
+            (else
+             (set! front-ptr (cdr front-ptr))
+             (print-queue)
+             dispatch)))
+    (define (print-queue) (display front-ptr))
+    (define (dispatch m)
+      (cond ((eq? m 'empty-queue?) empty-queue?)
+            ((eq? m 'front-queue) front-queue)
+            ((eq? m 'insert-queue!) insert-queue!)
+            ((eq? m 'delete-queue!) delete-queue!)
+            (else
+             (error "Unknown request -- MAKE-QUEUE2" m))))
+    dispatch))
+
+;; test queue
+;; (define q1 (make-queue2))
+;; ;Value: q1
+;; ((q1 'insert-queue!) 'a)
+;; ;Value: (#0=(a) . #0#)
+;; ((q1 'insert-queue!) 'b)
+;; ;Value: ((a . #0=(b)) . #0#)
+;; ((q1 'delete-queue!))
+;; ;Value: (#0=(b) . #0#)
+;; ((q1 'delete-queue!))
+;; ;Value: (() b)
