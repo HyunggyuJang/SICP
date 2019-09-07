@@ -1908,5 +1908,171 @@ extend the previous table to generalized one:
             (make-table-with (cdr key-list) value))))
 #+END_SRC
 
-I didn't tested it but it would work. Since I'm going to implement above task
-using more opaque way as lectured in [[youtube:bWJlEevfp1E?list=PL7BcsI5ueSNFPCEisbaoQ0kXIDX9rR5FF][Abstract Data Type]].
+I didn't tested it but it would work only if we lookup the table that contains
+entry with key list with which we lookup. Unfortunately, it is huge bug, since
+the user of lookup doesn't know whether the table has such entry. To fix this,
+we make our table using the strategy learned from lecture, [[youtube:bWJlEevfp1E?list=PL7BcsI5ueSNFPCEisbaoQ0kXIDX9rR5FF][Abstract Data Type]].
+
+In previous exercise, we only dealt with table of fixed dimension; we don't need
+to check whether the value of given entry is table or not. Here we don't know
+fore hand the dimension of table, and to deal with such situation, we treat
+table as special value of one dimensional table. By induction on the depth on
+the dimension of table, our result table would handle the unspecified dimension
+of table without any trouble.
+
+At our disposal, we have two candidates for implementation of this:
+message-passing style with local state or dispatch on data type with concrete
+data structure.
+
+Here we first try out the message-passing style:
+#+BEGIN_SRC scheme
+;; constructor
+(define (make-table4)
+  (let ((local-table (list '*table*)))
+    (define (lookup-internal key-list)
+      (let ((record (assoc (car key-list) (cdr local-table))))
+        (if record
+            (let ((value (cdr record)))
+              (cond ((null? (cdr key-list)) value)
+                    ((table? value)
+                     (lookup (cdr key-list) value))
+                    (else false)))
+            false)))
+    (define (insert-internal! key-list value)
+      (let ((record (assoc (car key-list) (cdr local-table))))
+        (if record
+            (let ((value (cdr record)))
+              (cond ((null? (cdr key-list)) (set-cdr! record value))
+                    ((table? value)
+                     (insert! (cdr key-list) value))))
+            (set-cdr! local-table
+                      (cons (make-table-with key-list value)
+                            (cdr local-table)))))
+      'ok)
+    (define (make-table-with key-list value)
+      (if (null? (cdr key-list))
+          (cons (car key-list) value)
+          (let ((tbl (make-table4)))
+            (insert! (cdr key-list)
+                     value
+                     tbl)
+            (cons (car key-list) tbl))))
+    (define (dispatch m)
+      (cond ((eq? m 'lookup-proc) lookup-internal)
+            ((eq? m 'insert-proc!) insert-internal!)
+            ((eq? m 'table?) true)
+            (else (error "Unknown operation -- TABLE" m))))
+    dispatch))
+
+;; selector -- predicate
+(define (table? t) (t 'table?))
+(define (lookup ks t) ((t 'lookup-proc) ks))
+
+;; mutator
+(define (insert! ks v t) ((t 'insert-proc!) ks v))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+;; constructor
+1 (user) => (define tbl (make-table4))
+
+;Value: tbl
+
+;; predicate
+1 (user) => (table? tbl)
+
+;Value: #t
+
+;; mutator
+1 (user) => (insert! '(1 2 3 4) 5 tbl)
+
+;Value: ok
+
+;; selector
+1 (user) => (lookup '(1 2 3 4) tbl)
+
+;Value: 5
+
+1 (user) => (lookup '(1) tbl)
+
+;Value: #[compound-procedure 39 dispatch]
+
+1 (user) => (lookup '(2 3 4) (lookup '(1) tbl))
+
+;Value: 5
+#+END_SRC
+
+The another way:
+#+BEGIN_SRC scheme
+;; type tag
+(define table-tag '*table*)
+;; constructor
+(define (make-table5)
+  (list table-tag))
+
+;; selector -- predicate
+(define (table? t)
+  (and (pair? t) (eq? (car t) table-tag)))
+
+;; selector
+(define (lookup key-list tbl)
+  (let ((record (assoc (car key-list) (cdr tbl))))
+    (if record
+        (let ((value (cdr record)))
+          (cond ((null? (cdr key-list)) value)
+                ((table? value)
+                 (lookup (cdr key-list) value))
+                (else false)))
+        false)))
+
+;; mutator
+(define (insert! key-list value tbl)
+  (let ((record (assoc (car key-list) (cdr tbl))))
+    (if record
+        (let ((value (cdr record)))
+          (cond ((null? (cdr key-list)) (set-cdr! record value))
+                ((table? value)
+                 (insert! (cdr key-list) value))))
+        (set-cdr! tbl
+                  (cons (make-table-with key-list value)
+                        (cdr tbl)))))
+  'ok)
+
+(define (make-table-with ks v)
+  (if (null? (cdr ks))
+      (cons (car ks) v)
+      ;; (let ((tbl (make-table5)))
+      ;;       (insert! (cdr key-list)
+      ;;                value
+      ;;                tbl)
+      ;;       (cons (car key-list) tbl))))
+      (cons (car ks) (list table-tag    ;more efficiently
+                           (make-table-with (cdr ks) v)))))
+#+END_SRC
+
+To design =make-table-with=, I've exploit the opaque type. And here is the test:
+#+BEGIN_SRC scheme
+1 (user) => (define tbl (make-table5))
+
+;Value: tbl
+
+1 (user) => (table? tbl)
+
+;Value: #t
+
+1 (user) => (insert! '(1 2 3 4) 5 tbl)
+
+;Value: ok
+
+1 (user) => (lookup '(1 2 3 4) tbl)
+
+;Value: 5
+
+1 (user) => (lookup '(2 3 4) (lookup '(1) tbl))
+
+;Value: 5
+#+END_SRC
+
+Note that the latter one is more efficient than former one; also seems cleaner.
+Object-oriented paradigm do not always win.

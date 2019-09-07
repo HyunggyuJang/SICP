@@ -740,19 +740,19 @@
 (define (rear-delete-deque! deque) ((deque 'rear-delete-deque!)))
 
 ;; test deque
-(define d (make-deque))
-;Value: d
-(empty-deque? d)
-;Value: #t
-(front-insert-deque! d 'a)
-(rear-deque d)
-;Value: a
-(front-deque d)
-;Value: a
-(rear-insert-deque! d 'b)
-(front-delete-deque! d)
-(front-delete-deque! d)
-(empty-deque? d)
+;; (define d (make-deque))
+;; ;Value: d
+;; (empty-deque? d)
+;; ;Value: #t
+;; (front-insert-deque! d 'a)
+;; (rear-deque d)
+;; ;Value: a
+;; (front-deque d)
+;; ;Value: a
+;; (rear-insert-deque! d 'b)
+;; (front-delete-deque! d)
+;; (front-delete-deque! d)
+;; (empty-deque? d)
 
 ;; node representation
 ;;; constructor
@@ -882,7 +882,6 @@
 
 ;; Exercise 3.24
 (define (make-table3 same-key?)
-
   (define (assoc key records)
     (cond ((null? records) false)
           ((same-key? key (caar records)) (car records))
@@ -918,6 +917,8 @@
     dispatch))
 
 ;; Exercise 3.25
+
+;; naive implementation
 (define (lookup key-list table)
   (cond ((null? key-list)
          (error "LOOKUP called with empty key-list"))
@@ -956,3 +957,116 @@
       (cons (car key-list) value)
       (list (car key-list)
             (make-table-with (cdr key-list) value))))
+
+;; message-passing style
+;; constructor
+(define (make-table4)
+  (let ((local-table (list '*table*)))
+    (define (lookup-internal key-list)
+      (let ((record (assoc (car key-list) (cdr local-table))))
+        (if record
+            (let ((value (cdr record)))
+              (cond ((null? (cdr key-list)) value)
+                    ((table? value)
+                     (lookup (cdr key-list) value))
+                    (else false)))
+            false)))
+    (define (insert-internal! key-list value)
+      (let ((record (assoc (car key-list) (cdr local-table))))
+        (if record
+            (let ((value (cdr record)))
+              (cond ((null? (cdr key-list)) (set-cdr! record value))
+                    ((table? value)
+                     (insert! (cdr key-list) value))))
+            (set-cdr! local-table
+                      (cons (make-table-with key-list value)
+                            (cdr local-table)))))
+      'ok)
+    (define (make-table-with key-list value)
+      (if (null? (cdr key-list))
+          (cons (car key-list) value)
+          (let ((tbl (make-table4)))
+            (insert! (cdr key-list)
+                     value
+                     tbl)
+            (cons (car key-list) tbl))))
+    (define (dispatch m)
+      (cond ((eq? m 'lookup-proc) lookup-internal)
+            ((eq? m 'insert-proc!) insert-internal!)
+            ((eq? m 'table?) true)
+            (else (error "Unknown operation -- TABLE" m))))
+    dispatch))
+
+;; selector -- predicate
+(define (table? t) (t 'table?))
+(define (lookup ks t) ((t 'lookup-proc) ks))
+
+;; mutator
+(define (insert! ks v t) ((t 'insert-proc!) ks v))
+
+;; test make-table4
+;; (define tbl (make-table4))
+;; ;;; predicate
+;; (table? tbl)
+;; ;;; mutator
+;; (insert! '(1 2 3 4) 5 tbl)
+;; ;;; selector
+;; (lookup '(1 2 3 4) tbl)
+;; (lookup '(2 3 4) (lookup '(1) tbl))
+
+;; dispatch on type with concrete backbone
+
+;; type tag
+(define table-tag '*table*)
+;; constructor
+(define (make-table5)
+  (list table-tag))
+
+;; selector -- predicate
+(define (table? t)
+  (and (pair? t) (eq? (car t) table-tag)))
+
+;; selector
+(define (lookup key-list tbl)
+  (let ((record (assoc (car key-list) (cdr tbl))))
+    (if record
+        (let ((value (cdr record)))
+          (cond ((null? (cdr key-list)) value)
+                ((table? value)
+                 (lookup (cdr key-list) value))
+                (else false)))
+        false)))
+
+;; mutator
+(define (insert! key-list value tbl)
+  (let ((record (assoc (car key-list) (cdr tbl))))
+    (if record
+        (let ((value (cdr record)))
+          (cond ((null? (cdr key-list)) (set-cdr! record value))
+                ((table? value)
+                 (insert! (cdr key-list) value))))
+        (set-cdr! tbl
+                  (cons (make-table-with key-list value)
+                        (cdr tbl)))))
+  'ok)
+
+(define (make-table-with ks v)
+  (if (null? (cdr ks))
+      (cons (car ks) v)
+      ;; (let ((tbl (make-table5)))
+      ;;       (insert! (cdr key-list)
+      ;;                value
+      ;;                tbl)
+      ;;       (cons (car key-list) tbl))))
+      (cons (car ks) (list table-tag    ;more efficiently
+                           (make-table-with (cdr ks) v)))))
+
+;; test make-table5
+;; (define tbl (make-table5))
+;; ;;; predicate
+;; (table? tbl)
+;; ;;; mutator
+;; (insert! '(1 2 3 4) 5 tbl)
+;; ;;; selector
+;; (lookup '(1 2 3 4) tbl)
+;; (lookup '(2 3 4) (lookup '(1) tbl))
