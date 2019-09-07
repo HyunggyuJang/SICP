@@ -1070,3 +1070,72 @@
 ;; ;;; selector
 ;; (lookup '(1 2 3 4) tbl)
 ;; (lookup '(2 3 4) (lookup '(1) tbl))
+
+;; Exercise 3.26
+
+;; constructor
+(define (make-table6)
+  (cons table-tag '()))
+
+;; selector
+(define (lookup key table)
+  (let ((entry (assoc-tree key (cdr table))))
+    (if entry
+        (value entry)
+        false)))
+(define (assoc-tree given-key tree)
+  (if (null? tree)
+      false
+      (let ((hd (key (entry tree))))
+        (cond ((= given-key hd) (entry tree))
+              ((< given-key hd) (assoc-tree given-key (left-branch tree)))
+              ((> given-key hd) (assoc-tree given-key (right-branch tree)))))))
+
+;; mutator
+(define (insert! key value table)
+  (let ((tree (cdr table)))
+    (if (null? tree)
+        (set-cdr! table
+                  (make-tree-with-entry (make-entry key value)))
+        (insert-tree! key value tree))))
+
+(define (insert-tree! aKey aValue tree)
+  (let ((hd (key (entry tree))))
+    (cond ((= aKey hd) (set-value! (entry tree) aValue))
+          ((< aKey hd)
+           (if (null? (left-branch tree))
+               (set-left-branch! tree (make-tree-with-entry (make-entry aKey aValue)))
+               (insert-tree! aKey aValue (left-branch tree))))
+          ((> aKey hd)
+           (if (null? (right-branch tree))
+               (set-right-branch! tree (make-tree-with-entry (make-entry aKey aValue)))
+               (insert-tree! aKey aValue (right-branch tree)))))))
+
+(define (make-tree-with-entry entry) (make-tree entry '() '()))
+
+;; backbone of table
+;;; constructor
+(define (make-tree entry left right)
+  (list entry left right))
+;;; selectors
+(define (entry tree) (car tree))
+(define (left-branch tree) (cadr tree))
+(define (right-branch tree) (caddr tree))
+;;; mutators
+(define (set-left-branch! tree left-tree) (set-car! (cdr tree) left-tree))
+(define (set-right-branch! tree right-tree) (set-car! (cddr tree) right-tree))
+
+;; lowest layer entry language
+(define (make-entry key value)
+  (cons key value))
+(define (key entry) (car entry))
+(define (value entry) (cdr entry))
+(define (set-value! entry value) (set-cdr! entry value))
+
+;; test table6
+;; (define tbl (make-table6))
+;; (insert! 1 'a tbl)
+;; (lookup 1 tbl)
+;; (insert! 5 'e tbl)
+;; (insert! -3 'z tbl)
+;; (lookup -3 tbl)
