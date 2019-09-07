@@ -2178,3 +2178,20 @@ Test:
 
 ;Value: z
 #+END_SRC
+*** Exercise 3.27
+I've drawed environment diagram in my personal digital paper. To analysis the
+step complexity of =memo-fib=, let we assume that our =memo-fib= procedure does
+not compute the result of the argument that previously called with -- actually
+this is the reason we use memoization for -- by wishful thinking. Then note
+that, for instance, if our entry point -- the first procedure call -- was made
+by =(memo-fib 7)=, depending on how our the interpreter works, it should compute
+after some step =(memo-fib 6)= (or =(memo-fib 5)=) followed by =(memo-fib 5)=
+(or =(memo-fib 6)=); observe when it comes to the latter point of computation
+the result of that should already be in the local table of =memo-fib= by the
+assumption. Nevertheless, in any circumstance, if we let $T(n)$ denote the step
+complexity of =(memo-fib n)= then we get \[T(n) - T(n - 1) = \Theta(1)\] from
+which, we can conclude that \[T(n) = \Theta(n)\].
+
+To prove our assumption, we need to argue in our environment model for
+evaluation, which just complicate our discussion; yet we can grasp the taste of
+it by simulating (drawing) the evaluation process using environment model.
