@@ -2195,3 +2195,463 @@ which, we can conclude that \[T(n) = \Theta(n)\].
 To prove our assumption, we need to argue in our environment model for
 evaluation, which just complicate our discussion; yet we can grasp the taste of
 it by simulating (drawing) the evaluation process using environment model.
+** A Simulator for Digital Circuits
+Here we implement /event-driven simulation/; usually we encounter event-driven
+programming in web developing -- JavaScript, ruby on rails, and so on. For
+instance, we develop language for digital circuits simulator.
+
+As the name of our language, simulator, indicates that we model real world
+object exploiting local state variable.
+
+As a powerful language should consist of primitive elements, means of combination, means of
+abstraction, our simulator language also composed by those:
+- primitive elements :: Digital circuits constructed by combination of simple
+     logical function boxes:
+     #+CAPTION: Logical function boxes
+    [[./image/ch3-Z-G-24.gif]]
+     - Inverter
+     - And-gate
+     - Or-gate
+- means of combination :: We can construct more complex function boxes using
+     previous ones: Using wiring up the components.
+- means of abstraction :: As we embed our language in scheme, we inherit
+     scheme's means of abstraction -- =define=.
+
+
+Note that we described above components using real world terminology since we
+assumed that we mapped that concept to our language.
+
+For instance, let we construct half-adder circuit:
+#+CAPTION: half-adder
+
+[[./image/ch3-Z-G-25.gif]]
+#+BEGIN_SRC scheme
+;;; consturct half-adder
+(define a (make-wire))
+(define b (make-wire))
+(define c (make-wire))
+(define d (make-wire))
+(define e (make-wire))
+(define s (make-wire))
+(or-gate a b d)
+(and-gate a b c)
+(inverter c e)
+(and-gate d e s)
+#+END_SRC
+
+As this is general function box, it would be more appropriate to abstract this
+as box:
+#+BEGIN_SRC scheme
+(define (half-adder a b s c)
+  (let ((d (make-wire)) (e (make-wire)))
+    (or-gate a b d)
+    (and-gate a b c)
+    (inverter c e)
+    (and-gate d e s)
+    ))
+#+END_SRC
+
+Using this function box, we can construct more useful, complex function box:
+#+caption: full-adder
+[[./image/ch3-Z-G-26.gif]]
+#+BEGIN_SRC scheme
+(define (full-adder a b c-in sum c-out)
+  (let ((s (make-wire))
+        (c1 (make-wire))
+        (c2 (make-wire)))
+    (half-adder b c-in s c1)
+    (half-adder a s sum c2)
+    (or-gate c1 c2 c-out)
+    'ok))
+#+END_SRC
+
+*** Primitive function boxes
+The primitive function boxes works as force the wire get its signal changed. So
+wire should provides appropriate operations for that:
+- =(get-signal <wire>)=
+  returns the current value of the signal on wire.
+- =(set-signal <wire> <new value>)=
+  changes the value of the signal on the wire to the new value.
+- =(add-action! <wire> <procedure of no arguments>)=
+  asserts that the designated procedure should be run whenever the signal on the
+  wire changes value. Such procedures are the vehicles by which changes in the
+  signal value on the wire are communicated to other wires.
+
+
+Note that the first two operations should be familiar with us -- selector and
+mutator; but the last one is specific for the /event-driven programming/. By
+this effect, the "force" propagates along with the wires.
+
+In addition, to reflect the delay of logical function boxes, we need to make use
+of a procedure =after-delay= that takes a time delay and a procedure to be run
+and executes the given procedure after the given delay.
+
+As we gathered all the components we need, let's define the primitive function
+boxes:
+- inverter
+  #+BEGIN_SRC scheme
+(define (inverter input output)
+  (define (invert-input)
+    (let ((new-value (logical-not (get-signal input))))
+      (after-delay inverter-delay
+                   (lambda ()
+                     (set-signal! output new-value)))))
+  (add-action! input invert-input)
+  'ok)
+
+(define (logical-not s)
+  (cond ((= s 0) 1)
+        ((= s 1) 0)
+        (else (error "Invalid signal" s))))
+  #+END_SRC
+  Note that whenever the input signal changes =invert-input= executed by the
+  =add-action!=
+- and-gate
+  #+BEGIN_SRC scheme
+(define (and-gate a1 a2 output)
+  (define (and-action-procedure)
+    (let ((new-value
+           (logical-and (get-signal a1) (get-signal a2))))
+      (after-delay and-gate-delay
+                   (lambda ()
+                     (set-signal! output new-value)))))
+  (add-action! a1 and-action-procedure)
+  (add-action! a2 and-action-procedure)
+  'ok)
+(define (logical-and s1 s2)
+  (cond ((and (= s1 0) (= s2 0)) 0)
+        ((and (= s1 0) (= s2 1)) 0)
+        ((and (= s1 1) (= s2 0)) 0)
+        ((and (= s1 1) (= s2 1)) 1)
+        (else (error "Invalid signals" (cons s1 s2)))))
+  #+END_SRC
+- or-gate
+  #+BEGIN_SRC scheme
+(define (or-gate a1 a2 output)
+  (define (or-action-procedure)
+    (let ((new-value
+           (logical-or (get-signal a1) (get-signal a2))))
+      (after-delay or-gate-delay
+                   (lambda ()
+                     (set-signal! output new-value)))))
+  (add-action! a1 or-action-procedure)
+  (add-action! a2 or-action-procedure)
+  'ok)
+(define (logical-or s1 s2)
+  (cond ((and (= s1 0) (= s2 0)) 0)
+        ((and (= s1 0) (= s2 1)) 1)
+        ((and (= s1 1) (= s2 0)) 1)
+        ((and (= s1 1) (= s2 1)) 1)
+        (else (error "Invalid signals" (cons s1 s2)))))
+  #+END_SRC
+*** Exercise 3.28
+See the above or-gate part.
+*** Exercise 3.29
+We can use either De Morgan's law or truth table to deduce following logic:
+#+BEGIN_SRC scheme
+(define (or-gate2 a1 a2 output)
+  (let ((not-a1 (make-wire))
+        (not-a2 (make-wire))
+        (not-or (make-wire)))
+    (inverter a1 not-a1)
+    (inverter a2 not-a2)
+    (and-gate not-a1 not-a2 not-or)
+    (inverter not-or output)
+    'ok))
+#+END_SRC
+=or-gate-delay= becomes 2 =inverter-delay= + =and-gate-delay=.
+*** Exercise 3.30
+Using induction on /n/, we can construct /ripple-carry-adder/. More
+specifically, to connect each full-adder boxes, we should hand over the carry
+wire to next full-adder box:
+#+caption: ripple carry adder
+[[./image/ch3-Z-G-27.gif]]
+#+BEGIN_SRC scheme
+(define (ripple-carry-adder aAs aBs aSs C)
+  (define (connect-and-return-carry Ak Bk Ck Sk)
+    (let ((C_k-1 (make-wire)))
+      (full-adder Ak Bk Ck Sk C_k-1)
+      C_k-1))
+  (define (connect-recursive As Bs Ss)
+    (cond ((and (null? As) (null? Bs) (null? Ss))
+           (make-wire))                          ;C_n
+          ((or (null? As) (null? Bs) (null? Ss)) ;defensive programming
+           (error
+            "arguments do not agree in the number of elements --RIPPLE-CARRY-ADDER"
+            (list aAs aBs aSs)))
+          (else
+           (connect-and-return-carry
+            (car As) (car Bs)
+            (connect-recursive (cdr As) (cdr Bs) (cdr Ss))
+            (car Ss)))))
+  (cond ((or (null? aAs) (null? aBs) (null? aSs))
+         (error "RIPPLE-CARRAY-ADDER cannot do connect with given arguemens"
+                (list aAs aBs aSs)))
+        (else (full-adder (car aAs)
+                          (car aBs)
+                          (connect-recursive ;C_1
+                           (cdr aAs)
+                           (cdr aBs)
+                           (cdr aSs))
+                          (car aSs)
+                          C)
+              'ok)))
+#+END_SRC
+
+
+To estimate the whole delay of ripple carry adder, we exploit abstraction over
+the delays of other simpler function boxes that constitute ripple carry adder.
+Observe that the delay from /C_{k}/ to /C_{k-1}/ accumulated; it would be the
+bottle neck of propagation of signal in this function box. So we can conclude
+that the whole delay of ripple carry adder would be approximately /n/ \times
+each of the delay that going to be accumulated.
+
+In turns, to estimate the each delay of that part of full-adder, we need to do the same
+process as above or we could "bottom up" approach to it; calculate from the
+very lower level of function boxes from which full-adder constructed:
+- From half-adder, we have =or-gate-delay= + =and-gate-delay= or 2
+  =and-gate-delay= + =inverter-delay= to propagate the
+  signal from inputs to the =s=.
+- From full-adder, we have 2 (=or-gate-delay= + =and-gate-delay=) or 3
+  =and-gate-delay= + =inverter-delay= + =or-gate-delay= to propagate from =c-in=
+  to =c-out=.
+
+
+So, if we stick with =or-gate= and =and-gate= combination only, we got /n/
+\times 2 (=or-gate-delay= + =and-gate-delay=) as whole. We will verify this when
+we implemented all the parts of our language.
+*** Representing wires
+By wishful thinking, we just used wires to connect the components of our
+primitive boxes until now; this time, we need to represent wires according to
+our use of that -- the specifications deduced from our use.
+
+Our wire should have signal as its state variable from the use of that; i.e.
+=(get-signal <wire>)= and =(set-signal! <wire> <new value>)=. Also it should
+have some way to save all the actions it should executes when it change its
+signal according to =(add-action! <wire> <procedure of no arguments>)=; the
+name's bang of usage implies wire should have "action list" as its state
+variable.
+
+Here, in text book, we implement wire using the message passing style:
+#+BEGIN_SRC scheme
+(define (make-wire)
+  (let ((signal-value 0) (action-procedures '()))
+    (define (set-my-signal! new-value)
+      (if (not (= signal-value new-value))
+          (begin (set! signal-value new-value)
+                 (call-each action-procedures))
+          'done))
+    (define (accept-action-procedure! proc)
+      (set! action-procedures (cons proc action-procedures))
+      (proc))
+    (define (dispatch m)
+      (cond ((eq? m 'get-signal) signal-value)
+            ((eq? m 'set-signal!) set-my-signal!)
+            ((eq? m 'add-action!) accept-action-procedure!)
+            (else (error "Unknown operation -- WIRE" m))))
+    dispatch))
+
+(define (call-each procedures)
+  (if (null? procedures)
+      'done
+      (begin
+        ((car procedures))
+        (call-each (cdr procedures)))))
+#+END_SRC
+
+Then set up the interface for procedure calling style:
+#+BEGIN_SRC scheme
+(define (get-signal wire)
+  (wire 'get-signal))
+(define (set-signal! wire new-value)
+  ((wire 'set-signal!) new-value))
+(define (add-action! wire action-procedure)
+  ((wire 'add-action!) action-procedure))
+#+END_SRC
+*** The agenda
+Only the =after-delay= left to complete our language. We need some data
+structure that contains the schedule of things to do. For that structure we make
+data structure called agenda. Here is the interface of agenda:
+- =(make-agenda)=
+  returns a new empty agenda
+- =(empty-agenda? <agenda>)=
+  is true if the specified agenda is empty.
+- =(first-agenda-item <agenda>)=
+  returns the first item on the agenda.
+- =(remove-first-agenda-item! <agenda>)=
+  modifies the agenda by removing the first item.
+- =(add-to-agenda! <time> <action> <agenda>)=
+  modifies the agenda by adding the given action procedure to be run at the
+  specified time.
+- =(current-time <agenda>)=
+  returns the current simulation time.
+
+
+We also used the wishful thinking to construct this interface. The particular
+agenda that we use along the simulation is denoted as =the-agenda=. Using this
+structure we can implement =after-delay= procedure:
+#+BEGIN_SRC scheme
+(define (after-delay delay action)
+  (add-to-agenda! (+ delay (current-time the-agenda))
+                  action
+                  the-agenda))
+#+END_SRC
+
+With this data structure, we are ready to implement the initiation of simulator:
+#+BEGIN_SRC scheme
+(define (propagate)
+  (if (empty-agenda? the-agenda)
+      'done
+      (let ((first-item (first-agenda-item the-agenda)))
+        (first-item)
+        (remove-first-agenda-item! the-agenda)
+        (propagate))))
+#+END_SRC
+*** A sample simulation
+Cool! Since we can start the simulation, and we got the all the components of
+simulation, we are done only if we represent the agenda data structure? No! We
+can't inspect the simulation: We only can inspect whether the simulation done by
+=propagate=. To cope with this, we implement =probe= procedure that print out
+all the events at given wire:
+#+BEGIN_SRC scheme
+(define (probe name wire)
+  (add-action! wire
+               (lambda ()
+                 (newline)
+                 (display name)
+                 (display " ")
+                 (display (current-time the-agenda))
+                 (display "  New-value = ")
+                 (display (get-signal wire)))))
+#+END_SRC
+
+We exploited the underlying operation for =wire=.
+
+We are really ready to start the simulation. Here is the sample simulation:
+#+BEGIN_SRC scheme
+;;; setup
+(define the-agenda (make-agenda))
+(define inverter-delay 2)
+(define and-gate-delay 3)
+(define or-gate-delay 5)
+(define input-1 (make-wire))
+(define input-2 (make-wire))
+(define sum (make-wire))
+(define carry (make-wire))
+(probe 'sum sum)
+(probe 'carry carry)
+
+;;; set situation and start
+(half-adder input-1 input-2 sum carry)
+(set-signal! input-1 1)
+(propagate)
+
+;;; second situation and start
+(set-signal! input-2 1)
+(propagate)
+#+END_SRC
+*** Exercise 3.31
+We can analyze this problem in two different ways (but not mutually
+independent):
+- Focus the mapping between real world situation, from which we modeled, with
+  our resulting model.
+- Experiment with the alternative and see what happen then evaluate its result
+  (actually to estimate the result, we would use the first way).
+
+
+Let we start with the latter method and then evaluate that with the first
+method. As we did not complete our simulation language, we should simulate with
+their definitions; in other word, we should evaluate each statement as if we
+become a interpreter.
+
+With the normal definition of =accept-action-procedure!=, already the result of
+simulation texted in text book; so here we need only to simulate with the
+following definition on our own:
+#+BEGIN_SRC scheme
+,*** in make-wire
+(define (accept-action-procedure! proc)
+  (set! action-procedures (cons proc action-procedures)))
+#+END_SRC
+
+Let's run our interpreter:
+1. evaluate =(half-adder input-1 input-2 sum carry)=; at this point
+   =(empty-agenda? the-agenda)= returns true as we don't run the action since
+   the input signals doesn't changed at all.
+2. evaluate =(set-signal! input-1 1)=; as referencing the half-adder diagram,
+   the agenda should contains the schedule that looks like
+   #+BEGIN_SRC scheme
+(
+ (3 (lambda ()
+      (set-signal!
+       carry
+       (logical-and
+        (get-signal input-1) (get-signal input-2)))))
+ (5 (lambda ()
+      (set-signal!
+       d
+       (logical-or (get-signal input-1) (get-signal input-2)))))
+ )
+   #+END_SRC
+
+   The first item of each element represent the scheduled time and the next is
+   the action to be executed at that time.
+
+   Here I've used the substitution model for evaluation; but it is not strictly
+   correct -- the value of evaluating logical-and or logical-or should be
+   captured when the connection being made for instance.
+3. evaluate =(propagate)=;
+   #+BEGIN_SRC scheme
+(set-signal!
+ carry
+ (logical-and
+  (get-signal input-1) (get-signal input-2)))
+   #+END_SRC
+   evaluated to
+   #+BEGIN_SRC scheme
+(set-signal! carry 0)
+   #+END_SRC
+   which cause no change at all.
+
+   Next evaluate
+   #+BEGIN_SRC scheme
+(lambda ()
+      (set-signal!
+       d
+       (logical-or (get-signal input-1) (get-signal input-2))))
+   #+END_SRC
+   to
+   #+BEGIN_SRC scheme
+(set-signal! d 1)
+   #+END_SRC
+   ; as =d= changed its signal, it causes further events:
+   #+BEGIN_SRC scheme
+(
+ (8 (lambda ()
+      (set-signal!
+       sum
+       (logical-and
+        (get-signal d) (get-signal e)))))
+ )
+   #+END_SRC
+
+   As
+   #+BEGIN_SRC scheme
+(set-signal! sum 0)
+   #+END_SRC
+   doesn't change the signal of =sum=, it finalize the simulation: ='done=.
+
+
+The evaluation of this simulation is different from previous: =sum= and =carry=
+doesn't change its signal at all.
+
+Now we evaluate the result of our simulation using the criterion of first
+method:
+Our real world situation indicates the previous one is correct: the modified one
+is different from what "really" happens.
+
+Let we conclude with the first method, in this time, it is irrelevant with the
+second method. We observe in real world that as soon as we connect each
+components of digital circuits, the signals of wires, which connect each
+component, affected by its action -- connecting. Therefore, the initialization
+in the =accept-action-procedure!= is necessary when we really want to model that
+situation.
