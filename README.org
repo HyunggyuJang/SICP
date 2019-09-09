@@ -2655,3 +2655,150 @@ components of digital circuits, the signals of wires, which connect each
 component, affected by its action -- connecting. Therefore, the initialization
 in the =accept-action-procedure!= is necessary when we really want to model that
 situation.
+*** Implementing the agenda
+The agenda is made up of /time segments/; to reflect this structure, we provide
+the backbone of agenda from which agenda constructed up:
+#+BEGIN_SRC scheme
+(define (make-time-segment time queue)
+  (cons time queue))
+(define (seqment-time s) (car s))
+(define (segment-queue s) (cdr s))
+#+END_SRC
+
+It doesn't do any special things except it indicates our strategy that we going
+to use queue for accumulating action procedures to be executed at that time. In
+fact, this is due to limitation of our programming language, as it does not
+allow us to use concurrent process, we need to mimic the situation all the
+procedures executed at once in our sequential language -- using queue.
+
+As we noted before, the agenda itself is a one-dimensional table of time
+segments. It is ordered by increasing time, it has /current time/ as its head:
+#+BEGIN_SRC scheme
+;; constructor
+(define (make-agenda) (list 0))
+;; selector -- time
+(define (current-time agenda) (car agneda))
+;; mutator -- time
+(define (set-current-time! agenda time)
+  (set-car! agenda time))
+;; selector -- segments
+(define (segments agenda) (cdr agenda))
+;; mutator -- segments
+(define (set-segments! agenda segments)
+  (set-cdr! agenda segments))
+;; selector -- operating on segments
+(define (first-segment agenda) (car (segments agenda)))
+;; selector -- operating on segments
+(define (rest-segments agenda) (cdr (segments agenda)))
+
+;; predicate agenda
+(define (empty-agenda? agenda)
+  (null? (segments agenda)))
+#+END_SRC
+
+To add a new action to agenda, we choose to mutate our agenda structure. It
+make us confront with some tricky situation, which would not occur in functional
+programming. We need to maintain the structure to preserve its identity after
+mutating the structure -- as we did in table implementation. So we need to
+follow somewhat more tricky algorithm specified in text book:
+#+BEGIN_SRC scheme
+(define (add-to-agenda! time action agenda)
+  (define (belongs-before? segments)
+    (or (null? segments)
+        (< time (segment-time (car segments)))))
+  (define (make-new-time-segment time action)
+    (let ((q (make-queue)))
+      (insert-queue! q action)
+      (make-new-time-segment time q)))
+  (define (add-to-segments! segments)
+    (if (= (segment-time (car segments)) time)
+        (insert-queue! (segment-queue (car segments))
+                       action)
+        (let ((rest (cdr segments)))
+          (if (belongs-before? rest)
+              (set-cdr!
+               segments
+               (cons (make-new-time-segment time action)
+                     rest))
+              (add-to-segments! rest)))))
+  (let ((segments (segments agenda)))   ;handle the entry point
+    (if (belongs-before? segments)
+        (set-segments!
+         agenda
+         (cons (make-new-tiem-segment time action)
+               segments))
+        (add-to-segments! segments))))
+#+END_SRC
+
+The remover:
+#+BEGIN_SRC scheme
+(define (remove-first-agenda-item! agenda)
+  (let ((q (segment-queue (first-segment agenda))))
+    (delete-queue! q)
+    (if (empty-queue? q)
+        (set-segments! agenda (rest-segments agenda)))))
+#+END_SRC
+
+Finally the access to the agenda from the higher level user:
+#+BEGIN_SRC scheme
+(define (first-agenda-item agenda)
+  (if (empty-agenda? agenda)
+      (error "Agenda is empty -- FIRST-AGENDA-ITEM")
+      (let ((first-seg (first-segment agenda)))
+        (set-current-time! agenda (segment-time first-seg)) ;first item access renew the time
+        (front-queue (segment-queue first-seg))))) ;from the contract, queue is not empty
+#+END_SRC
+
+Then let's test with previous exercise, [[Exercise 3.31][Exercise 3.31]]:
+#+BEGIN_SRC scheme
+1 (user) => (half-adder input-1 input-2 sum carry)
+
+;Value: ok
+
+1 (user) => (set-signal! input-1 1)
+
+;Value: done
+
+1 (user) => (propagate)
+
+;Value: done
+
+1 (user) => (set-signal! input-2 1)
+
+;Value: done
+
+1 (user) => (propagate)
+
+carry 11  New-value = 1
+;Value: done
+#+END_SRC
+
+It is exactly what we expected.
+*** Exercise 3.32
+
+We reason as follows:
+1. By the observation of previous exercise, each action stored in one wire
+   executed when the signal of that wire has changed.
+2. As queue is FIFO, even if it is same time at which the actions to be
+   executed, it is important which one has added to agenda.
+3. There are two possibilities in this particular situation:
+   - 0,1 \to 1,1 \to 1,0 -- abbreviated form of that first transit from 0,1 to
+     1,1 (the first argument change its signal) and then transit from 1,1 to 1,0
+     (the second argument change its signal).
+   - 0,1 \to 0,0 \to 1,0
+4. Case 1: output \to 1 \to 0 -- output of and-gate transit from its initial
+   signal (0) to 1 and then 0 at the same time point.
+   Case 2: output is unchanged.
+5. Case 1 would cause further event propagation; Case 2 would not. But with the
+   current primitive function boxes, after done with propagation, we can't
+   notice the difference between Case 1 from Case 2.
+6. Now let we assume list structure not queue: LIFO; with the same reasoning as
+   with queue, the order of action is important also.
+7. Case 1 would be stacked as (1,1 \to 1,0) (0,1 \to 1,1) as =and-gate-action=
+   capture the signals of wires when it called not the execution time of that action.
+8. That cause output \to unchanged \to 1
+9. Whereas, Case 2 stacked as follows: (0,0 \to 1,0) (0,1 \to 0,0), which cause
+   the output unchanged at all.
+10. Conclusion: If we use list instead of queue, new the order in which actions
+    to be executed start to get mattered; also in the view point of modeling, it
+    doesn't reflect well what behavior the real world takes.

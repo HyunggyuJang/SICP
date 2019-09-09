@@ -1262,7 +1262,8 @@
           'done))
     (define (accept-action-procedure! proc)
       (set! action-procedures (cons proc action-procedures))
-      (proc))
+      ;; (proc)
+      )
     (define (dispatch m)
       (cond ((eq? m 'get-signal) signal-value)
             ((eq? m 'set-signal!) set-my-signal!)
@@ -1329,3 +1330,71 @@
 ;; ;;; second situation and start
 ;; (set-signal! input-2 1)
 ;; (propagate)
+
+;; Implementing the agenda
+
+;;; the lowest level of data structure
+(define (make-time-segment time queue)
+  (cons time queue))
+(define (segment-time s) (car s))
+(define (segment-queue s) (cdr s))
+
+;; constructor
+(define (make-agenda) (list 0))
+;; selector -- time
+(define (current-time agenda) (car agenda))
+;; mutator -- time
+(define (set-current-time! agenda time)
+  (set-car! agenda time))
+;; selector -- segments
+(define (segments agenda) (cdr agenda))
+;; mutator -- segments
+(define (set-segments! agenda segments)
+  (set-cdr! agenda segments))
+;; selector -- operating on segments
+(define (first-segment agenda) (car (segments agenda)))
+;; selector -- operating on segments
+(define (rest-segments agenda) (cdr (segments agenda)))
+;; predicate agenda
+(define (empty-agenda? agenda)
+  (null? (segments agenda)))
+;; aggregator or mutator
+(define (add-to-agenda! time action agenda)
+  (define (belongs-before? segments)
+    (or (null? segments)
+        (< time (segment-time (car segments)))))
+  (define (make-new-time-segment time action)
+    (let ((q (make-queue)))
+      (insert-queue! q action)
+      (make-time-segment time q)))
+  (define (add-to-segments! segments)
+    (if (= (segment-time (car segments)) time)
+        (insert-queue! (segment-queue (car segments))
+                       action)
+        (let ((rest (cdr segments)))
+          (if (belongs-before? rest)
+              (set-cdr!
+               segments
+               (cons (make-new-time-segment time action)
+                     rest))
+              (add-to-segments! rest)))))
+  (let ((segments (segments agenda)))   ;handle the entry point
+    (if (belongs-before? segments)
+        (set-segments!
+         agenda
+         (cons (make-new-time-segment time action)
+               segments))
+        (add-to-segments! segments))))  ;handle the recursive case
+;; attentuator or mutator
+(define (remove-first-agenda-item! agenda)
+  (let ((q (segment-queue (first-segment agenda))))
+    (delete-queue! q)
+    (if (empty-queue? q)
+        (set-segments! agenda (rest-segments agenda)))))
+
+(define (first-agenda-item agenda)
+  (if (empty-agenda? agenda)
+      (error "Agenda is empty -- FIRST-AGENDA-ITEM")
+      (let ((first-seg (first-segment agenda)))
+        (set-current-time! agenda (segment-time first-seg)) ;first item access renew the time
+        (front-queue (segment-queue first-seg))))) ;from the contract, queue is not empty
