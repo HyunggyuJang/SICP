@@ -2,16 +2,16 @@
 
 ;;; idea is to simulate a baseball robot
 
-;; imagine hitting a ball with an initial velocity of v 
+;; imagine hitting a ball with an initial velocity of v
 ;; at an angle alpha from the horizontal, at a height h
 ;; we would like to know how far the ball travels.
 
 ;; as a first step, we can just model this with simple physics
-;; so the equations of motion for the ball have a vertical and a 
+;; so the equations of motion for the ball have a vertical and a
 ;; horizontal component
 
 ;; the vertical component is governed by
-;; y(t) = v sin alpha t + h - 1/2 g t^2 
+;; y(t) = v sin alpha t + h - 1/2 g t^2
 ;; where g is the gravitational constant of 9.8 m/s^2
 
 ;; the horizontal component is governed by
@@ -19,7 +19,7 @@
 ;; assuming it starts at the origin
 
 ;; First, we want to know when the ball hits the ground
-;; this is governed by the quadratic equation, so we just need to know when 
+;; this is governed by the quadratic equation, so we just need to know when
 ;; y(t)=0 (i.e. for what t_impact is y(t_impact)= 0).
 ;; note that there are two solutions, only one makes sense physically
 
@@ -52,7 +52,7 @@
 
 (define root1
   (lambda (a b c)
-    (let ((D (- (square b)
+    (let ((D (- (square b)              ;b^2 - 4ac
 		(* 4 a c))))
       (if (< D 0)
 	  false				;invalid input
@@ -61,29 +61,29 @@
 
 (define root2
   (lambda (a b c)
-    (let ((D (- (square b)
+    (let ((D (- (square b)              ;b^2 - 4ac
 		(* 4 a c))))
       (if (< D 0)
 	  false				;invalid input
 	  (/ (+ (- b) (sqrt D))
 	     (* 2 a))))))
 ;; complete these procedures and show some test cases
-;; (root1 5 3 6)				;when D < 0
-;; (root1 1 2 1)				;when D = 0
-;; (root1 1 4 2)				;when D > 0
+(root1 5 3 6)				;when D < 0
+(root1 1 2 1)				;when D = 0
+(root1 1 4 2)				;when D > 0
 
-;; (root2 5 3 6)				;when D < 0
-;; (root2 1 2 1)				;when D = 0
-;; (root2 1 4 2)				;when D > 0
+(root2 5 3 6)				;when D < 0
+(root2 1 2 1)				;when D = 0
+(root2 1 4 2)				;when D > 0
 
 ;; Problem 3
 
 (define time-to-impact
   (lambda (vertical-velocity elevation)
     (if (and (negative? elevation)
-	     (negative? vertical-velocity)) ;cannot hit the grount at any time > 0
-	false
-	(root1 (- (/ gravity 2)) vertical-velocity elevation)))) ;with other possibitities coped by root1 procedure.
+             (negative? vertical-velocity)) ;cannot hit the grount at any time > 0
+        false
+        (root1 (- (/ gravity 2)) vertical-velocity elevation)))) ;with other possibitities coped by root1 procedure.
     ;; (let ((t1 (root1 (- (/ gravity 2)) vertical-velocity elevation))
     ;; 	  (t2 (root2 (- (/ gravity 2)) vertical-velocity elevation)))
     ;;   (cond ((> t1 0)
@@ -93,14 +93,14 @@
     ;; 	     (display "second path")
     ;; 	     t2)
     ;; 	    (else false)))))		;error we assume the flight time should positive number.
-      
+
 
 ;; (time-to-impact 10 3)			;positive initial velocity with positive elevation
 ;; (time-to-impact -20 3)			;negative initial velocity with positive elevation
 ;; (time-to-impact 1 -2)			;positive initial velocity with negative elevation, whose condition cannot hit the ground. Note that it handled by root1 procedure.
 ;; (time-to-impact -2 -3)			;negative initial velocity with negative elevation; cannot hit the ground.
 
-;; Note that if we want to know when the ball drops to a particular height r 
+;; Note that if we want to know when the ball drops to a particular height r
 ;; (for receiver), we have
 
 (define time-to-height
@@ -120,13 +120,13 @@
   (lambda (elevation velocity angle)
     (let ((alpha (degree2radian angle)))
       (let ((v_x (* velocity
-		    (cos alpha)))
-	    (v_y (* velocity
-		    (sin alpha))))
-	(* v_x
-	   (time-to-impact v_y elevation))))))
+                    (cos alpha)))
+            (v_y (* velocity
+                    (sin alpha))))
+        (* v_x
+           (time-to-impact v_y elevation))))))
 
-;; let's try this out for some example values.  Note that we are going to 
+;; let's try this out for some example values.  Note that we are going to
 ;; do everything in metric units, but for quaint reasons it is easier to think
 ;; about things in English units, so we will need some conversions.
 
@@ -153,9 +153,15 @@
 ;; at an angle of (/ pi 2) radians or 90 degrees (straight vertical)
 ;; at an angle of (/ pi 4) radians or 45 degrees
 
-;; (travel-distance-simple 1 45 0)		;case 1
-;; (meters-to-feet (travel-distance-simple 1 45 45)) ;case 2
-;; (travel-distance-simple 1 45 90)	;case 3
+(define case1 (travel-distance-simple 1 45 0)) ;case 1
+case1                                          ;meter
+(meters-to-feet case1)                         ;feet
+(define case2 (travel-distance-simple 1 45 45)) ;case2
+case2                                           ;meter
+(meters-to-feet case2)                          ;feet
+(define case3 (travel-distance-simple 1 45 90)) ;case 3
+case3                                           ;meter
+(meters-to-feet case3)                          ;feet
 
 ;; what is the distance traveled in each case?
 ;; record both in meters and in feet
@@ -172,22 +178,36 @@
 
 (define alpha-increment 0.01)
 
+(define (find-best-angle velocity elevation)
+  (define upper-bound 90)
+  (define increment 0.01)
+  (define (next ang) (+ ang increment))
+  (define (iter angle max-dist max-ang)
+    (if (> angle upper-bound)
+        max-ang
+        (let ((dist (travel-distance-simple elevation velocity angle)))
+          (let ((next-ang (next angle)))
+            (if (> dist max-dist)
+                (iter next-ang dist angle)
+                (iter next-ang max-dist max-angle))))))
+  (iter 0 0 0))
+
 (define find-best-angle
-  (lambda (velocity elevation method)	;generalize to choose method for calculating distance
-    (define (iter angle max max-angle) ;assume the unit of angle is degree.
+  (lambda (velocity elevation method) ;generalize to choose method for calculating distance
+    (define (iter angle max max-angle)  ;assume the unit of angle is degree.
       (if (> angle 90)
-	  max-angle
-	  (let ((found (method elevation velocity angle))
-		(next-angle (1+ angle)))
-	    (newline)
-	    (display (meters-to-feet found))
-	    (if (> found max) ;the found is further than what we have found before.
-		(iter next-angle
-		      found
-		      angle)
-		(iter next-angle
-		      max
-		      max-angle)))))
+	        max-angle
+	        (let ((found (method elevation velocity angle))
+		            (next-angle (1+ angle)))
+	          (newline)
+	          (display (meters-to-feet found))
+	          (if (> found max) ;the found is further than what we have found before.
+		            (iter next-angle
+		                  found
+		                  angle)
+		            (iter next-angle
+		                  max
+		                  max-angle)))))
     (iter 0 0 0)))
 
 ;; find best angle
@@ -202,10 +222,10 @@
 
 ;; Problem 6
 
-;; problem is that we are not accounting for drag on the ball (or on spin 
+;; problem is that we are not accounting for drag on the ball (or on spin
 ;; or other effects, but let's just stick with drag)
 ;;
-;; Newton's equations basically say that ma = F, and here F is really two 
+;; Newton's equations basically say that ma = F, and here F is really two
 ;; forces.  One is the effect of gravity, which is captured by mg.  The
 ;; second is due to drag, so we really have
 ;;
@@ -213,19 +233,19 @@
 ;;
 ;; drag is captured by 1/2 C rho A vel^2, where
 ;; C is the drag coefficient (which is about 0.5 for baseball sized spheres)
-;; rho is the density of air (which is about 1.25 kg/m^3 at sea level 
+;; rho is the density of air (which is about 1.25 kg/m^3 at sea level
 ;; with moderate humidity, but is about 1.06 in Denver)
-;; A is the surface area of the cross section of object, which is pi D^2/4 
+;; A is the surface area of the cross section of object, which is pi D^2/4
 ;; where D is the diameter of the ball (which is about 0.074m for a baseball)
-;; thus drag varies by the square of the velocity, with a scaling factor 
+;; thus drag varies by the square of the velocity, with a scaling factor
 ;; that can be computed
 
-;; We would like to again compute distance , but taking into account 
+;; We would like to again compute distance , but taking into account
 ;; drag.
-;; Basically we can rework the equations to get four coupled linear 
+;; Basically we can rework the equations to get four coupled linear
 ;; differential equations
 ;; let u be the x component of velocity, and v be the y component of velocity
-;; let x and y denote the two components of position (we are ignoring the 
+;; let x and y denote the two components of position (we are ignoring the
 ;; third dimension and are assuming no spin so that a ball travels in a plane)
 ;; the equations are
 ;;
@@ -245,7 +265,7 @@
 ;; we need the mass of a baseball -- which is about .15 kg.
 
 ;; so now we just need to write a procedure that performs a simple integration
-;; of these equations -- there are more sophisticated methods but a simple one 
+;; of these equations -- there are more sophisticated methods but a simple one
 ;; is just to step along by some step size in t and add up the values
 
 ;; dx = u dt
@@ -295,9 +315,9 @@
 		    (+ u du)
 		    (+ v dv))))))
     (iter x0 y0 u0 v0)))		;initial condition
-		       
-	  
-    
+
+
+
 
 (define (travel-distance elevation speed angle)
   (let ((alpha (degree2radian angle)))
@@ -311,9 +331,9 @@
 	       gravity
 	       mass
 	       beta)))
-	     
-	     
- 
+
+
+
 
 
 ;; RUN SOME TEST CASES
@@ -329,10 +349,10 @@
 ;; (meters-to-feet (travel-distance 1 35 45)) ;247.3 Fly out
 ;; (find-best-angle 45 1 travel-distance)	   ;Home run range (26 55)
 ;; Problem 7
- 
+
 ;; now let's turn this around.  Suppose we want to throw the ball.  The same
-;; equations basically hold, except now we would like to know what angle to 
-;; use, given a velocity, in order to reach a given height (receiver) at a 
+;; equations basically hold, except now we would like to know what angle to
+;; use, given a velocity, in order to reach a given height (receiver) at a
 ;; given distance
 
 
@@ -340,7 +360,7 @@
 ;; (or 120 ft) how quickly does the ball get there, if he throws at 55m/s,
 ;;  at 45m/s, at 35m/s?
 
-;; try out some times for distances (30, 60, 90 m) or (100, 200, 300 ft) 
+;; try out some times for distances (30, 60, 90 m) or (100, 200, 300 ft)
 ;; using 45m/s
 
 ;; Problem 8

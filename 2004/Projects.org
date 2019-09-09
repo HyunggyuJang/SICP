@@ -1,0 +1,241 @@
+#+TITLE: Projects from SICP 2005
+* Project 1 -- Those amazing Red Sox!
+** Purpose
+The purpose of Proejct 1 is for you to gain experience with writing and testing
+relatively simple procedures. For each problem below, include your code as well
+as comments and explanations of your code, *and* demonstrate your code's
+functionality against a set of test cases. You should always create and include
+your own additional, meaningful test cases in addition to provided test code to
+ensure that your code works not only on typical inputs, but also on "boundary"
+or difficult cases. Get in the habit of writing and running these test cases
+after *every* procedure you write -- no matter how trivial the procedure may
+seem to you.
+** Scenario
+As you may have noticed this past fall (note that the time of being texted was
+2005), a remarkable event took place -- the Boston Red Sox won the World Series
+for the first time in 86 years! You may also have noticed long time Boston
+residents (such as MIT professors) walking about in a state of bliss. Because
+many of these folks don't want to have to wait another 86 years for this to
+happen again (which happened last year, I mean 2018), "Red Sox Nation" has hired
+us to provide some help. In particular, we are to investigate the possibility of
+perfecting a baseball robot ("basebot") that can accurately throw and can hit
+with power.
+** Problem 1: Some simple physics
+We are going to begin by modeling how far a baseball can travel -- the same
+physics will hold for both hitting a ball and throwing a ball. We are going to
+simplify things by assuming that baseballs don't spin as they move (clearly
+false but it makes life much easier). This means we can treat the movement of a
+baseball as if it were restricted to a two-dimensional plane. So what happens
+when a baseball is hit? For the moment, we'll model a baseball as a particle
+that moves along a single dimension with some initial position /u/, some initial
+velocity /v/, and some initial acceleration /a/. The equation for the position
+of the baseball at time /t/, given /a/, /v/, and /u/ is
+$u_{t}= 1/2 a t^{2} + v t + u$. Note that this denotes a first order
+differential equation in time. Later, we can apply this equation to either the
+horizontal ($x$) component of baseball motion, or the vertical ($y$) component
+of baseball motion.
+
+Write a procedure that takes as input values for =a, v, u,= and =t= and returns
+as output the position of the baseball at time =t=:
+#+BEGIN_SRC scheme
+(define position
+  (lambda (a v u t)
+    (+ (* (/ a 2)
+	  (square t))
+       (* v t)
+       u)))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+1 (user) => (position 0 0 0 0)
+
+;Value: 0
+
+1 (user) => (position 0 0 20 0)
+
+;Value: 20
+
+1 (user) => (position 0 5 10 10)
+
+;Value: 60
+
+1 (user) => (position 2 2 2 2)
+
+;Value: 10
+
+1 (user) => (position 5 5 5 5)
+
+;Value: 185/2
+#+END_SRC
+
+As our code of =position= just return the computed value, not through branch, so
+we tested all the branches of the procedure.
+** Problem 2: Basic Math
+One of our goals is to determine how far a baseball will travel in the air, if
+it is hit with some initial velocity at some initial angle with respect to the
+ground. To do this, we will need to know when the baseball hits the ground, and
+for that we'll want to find when the $y$ coordinate of the baseball's position
+reaches zero. This can be discovered by finding the roots of the $y$ position
+equation, and selecting the one that is larger (later in time). The proper tool
+for this is the quadratic formula. Given the coefficients of the quadratic
+equation $a z^{2} + b z + c = 0$, write a procedure to find one of the roots
+(call this =root1=), and another procedure to find the other root (call this
+=root2=).
+
+#+BEGIN_SRC scheme
+(define root1
+  (lambda (a b c)
+    (let ((D (- (square b)              ;b^2 - 4ac
+		(* 4 a c))))
+      (if (< D 0)
+	  false				;invalid input
+	  (/ (- (- b) (sqrt D))
+	     (* 2 a))))))
+
+(define root2
+  (lambda (a b c)
+    (let ((D (- (square b)              ;b^2 - 4ac
+		(* 4 a c))))
+      (if (< D 0)
+	  false				;invalid input
+	  (/ (+ (- b) (sqrt D))
+	     (* 2 a))))))
+#+END_SRC
+
+And also test:
+#+BEGIN_SRC scheme
+(root1 5 3 6)				;when D < 0
+;Value: #f
+(root1 1 2 1)				;when D = 0
+;Value: -1
+(root1 1 4 2)				;when D > 0
+;Value: -3.414213562373095
+(root2 5 3 6)				;when D < 0
+;Value: #f
+(root2 1 2 1)				;when D = 0
+;Value: -1
+(root2 1 4 2)				;when D > 0
+;Value: -.5857864376269049
+#+END_SRC
+This code constitute path-complete test.
+** Problem 3: Flight Time
+Given an initial upward velocity (in meters per second, or m/s) and initial
+elevation or height (in meters, or m), write a procedure that computes how long
+the baseball will be in flight. Remember that gravity is a downward acceleration
+of 9.8m/s^{2}. Note that to solve this you will need a root of a quadratic
+equation. Try using =root1=, and using =root2=. Only one of these solutions
+makes sense. Which one? And why? Use this to create a correct version of the
+procedure below.
+
+Note that
+\begin{align*}
+\left.
+\begin{matrix}
+a &<0\\
+b &>0\\
+c &>0\\
+\end{matrix}
+\right\}
+\implies
+\frac{-b - \sqrt{D}}{2a} > 0 > \frac{-b + \sqrt{D}}{2a}
+\end{align*}
+as noted above our acceleration is negative initial, velocity would be positive
+as it given upward velocity, and as the initial height should be positive, our
+situation fit into above equation, which indicate =root1= would suit in our
+case:
+#+BEGIN_SRC scheme
+(define time-to-impact
+  (lambda (vertical-velocity elevation)
+    (if (and (negative? elevation)
+             (negative? vertical-velocity)) ;cannot hit the grount at any time > 0
+        false
+        (root1 (- (/ gravity 2)) vertical-velocity elevation)))) ;with other possibitities coped by root1 procedure.
+#+END_SRC
+
+Also note that in any case, as long as the acceleration is negative, following
+equation holds when $D > 0$
+\[
+\frac{-b - \sqrt{D}}{2a} > \frac{-b + \sqrt{D}}{2a}
+\].
+
+So, we used this fact in above procedure.
+
+As usual, here is the test:
+#+BEGIN_SRC scheme
+(time-to-impact 10 3)			;positive initial velocity with positive elevation
+;Value: 2.306284408328438
+(time-to-impact -20 3)			;negative initial velocity with positive elevation
+;Value: .14485889559025134
+(time-to-impact 1 -2)			;positive initial velocity with negative elevation, whose condition cannot hit the ground. Note that it handled by root1 procedure.
+;Value: #f
+(time-to-impact -2 -3)			;negative initial velocity with negative elevation; cannot hit the ground.
+;Value: #f
+#+END_SRC
+
+In some cases, we may want to know how long it takes for the ball to drop to a
+particular height, other than 0. Using your previous procedures as a template,
+write a procedure that computes the time for the ball to reach a given target
+elevation.
+
+As we already path-completed the previous procedure, we are good to use that
+procedure to this:
+#+BEGIN_SRC scheme
+(define time-to-height
+  (lambda (vertical-velocity elevation target-elevation)
+    (time-to-impact vertical-velocity (- elevation target-elevation))))
+#+END_SRC
+** Problem 4: Flight Distance
+Suppose the baseball is hit with some velocity $v$, at a starting angle \alpha
+relative to the horizontal (in degrees), and from an initial elevation (in
+meters). We wish to compute the distance in the horizontal direction the
+baseball will travel by the time it lands.
+
+Write a procedure =travel-distance-simple= that returns the lateral distance the
+baseball thrown with given velocity, angle, and initial elevation will travel
+before hitting the ground.
+
+We are going to encode following mathematical equation directly:
+\begin{align*}
+v_{x} &= v \cos \alpha\\
+d_{x} &= v \cos \alpha \times t_{\text{impact}}
+\end{align*}
+#+BEGIN_SRC scheme
+(define travel-distance-simple
+  (lambda (elevation velocity angle)
+    (let ((alpha (degree2radian angle)))
+      (let ((v_x (* velocity
+                    (cos alpha)))
+            (v_y (* velocity
+                    (sin alpha))))
+        (* v_x
+           (time-to-impact v_y elevation))))))
+#+END_SRC
+
+Here is the test cases:
+#+BEGIN_SRC scheme
+(define case1 (travel-distance-simple 1 45 0)) ;case 1
+case1                                          ;meter
+;Value: 20.32892781536815
+(meters-to-feet case1)                         ;feet
+;Value: 67.0854617907149
+(define case2 (travel-distance-simple 1 45 45)) ;case2
+case2                                           ;meter
+;Value: 207.6278611514906
+(meters-to-feet case2)                          ;feet
+;Value: 685.171941799919
+(define case3 (travel-distance-simple 1 45 90)) ;case 3
+case3                                           ;meter
+;Value: 5.496418989612468e-4
+(meters-to-feet case3)                          ;feet
+;Value: 1.8138182665721145e-3
+#+END_SRC
+
+Notice the distance traveled in feet for a ball hit at a 45 degree angle, with
+this bat speed. Seems incredible -- right? We'll come back to this in a little bit.
+
+Wow.. 207 meters...
+** Problem 5: What's the best angle to hit?
+Before we figure out why professional players don't normally hit 700 foot home
+runs, let's first see if we can find out the optimal angle at which to launch a
+baseball, in order to have it travel the furthest.
