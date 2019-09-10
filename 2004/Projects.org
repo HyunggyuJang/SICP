@@ -239,3 +239,593 @@ Wow.. 207 meters...
 Before we figure out why professional players don't normally hit 700 foot home
 runs, let's first see if we can find out the optimal angle at which to launch a
 baseball, in order to have it travel the furthest.
+
+To find the best angle to hit, we design iterative process as follows:
+1. Set initial max distance with max angle (0 and 0 would suffice).
+2. If angle greater than upper bound then return max angle.
+3. Calculate distance with the current angle.
+4. If that distance greater than max distance, set max distance to current
+   distance and max angle to current angle.
+5. Increment angle with the given step.
+6. Iterate 2 \to 5.
+
+
+Here is the straightforward encode:
+#+BEGIN_SRC scheme
+(define (find-best-angle velocity elevation)
+  (define upper-bound 90)
+  (define increment 1)
+  (define (next ang) (+ ang increment))
+  (define (iter angle max-dist max-ang)
+    (if (> angle upper-bound)
+        max-ang
+        (let ((dist (travel-distance-simple elevation velocity angle)))
+          (let ((next-ang (next angle)))
+            (if (> dist max-dist)
+                (iter next-ang dist angle)
+                (iter next-ang max-dist max-ang))))))
+  (iter 0 0 0))
+#+END_SRC
+
+And here is the test or sample points:
+#+BEGIN_SRC scheme
+1 (user) => (find-best-angle 45 1)
+
+;Value: 45
+
+1 (user) => (find-best-angle 23 0.8)
+
+;Value: 45
+
+1 (user) => (find-best-angle 21 10)
+
+;Value: 40
+;; ↑ is not practical to our situation where we consider the baseball hitten by batter.
+#+END_SRC
+So we can conclude that in the baseball hitting case, 45 degrees is best angle
+to hit the ball.
+** Problem 6: So why aren't baseball outfield 600 feet deep?
+Let's go back to our distances. Why are these numbers for distances hit so
+unrealistic? -- because we haven't accounted for air fiction or drag. (Of course
+there are some other effects, like spin, but we'll just stick with drag). Let's
+think about this. Newton's equation basically says that the movement of the ball
+will be governed by:
+#+BEGIN_CENTER
+Drag + gravity = mass * acceleration
+#+END_CENTER
+
+We can get the mass of a baseball (.15kg). We know that force due to gravity --
+mass * 9.8 m/s^{2}. The force due to drag is given by:
+#+BEGIN_CENTER
+$1/2 C \rho A V^{2}$
+#+END_CENTER
+Where $C$ is the drag coefficient (about 0.5 for baseball sized objects); \rho
+is the density of air (about 1.25 kg/m^{3} at sea level for moderate humidity --
+not a bad approximation for Boston, but about 1.06 for Denver); $A$ is the
+cross-sectional area of the baseball (which is $\pi D^{2}/4$, where $D$ is the
+diameter of a baseball -- about 0.074 m). Let's denote $1/2 C \rho A$ by the
+constant $\beta$. Then we see that the drag on a baseball is basically
+proportional to the square of the velocity of the ball. So there is more drag
+when the ball is moving faster.
+
+How can we compute the distance traveled by a baseball, but taking into account
+this drag effect? Basically we have four coupled linear differential equations:
+Let's let $x$ and $y$ denote the two components of position of the baseball, and
+let's let $u$ denote the velocity in the horizontal direction, and $v$ denote
+the velocity in the vertical direction. We will let *V* denote the magnitude of
+the velocity. Then the equations of motion are:
+\begin{align*}
+dx/dt &= u\\
+dy/dt &= v\\
+du/dt &= - \frac{1}{m} \sqrt{u^{2} + v^{2}} u \beta \\
+dv/dt &= - \frac{1}{m} \sqrt{u^{2} + v^{2}} v \beta - g
+\end{align*}
+
+We can rewrite these as
+\begin{align*}
+dx &= u dt\\
+dy &= v dt\\
+du &= - \frac{1}{m} \sqrt{u^{2} + v^{2}} u \beta dt\\
+dv &= - \left\{ \frac{1}{m} \sqrt{u^{2} + v^{2}} v \beta + g \right\} dt
+\end{align*}
+
+We also have some initial conditions on these parameters
+
+\begin{align*}
+x_{0} &= 0\\
+y_{0} &= h\\
+u_{0} &= \text{\bf{V}} \cos \alpha \\
+v_{0} &= \text{\bf{V}} \sin \alpha
+\end{align*}
+where \alpha is the angle of the initial hit with respect to the ground, $V$ is
+the initial velocity, and $h$ is the initial height of the ball.
+
+To find the distance traveled, we need to integrate these equation (one can
+consider this as second ordered differential equation with respect to $x,y$, but
+this equation is not linear; thus we rely on the numerical integration anyway).
+That is, starting with the initial values, we want to move forward a small step
+in time (say 0.01 seconds), and compute the change in $x$ and $y$. Similarly, we
+want to compute the change in $u$ and $v$, and thus, the new values for $u$ and
+$v$. We can keep recursively estimating these values until the value for $y$
+drops below 0, in which case the value for $x$ tells us the distance traveled.
+
+This constitute algorithm that compute the distance traveled informally; that
+is, it dictated termination condition, initial condition, and way to transit one
+step. Let's restate what described above as algorithm:
+1. Start with initial condition.
+2. If termination condition? return $x$
+3. Transition one step.
+4. Iterate 2 \to 3.
+
+
+Here as we explained all the details above informal description, omitted that
+informations to avoid to get bogged down by that.
+
+And here is the code:
+#+BEGIN_SRC scheme
+(define integrate                       ;returns x when y becomes negative.
+  (lambda (x0 y0 u0 v0 dt g m beta)
+    (define (iter x y u v)
+      (if (< y 0)                       ;termination condition
+          x
+          (let ((speed (sqrt (+ (square u)
+                                (square v))))
+                (v-factor (* (/ 1 m)
+                             beta)))
+            (let ((dx (* u dt))
+                  (dy (* v dt))
+                  (du (* (- v-factor)
+                         speed
+                         u
+                         dt))
+                  (dv (* (- (+ (* v-factor
+                                  speed
+                                  v)
+                               g))
+                         dt)))
+              (iter (+ x dx)            ;transition
+                    (+ y dy)
+                    (+ u du)
+                    (+ v dv))))))
+    (iter x0 y0 u0 v0)))                ;initial condition
+#+END_SRC
+
+And the initial setter:
+#+BEGIN_SRC scheme
+(define (travel-distance elevation speed angle)
+  (let ((alpha (degree2radian angle)))
+    (integrate 0
+               elevation
+               (* speed
+                  (cos alpha))
+               (* speed
+                  (sin alpha))
+               0.01
+               gravity
+               mass
+               beta)))
+#+END_SRC
+
+And as we told, we determine the distance a baseball will travel with an angle
+of 45 degrees, using velocities of 45 m/s, 40 m/s, 35 m/s:
+#+BEGIN_SRC scheme
+1 (user) => (meters-to-feet (travel-distance 1 45 45))
+
+;Value: 304.3610105268868
+; Home run!
+
+1 (user) => (meters-to-feet (travel-distance 1 40 45))
+
+;Value: 269.5039326610774
+; Close!
+
+1 (user) => (meters-to-feet (travel-distance 1 35 45))
+
+;Value: 231.99119882455975
+; Flyout!!
+#+END_SRC
+
+To find out the effect of angle on the travel distance, let we code as follows:
+#+BEGIN_SRC scheme
+(define (iterate-on-angle method)
+  (lambda (velocity elevation)
+    (define upper-bound 90)
+    (define increment 1)
+    (define (next ang) (+ ang increment))
+    (define (iter angle max-dist max-ang)
+      (if (> angle upper-bound)
+          max-ang
+          (let ((dist (method elevation velocity angle)))
+            (let ((next-ang (next angle)))
+              (if (> dist max-dist)
+                  (iter next-ang dist angle)
+                  (iter next-ang max-dist max-ang))))))
+    (iter 0 0 0)))
+#+END_SRC
+What is generalized =find-best-angle=. We can rewrite =find-best-angle= as
+#+BEGIN_SRC scheme
+(define find-best-angle
+  (iterate-on-angle travel-distance-simple))
+#+END_SRC
+
+Back to our task, now we can estimate described effect using:
+#+BEGIN_SRC scheme
+(define test-effect-of-angle-and-best-angle
+  (iterate-on-angle (lambda (elevation velocity angle)
+                      (let ((distance (travel-distance elevation velocity angle)))
+                        (if (homerun? distance)          ;display result
+                            (begin (newline)
+                                   (display "Angle (degrees) : ")
+                                   (display angle)
+                                   (display "\tdistance (meters) : ")
+                                   (display distance)
+                                   (display "\t(feets) : ")
+                                   (display (meters-to-feet distance))))
+                        distance))))
+
+(define (homerun? distance)
+  (> (meters-to-feet distance) 300))
+#+END_SRC
+which display each angle with travel distance that let the ball land over the
+fence:
+#+BEGIN_SRC scheme
+1 (user) => (test-effect-of-angle-and-best-angle 45 1)
+
+Angle (degrees) : 31	distance (meters) : 91.51532072764736	(feets) : 302.00055840123633
+Angle (degrees) : 32	distance (meters) : 92.06394866247652	(feets) : 303.81103058617254
+Angle (degrees) : 33	distance (meters) : 92.68907465558765	(feets) : 305.87394636343925
+Angle (degrees) : 34	distance (meters) : 93.0990652827013	(feets) : 307.2269154329143
+Angle (degrees) : 35	distance (meters) : 93.4412381854694	(feets) : 308.35608601204905
+Angle (degrees) : 36	distance (meters) : 93.5813025098057	(feets) : 308.8182982823588
+Angle (degrees) : 37	distance (meters) : 93.79053827815333	(feets) : 309.508776317906
+Angle (degrees) : 38	distance (meters) : 93.93134422944617	(feets) : 309.9734359571724
+Angle (degrees) : 39	distance (meters) : 93.8787236285791	(feets) : 309.799787974311
+Angle (degrees) : 40	distance (meters) : 93.76322959233745	(feets) : 309.4186576547136
+Angle (degrees) : 41	distance (meters) : 93.70356375240091	(feets) : 309.22176038292304
+Angle (degrees) : 42	distance (meters) : 93.45847229577446	(feets) : 308.4129585760557
+Angle (degrees) : 43	distance (meters) : 93.1494935264519	(feets) : 307.3933286372913
+Angle (degrees) : 44	distance (meters) : 92.66568484432294	(feets) : 305.7967599862657
+Angle (degrees) : 45	distance (meters) : 92.23060925057175	(feets) : 304.3610105268868
+Angle (degrees) : 46	distance (meters) : 91.73050392599892	(feets) : 302.7106629557964
+Angle (degrees) : 47	distance (meters) : 91.06247282999192	(feets) : 300.50616033897336
+;Value: 38
+#+END_SRC
+
+So it conclude that if the batter swings the bat at about 100 mph (or 45 m/s),
+homerun angle range would be 31 \to 47 degrees; best angle with given situation
+is 38 degrees.
+
+If it were Denver, i.e.
+#+BEGIN_SRC scheme
+;; (define density 1.25)  ; kg/m^3
+(define density 1.06)  ; for denver
+#+END_SRC
+
+Then the same test results in
+#+BEGIN_SRC scheme
+1 (user) => (test-effect-of-angle-and-best-angle 45 1)
+
+Angle (degrees) : 25	distance (meters) : 91.80757292364773	(feets) : 302.9649906480375
+Angle (degrees) : 26	distance (meters) : 93.23537186687204	(feets) : 307.6767271606778
+Angle (degrees) : 27	distance (meters) : 94.39458365678752	(feets) : 311.5021260673988
+Angle (degrees) : 28	distance (meters) : 95.47489744142004	(feets) : 315.06716155668613
+Angle (degrees) : 29	distance (meters) : 96.6491018216814	(feets) : 318.9420360115486
+Angle (degrees) : 30	distance (meters) : 97.5677682297549	(feets) : 321.9736351581912
+Angle (degrees) : 31	distance (meters) : 98.24273978796408	(feets) : 324.2010413002815
+Angle (degrees) : 32	distance (meters) : 99.00759192365273	(feets) : 326.725053348054
+Angle (degrees) : 33	distance (meters) : 99.69345769019637	(feets) : 328.988410377648
+Angle (degrees) : 34	distance (meters) : 100.14639278028076	(feets) : 330.4830961749265
+Angle (degrees) : 35	distance (meters) : 100.5271971345883	(feets) : 331.73975054414143
+Angle (degrees) : 36	distance (meters) : 100.98266355990877	(feets) : 333.24278974769896
+Angle (degrees) : 37	distance (meters) : 101.21502833182811	(feets) : 334.0095934950328
+Angle (degrees) : 38	distance (meters) : 101.3744208976632	(feets) : 334.53558896228856
+Angle (degrees) : 39	distance (meters) : 101.3233691316595	(feets) : 334.36711813447636
+Angle (degrees) : 40	distance (meters) : 101.33908658868884	(feets) : 334.4189857426732
+Angle (degrees) : 41	distance (meters) : 101.28079791925339	(feets) : 334.22663313353615
+Angle (degrees) : 42	distance (meters) : 101.02041185502884	(feets) : 333.3673591215952
+Angle (degrees) : 43	distance (meters) : 100.69139652226286	(feets) : 332.28160852346747
+Angle (degrees) : 44	distance (meters) : 100.29330967725063	(feets) : 330.9679219349271
+Angle (degrees) : 45	distance (meters) : 99.82569987946395	(feets) : 329.42480960223105
+Angle (degrees) : 46	distance (meters) : 99.28810645473736	(feets) : 327.6507513006333
+Angle (degrees) : 47	distance (meters) : 98.680059495752	(feets) : 325.64419633598163
+Angle (degrees) : 48	distance (meters) : 97.89056434436357	(feets) : 323.0388623363998
+Angle (degrees) : 49	distance (meters) : 97.14303748827358	(feets) : 320.57202371130285
+Angle (degrees) : 50	distance (meters) : 96.21859535764192	(feets) : 317.52136468021837
+Angle (degrees) : 51	distance (meters) : 95.2272364727326	(feets) : 314.2498803600176
+Angle (degrees) : 52	distance (meters) : 94.16843722545231	(feets) : 310.75584284399264
+Angle (degrees) : 53	distance (meters) : 93.04166763942294	(feets) : 307.03750321009574
+Angle (degrees) : 54	distance (meters) : 91.84639167839042	(feets) : 303.0930925386884
+;Value: 38
+#+END_SRC
+
+Quite impressive.
+** Problem 7: Throwing instead of hitting
+Now let's turn this around. Instead of worrying about how far the ball will
+carry when hit, suppose we want a robotic fielder that can throw the ball
+accurately and efficiently. For this, we want to determine the best angle to
+throw the ball at a given velocity in order to reach a target a given distance
+away in the shortest amount of time. We will assume the target is at height 0
+(i.e. on the ground) -- we could do this for a given height of the target but
+we'll assume that our fielders are good at catching things at ground level!
+
+We need to write a procedure (or set or procedures) that use the same
+integration idea to accomplish the following:
+- Given an *input velocity* and *desired distance* (plus the other parameters
+  such as mass of the ball, the beta coefficient, gravity, and the height at
+  which the throw was made),
+- we want to *try different initial angles* (ranging from -90 to 90 degrees) at
+  which to throw.
+- If throwing at a particular angle will result in the ball traveling roughly
+  the desired distance (up to some error) then we want to find the time it takes
+  for the ball to reach the target using this trajectory. (a variation of our
+  =integrate= will do)
+- Finally, we want to find the trajectory that results in the shortest time,
+  given a fixed initial velocity magnitude (a variation of =find-best-angle=
+  will do).
+
+
+Let's do our job; but we need to consider the case that with given velocity the robotic
+fielder can not throw specified distance at all. The problem statement suggests
+we should return 0 so that we can tell this case from the others
+
+*** A variation of =integrate=
+Now we want =integrate= return time also not only distance. If we allowed to use
+data structure called pair it is so easy stuff; but we are supposed not to know
+any of that here we use higher order function instead of that.
+
+As the termination condition is as same of the batting, all the change we should
+make is trace additional integrate variable -- time. To do this we generalize
+=integrate= procedure:
+#+BEGIN_SRC scheme
+(define (intergrate-gen terminate? select)
+  (lambda (x0 y0 u0 v0 dt g m beta)
+    (define (iter x y u v t)
+      (if (terminate? x y u v t)        ;termination condition
+          (select x y u v t)
+          (let ((speed (sqrt (+ (square u)
+                                (square v))))
+                (v-factor (* (/ 1 m)
+                             beta)))
+            (let ((dx (* u dt))
+                  (dy (* v dt))
+                  (du (* (- v-factor)
+                         speed
+                         u
+                         dt))
+                  (dv (* (- (+ (* v-factor
+                                  speed
+                                  v)
+                               g))
+                         dt)))
+              (iter (+ x dx)            ;transition
+                    (+ y dy)
+                    (+ u du)
+                    (+ v dv)
+                    (+ t dt))))))
+    (iter x0 y0 u0 v0 0)))
+
+(define integrate                       ;returns x when y becomes negative.
+  (integrate-gen
+   (lambda (x y u v t) (< y 0))
+   (lambda (x y u v t) x)))
+#+END_SRC
+
+Then we can use the following to collect the time:
+#+BEGIN_SRC scheme
+(define (travel-desired-distance-time desired-distance elevation speed angle)
+  (let ((epsilon 0.5))                  ;tolerance (m)
+    (travel (integrate-gen
+             (lambda (x y u v t)
+               (or (< y 0)
+                   (> x (+ desired-distance epsilon)))) ;termination
+             (lambda (x y u v t)
+               (if (and (< y 0)
+                        (< (abs (- x desired-distance)) epsilon))
+                   t                    ;return
+                   0))))                ;default value
+    elevation speed angle))
+#+END_SRC
+
+Well, in this way we broke the abstraction barrier by the very lower procedure,
+=travel= procedure to know about when to terminate and what to return; even
+more, the default value, which definitely defined at the very higher level of
+procedure, thus we should be able to change that value easily and defer the
+decision what the value should be.
+
+Also, as we learned that data structure -- pair -- even before the higher order
+procedure! So if we are good to use higher order procedure, so does pair!
+
+Let's reflect that fact to our code:
+#+BEGIN_SRC scheme
+(define (travel method elevation speed angle)
+  (let ((alpha (degree2radian angle)))
+    (method 0
+            elevation
+            (* speed
+               (cos alpha))
+            (* speed
+               (sin alpha))
+            0.01
+            gravity
+            mass
+            beta)))
+
+(define (travel-distance-with-time elevation speed angle)
+  (travel
+   (integrate-gen
+    (lambda (x y u v t) (< y 0))
+    (lambda (x y u v t) (make-dist-time x t)))
+   elevation speed angle))
+
+;; wrapper structure
+(define (make-dist-time x t) (cons x t))
+(define (dist p) (car p))
+(define (time p) (cdr p))
+#+END_SRC
+
+We modified integration procedure to return the pair of traveled distance and
+traveled time. Using this procedure we can find the minimum travel time when we
+throw the ball to desired distance:
+#+BEGIN_SRC scheme
+(define (iterate-on-angle lower upper method update? return)
+  (lambda (velocity elevation)
+    (define increment 0.1)
+    (define (next ang) (+ ang increment))
+    (define (iter angle extremum ext-ang)
+      (if (>= angle upper)
+          (return ext-ang extremum)
+          (let ((result (method elevation velocity angle)))
+            (let ((next-ang (next angle)))
+              (if (update? result extremum)
+                  (iter next-ang result angle)
+                  (iter next-ang extremum ext-ang))))))
+    (iter lower 0 0)))
+
+(define (throw-desired-distance velocity desired-distance height)
+  (let ((epsilon 0.5))                  ;distance tolerance (m)
+    ((iterate-on-angle
+      -90                               ;lower bound angle
+      90                                ;upper bound angle
+      (lambda (elevation velocity angle)
+        (let ((result (travel-distance-with-time elevation velocity angle))) ;distance-time pair
+          (if (< (abs (- (dist result) desired-distance)) epsilon)           ;within tolerance?
+              (time result)                                                  ;return that time
+              0)))                                                           ;return default time
+      (lambda (current min)                                                  ;update condition
+        (and (not (zero? current))
+             (or (zero? min)
+                 (< current min))))
+      cons)                             ;construct pair that contains angle with minimum travel time
+     velocity height)))                 ;initial velocity and height at which the throw made
+#+END_SRC
+
+**** With these procedure we can determine the required question: If our catcher has
+a gun for an arm, and can throw at 100 mph (or 45 m/s), how long does it take to
+reach second base (about 36 m apart from home plate)? How long if he throws at
+35 m/s? of at 55 m/s?
+
+Results:
+#+BEGIN_SRC scheme
+1 (user) => (throw-desired-distance 45 36 1)
+
+;Value: (4.3999999999991655 . .9300000000000006)
+
+1 (user) => (throw-desired-distance 35 36 1)
+
+;Value: (8.399999999999151 . 1.1900000000000008)
+
+1 (user) => (throw-desired-distance 55 36 1)
+
+;Value: (2.399999999999165 . .7600000000000005)
+#+END_SRC
+
+The =car= of returned is angle at which the minimum time made, the =cdr= of it
+is that minimum time.
+
+**** Note that a really good base runner should be able to get from first to second
+base in roughly 3 seconds. If the pitcher is throwing at 90 mph how long does it
+take to reach home? If the catcher throws at 90 mph, how much time does he have
+to catch and release the ball if he is going to put out a runner trying to steal
+second?
+
+Since 90 mph is approximately equals to 40 m/s and the whole distance the ball
+travel is about 18 + 36 m, we can estimate what we requested as follows:
+#+BEGIN_SRC scheme
+1 (user) => (throw-desired-distance 40 18 1)
+
+;Value: (-8.35914670815896e-13 . .47000000000000025)
+
+1 (user) => (throw-desired-distance 40 36 1)
+
+;Value: (5.89999999999916 . 1.0300000000000007)
+#+END_SRC
+
+So, the catcher should catch and release the ball in 1.5 seconds.
+**** Now we estimate the outfielders.
+Suppose an outfielder has a strong arm and can throw at 45 m/s. How quickly can
+he throw the ball to a target at a distance of 30m? 60m? 80m? What if he can
+throw 55 m/s?
+
+Here is the result:
+#+BEGIN_SRC scheme
+1 (user) => (throw-desired-distance 45 30 1.8)
+
+;Value: (1.1999999999991642 . .7400000000000004)
+
+1 (user) => (throw-desired-distance 45 60 1.8)
+
+;Value: (10.099999999999145 . 1.7300000000000013)
+
+1 (user) => (throw-desired-distance 45 80 1.8)
+
+;Value: (17.499999999999144 . 2.5899999999999888)
+
+1 (user) => (throw-desired-distance 55 30 1.8)
+
+;Value: (-.30000000000083593 . .6100000000000003)
+
+1 (user) => (throw-desired-distance 55 60 1.8)
+
+;Value: (5.99999999999916 . 1.390000000000001)
+
+1 (user) => (throw-desired-distance 55 80 1.8)
+
+;Value: (10.699999999999143 . 2.0500000000000003)
+#+END_SRC
+
+With a weaker outfielder, the same distance results into
+#+BEGIN_SRC scheme
+1 (user) => (throw-desired-distance 35 30 1.8)
+
+;Value: (4.3999999999991655 . .9600000000000006)
+
+1 (user) => (throw-desired-distance 35 60 1.8)
+
+;Value: (18.999999999999165 . 2.3099999999999947)
+
+1 (user) => (throw-desired-distance 35 80 1.8)
+
+;Value: (0 . 0)
+#+END_SRC
+
+This outfielder can not throw the ball to the distance apart 80 m from where the
+throw made.
+** Problem 8: Do it on a bounce
+We noticed from preceding problem that weak outfielders can not get the ball
+more than 80m in the air. So he may have to bounce it there. Let's model this
+effect.
+
+Specifically, assume that when a ball bounces, it leaves the ground at the same
+angle as it was initially thrown (untrue but a reasonable approximation) but
+with half the velocity. Our task is to write a procedure that will determine the
+distance traveled, accounting for drag, given an initial velocity, an angle of
+throw, an initial height, and the number of bounces it will take.
+
+Here is the algorithm we are going to code:
+1. Set initial condition.
+2. Using =travel-distance= determine traveled distance with no bound and increment
+   =sum-dist= by the result of =travel-distance=.
+3. If remaining bounce is zero then terminate the loop with =sum-dist=.
+4. Else set velocity to half of it and set height to 0.
+5. Iterate on 2 \to 4.
+
+
+Here is the resulting straightforward code:
+#+BEGIN_SRC scheme
+(define (travel-distance-with-bounces elevation speed angle bounces)
+  (define (iter vel remaining-bounces sum-dist)
+    (if (zero? remaining-bounces)
+        sum-dist
+        (iter (/ vel 2.) (1- remaining-bounces)
+              (+ sum-dist (travel-distance 0 vel angle)))))
+  (iter (/ speed 2.) bounces (travel-distance elevation speed angle)))
+#+END_SRC
+
+And here is the test:
+#+BEGIN_SRC scheme
+1 (user) => (travel-distance-with-bounces 1.8 35 19 3)
+
+;Value: 83.39858829506251
+#+END_SRC
+
+Now our outfielder who has weak shoulder can throw the ball to reach apart 80m.

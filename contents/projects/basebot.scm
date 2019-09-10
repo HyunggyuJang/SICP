@@ -153,15 +153,15 @@
 ;; at an angle of (/ pi 2) radians or 90 degrees (straight vertical)
 ;; at an angle of (/ pi 4) radians or 45 degrees
 
-(define case1 (travel-distance-simple 1 45 0)) ;case 1
-case1                                          ;meter
-(meters-to-feet case1)                         ;feet
-(define case2 (travel-distance-simple 1 45 45)) ;case2
-case2                                           ;meter
-(meters-to-feet case2)                          ;feet
-(define case3 (travel-distance-simple 1 45 90)) ;case 3
-case3                                           ;meter
-(meters-to-feet case3)                          ;feet
+;; (define case1 (travel-distance-simple 1 45 0)) ;case 1
+;; case1                                          ;meter
+;; (meters-to-feet case1)                         ;feet
+;; (define case2 (travel-distance-simple 1 45 45)) ;case2
+;; case2                                           ;meter
+;; (meters-to-feet case2)                          ;feet
+;; (define case3 (travel-distance-simple 1 45 90)) ;case 3
+;; case3                                           ;meter
+;; (meters-to-feet case3)                          ;feet
 
 ;; what is the distance traveled in each case?
 ;; record both in meters and in feet
@@ -178,37 +178,44 @@ case3                                           ;meter
 
 (define alpha-increment 0.01)
 
-(define (find-best-angle velocity elevation)
-  (define upper-bound 90)
-  (define increment 0.01)
-  (define (next ang) (+ ang increment))
-  (define (iter angle max-dist max-ang)
-    (if (> angle upper-bound)
-        max-ang
-        (let ((dist (travel-distance-simple elevation velocity angle)))
-          (let ((next-ang (next angle)))
-            (if (> dist max-dist)
-                (iter next-ang dist angle)
-                (iter next-ang max-dist max-angle))))))
-  (iter 0 0 0))
+(define (iterate-on-angle lower upper method update? return)
+  (lambda (velocity elevation)
+    (define increment 0.1)
+    (define (next ang) (+ ang increment))
+    (define (iter angle extremum ext-ang)
+      (if (>= angle upper)
+          (return ext-ang extremum)
+          (let ((result (method elevation velocity angle)))
+            (let ((next-ang (next angle)))
+              (if (update? result extremum)
+                  (iter next-ang result angle)
+                  (iter next-ang extremum ext-ang))))))
+    (iter lower 0 0)))
+
+(define (iterate-on-angle-with-dist method)
+  (iterate-on-angle 0 90 method
+                    (lambda (current max) (> current max))
+                    (lambda (ang dist) ang)))
 
 (define find-best-angle
-  (lambda (velocity elevation method) ;generalize to choose method for calculating distance
-    (define (iter angle max max-angle)  ;assume the unit of angle is degree.
-      (if (> angle 90)
-	        max-angle
-	        (let ((found (method elevation velocity angle))
-		            (next-angle (1+ angle)))
-	          (newline)
-	          (display (meters-to-feet found))
-	          (if (> found max) ;the found is further than what we have found before.
-		            (iter next-angle
-		                  found
-		                  angle)
-		            (iter next-angle
-		                  max
-		                  max-angle)))))
-    (iter 0 0 0)))
+  (iterate-on-angle-with-dist travel-distance-simple))
+
+(define test-effect-of-angle-and-best-angle
+  (iterate-on-angle-with-dist
+   (lambda (elevation velocity angle)
+     (let ((distance (travel-distance elevation velocity angle)))
+       (if (homerun? distance)          ;display result
+           (begin (newline)
+                  (display "Angle (degrees) : ")
+                  (display angle)
+                  (display "\tdistance (meters) : ")
+                  (display distance)
+                  (display "\t(feets) : ")
+                  (display (meters-to-feet distance))))
+       distance))))
+
+(define (homerun? distance)
+  (> (meters-to-feet distance) 300))
 
 ;; find best angle
 ;; try for other velocities
@@ -290,49 +297,53 @@ case3                                           ;meter
 (define diameter 0.074)  ; m
 (define beta (* .5 drag-coeff density (* 3.14159 .25 (square diameter))))
 
-(define integrate			;returns x when y becomes negative.
+(define (integrate-gen terminate? select)
   (lambda (x0 y0 u0 v0 dt g m beta)
-    (define (iter x y u v)
-      (if (< y 0)			;termination condition
-	  x
-	  (let ((speed (sqrt (+ (square u)
-				(square v))))
-		(v-factor (* (/ 1 m)
-			     beta)))
-	    (let ((dx (* u dt))
-		  (dy (* v dt))
-		  (du (* (- v-factor)
-			 speed
-			 u
-			 dt))
-		  (dv (* (- (+ (* v-factor
-				  speed
-				  v)
-			       g))
-			 dt)))
-	      (iter (+ x dx)		;evolution step
-		    (+ y dy)
-		    (+ u du)
-		    (+ v dv))))))
-    (iter x0 y0 u0 v0)))		;initial condition
+    (define (iter x y u v t)
+      (if (terminate? x y u v t)        ;termination condition
+          (select x y u v t)
+          (let ((speed (sqrt (+ (square u)
+                                (square v))))
+                (v-factor (* (/ 1 m)
+                             beta)))
+            (let ((dx (* u dt))
+                  (dy (* v dt))
+                  (du (* (- v-factor)
+                         speed
+                         u
+                         dt))
+                  (dv (* (- (+ (* v-factor
+                                  speed
+                                  v)
+                               g))
+                         dt)))
+              (iter (+ x dx)            ;transition
+                    (+ y dy)
+                    (+ u du)
+                    (+ v dv)
+                    (+ t dt))))))
+    (iter x0 y0 u0 v0 0)))
 
+(define integrate                       ;returns x when y becomes negative.
+  (integrate-gen
+   (lambda (x y u v t) (< y 0))
+   (lambda (x y u v t) x)))
 
-
+(define (travel method elevation speed angle)
+  (let ((alpha (degree2radian angle)))
+    (method 0
+            elevation
+            (* speed
+               (cos alpha))
+            (* speed
+               (sin alpha))
+            0.01
+            gravity
+            mass
+            beta)))
 
 (define (travel-distance elevation speed angle)
-  (let ((alpha (degree2radian angle)))
-    (integrate 0
-	       elevation
-	       (* speed
-		  (cos alpha))
-	       (* speed
-		  (sin alpha))
-	       0.01
-	       gravity
-	       mass
-	       beta)))
-
-
+  (travel integrate elevation speed angle))
 
 
 
@@ -341,6 +352,7 @@ case3                                           ;meter
 ;; (meters-to-feet (travel-distance 1 40 45)) ; 269.5 Oh... sorry about that
 ;; (meters-to-feet (travel-distance 1 35 45)) ; 232.0 Fly out
 ;; (find-best-angle 45 1 travel-distance)	   ; Home run range (32 48)
+;; (test-effect-of-angle-and-best-angle 45 1)
 
 ;; what about Denver?
 
@@ -355,6 +367,36 @@ case3                                           ;meter
 ;; use, given a velocity, in order to reach a given height (receiver) at a
 ;; given distance
 
+;; numerical calculator
+(define (travel-distance-with-time elevation speed angle)
+  (travel
+   (integrate-gen
+    (lambda (x y u v t) (< y 0))
+    (lambda (x y u v t) (make-dist-time x t)))
+   elevation speed angle))
+
+;; wrapper structure
+(define (make-dist-time x t) (cons x t))
+(define (dist p) (car p))
+(define (time p) (cdr p))
+
+;; governing the iteration
+(define (throw-desired-distance velocity desired-distance height)
+  (let ((epsilon 0.5))                  ;distance tolerance (m)
+    ((iterate-on-angle
+      -90                               ;lower bound angle
+      90                                ;upper bound angle
+      (lambda (elevation velocity angle)
+        (let ((result (travel-distance-with-time elevation velocity angle))) ;distance-time pair
+          (if (< (abs (- (dist result) desired-distance)) epsilon) ;within tolerance?
+              (time result)             ;return that time
+              0)))                      ;return default time
+      (lambda (current min)             ;update condition
+        (and (not (zero? current))
+             (or (zero? min)
+                 (< current min))))
+      cons)         ;construct pair that contains angle with minimum travel time
+     velocity height)))     ;initial velocity and height at which the throw made
 
 ;; a cather trying to throw someone out at second has to get it roughly 36 m
 ;; (or 120 ft) how quickly does the ball get there, if he throws at 55m/s,
@@ -364,5 +406,11 @@ case3                                           ;meter
 ;; using 45m/s
 
 ;; Problem 8
-
+(define (travel-distance-with-bounces elevation speed angle bounces)
+  (define (iter vel remaining-bounces sum-dist)
+    (if (zero? remaining-bounces)
+        sum-dist
+        (iter (/ vel 2.) (-1+ remaining-bounces)
+              (+ sum-dist (travel-distance 0 vel angle)))))
+  (iter (/ speed 2.) bounces (travel-distance elevation speed angle))) ;initial condition
 ;; Problem 9
