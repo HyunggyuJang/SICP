@@ -663,6 +663,7 @@ Let's reflect that fact to our code:
 (define (time p) (cdr p))
 #+END_SRC
 
+*** A variation of =find-best-angle=
 We modified integration procedure to return the pair of traveled distance and
 traveled time. Using this procedure we can find the minimum travel time when we
 throw the ball to desired distance:
@@ -790,6 +791,155 @@ With a weaker outfielder, the same distance results into
 
 This outfielder can not throw the ball to the distance apart 80 m from where the
 throw made.
+*** Reconsider
+We quite struggled to get fitted our task to newly constructed framework that we
+generalized. We did that since we know that it decomposes monolithic procedures
+into several procedures, each of which are general enough to do have meaning
+what they are computing. This concept was supposed to be dealt with in the next
+project -- not here. Actually our problem statement also implies this fact -- it
+guides us to write procedures by explanatory description of algorithm informally.
+
+Here we follow that step not to be obsessed by clever implementing. Here is the
+informal algorithm we are going to code:
+1. Take velocity, desired distance, etc for formal parameter our whole
+   procedure -- i.e. as entry point.
+2. For each angle \in $[-90, 90]$, integrate whose termination condition is $(x
+   > \text{desired distance})~or~(y < 0)$
+   , which means terminate integral whenever our throwing turns out to overshoot the target
+   or hit the ground.
+3. For updating step of integration, we call another procedure if the
+   termination condition satisfy given situation:
+   If ($x$ in the range -- desired distance \pm tolerance) then if $t$ is less
+   than the minimum time being searched so far, update the minimum time with the
+   corresponding angle (we can do this by calling outermost loop with updated
+   minimum time and angle).
+4. If the loop end by exceeding the upper limit of angle (90 degrees in our
+   case), return the minimum time (as we will set the initial minimum time
+   traveled as 0, so if there is not any trajectory that can reach the desired
+   distance then it would return 0 as default value).
+
+
+Here is the result:
+#+BEGIN_SRC scheme
+(define (throw-desired-distance velocity desired-distance height)
+  (define tolerance 0.5)                ;tolerance 0.5m
+  (define upper-limit 90)
+  (define lower-limit -90)
+  (define increment 0.1)
+  (define (next ang) (+ ang increment))
+  (define (loop angle minimum-time minimum-angle)
+    (if (> angle upper-limit)
+        minimum-time
+        (integrate-and-update angle minimum-time minimum-angle)))
+  (define (integrate-and-update angle minimum-time minimum-angle)
+    (define (throw-desired-distance velocity desired-distance height)
+  (define tolerance 0.5)                ;tolerance 0.5m
+  (define upper-limit 90)
+  (define lower-limit -90)
+  (define increment 0.1)
+  (define (next ang) (+ ang increment))
+  (define (loop angle minimum-time minimum-angle)
+    (if (> angle upper-limit)
+        minimum-time
+        (integrate-and-update angle minimum-time minimum-angle)))
+  (define (integrate-and-update angle minimum-time minimum-angle)
+    (define (in-range? x) (< (abs (- desired-distance x)) tolerance))
+    (define (hit-ground? y) (< y 0))
+    (define (overshoot? x) (> x (+ desired-distance tolerance)))
+    (define integrate (lambda (x0 y0 u0 v0 dt g m beta)
+                        (define (iter x y u v t)
+                          (if (or (hit-ground? y)
+                                  (overshoot? x))   ;termination condition
+                              (if (and (in-range? x)
+                                       (or (zero? minimum-time)
+                                           (< t minimum-time)))
+                                  (loop (next angle) t angle)
+                                  (loop (next angle) minimum-time minimum-angle))
+                              (let ((speed (sqrt (+ (square u)
+                                                    (square v))))
+                                    (v-factor (* (/ 1 m)
+                                                 beta)))
+                                (let ((dx (* u dt))
+                                      (dy (* v dt))
+                                      (du (* (- v-factor)
+                                             speed
+                                             u
+                                             dt))
+                                      (dv (* (- (+ (* v-factor
+                                                      speed
+                                                      v)
+                                                   g))
+                                             dt)))
+                                  (iter (+ x dx) ;transition
+                                        (+ y dy)
+                                        (+ u du)
+                                        (+ v dv)
+                                        (+ t dt))))))
+                        (iter x0 y0 u0 v0 0)))
+    (let ((alpha (degree2radian angle)))
+      (integrate 0
+                 height
+                 (* velocity
+                    (cos alpha))
+                 (* velocity
+                    (sin alpha))
+                 0.01
+                 gravity
+                 mass
+                 beta)))
+  (loop lower-limit 0 0))
+#+END_SRC
+
+And the tests:
+#+BEGIN_SRC scheme
+1 (user) => (throw-desired-distance 45 30 1.8)
+
+;Value: .7400000000000004
+
+1 (user) => (throw-desired-distance 45 60 1.8)
+
+;Value: 1.7300000000000013
+
+1 (user) => (throw-desired-distance 45 80 1.8)
+
+;Value: 2.5899999999999888
+#+END_SRC
+
+Finally we can decomposes this monolith by recognizing the duplicative codes:
+#+BEGIN_SRC scheme
+(define (throw-desired-distance velocity desired-distance height)
+  (define tolerance 0.5)                ;tolerance 0.5m
+  (define upper-limit 90)
+  (define lower-limit -90)
+  (define increment 0.1)
+  (define (next ang) (+ ang increment))
+  (define (loop angle minimum-time minimum-angle)
+    (if (> angle upper-limit)
+        minimum-time
+        (integrate-and-update angle minimum-time minimum-angle)))
+  (define (integrate-and-update angle minimum-time minimum-angle)
+    (define (in-range? x) (< (abs (- desired-distance x)) tolerance))
+    (define (hit-ground? y) (< y 0))
+    (define (overshoot? x) (> x (+ desired-distance tolerance)))
+    (define integrate
+      (integrate-gen
+       (lambda (x y u v t) (or (hit-ground? y)
+                               (overshoot? x)))
+       (lambda (x y u v t)
+         (if (and (in-range? x)
+                  (or (zero? minimum-time)
+                      (< t minimum-time)))
+             (loop (next angle) t angle)
+             (loop (next angle) minimum-time minimum-angle)))))
+    (travel integrate height velocity angle)) ;initial condition setter
+  (loop lower-limit 0 0))
+#+END_SRC
+
+We could decompose further by generalizing the loop procedure of
+=iterate-on-angle=; but I found it would rather make readability of our code
+worse. Now, our code get concise enough to be readable yet maintain the
+structure of described algorithm above. Also we didn't rely on the data
+structure -- pair.
 ** Problem 8: Do it on a bounce
 We noticed from preceding problem that weak outfielders can not get the ball
 more than 80m in the air. So he may have to bounce it there. Let's model this
@@ -829,3 +979,189 @@ And here is the test:
 #+END_SRC
 
 Now our outfielder who has weak shoulder can throw the ball to reach apart 80m.
+
+Let we do the case of an arbitrary number of bounces until it stops moving. We
+exploit the same strategy of previous problem in robotic fielder -- using error
+tolerance for the decision whether the ball stopped.
+
+We can do that by slightly amending the code of fixed numbered bounces version:
+By changing the termination condition to /vel < tolerance/:
+#+BEGIN_SRC scheme
+(define (travel-distance-with-arbitrary-bounces elevation speed angle)
+  (define (stop? vel) (< vel .1))
+  (define (iter vel sum-dist)
+    (if (stop? vel)
+        sum-dist
+        (iter (/ vel 2.)
+              (+ sum-dist (travel-distance 0 vel angle)))))
+  (iter (/ speed 2.) (travel-distance elevation speed angle)))
+#+END_SRC
+
+Here is the test:
+#+BEGIN_SRC scheme
+1 (user) => (travel-distance-with-arbitrary-bounces 1.8 35 19)
+
+;Value: 83.8583448733793
+#+END_SRC
+
+Unfortunately, our weak outfielders cannot throw the ball to reach to the place
+90m apart. It is quite different from the strong outfielders:
+#+BEGIN_SRC scheme
+1 (user) => (travel-distance-with-arbitrary-bounces 1.8 45 19)
+
+;Value: 120.78963743871626
+#+END_SRC
+** Problem 9: Do it on a bounce -- again
+In Problem 8, we just assumed that the velocity would drop by one half on each
+bounce. But in fact we are integrating trajectories in order to account for
+drag, we can actually compute the velocity of the ball when it bounces (since we
+know the $x$ and $y$ components of velocity when the ball hits the ground).
+Using our previous general integration procedure we can easily implement what we
+should do:
+1. Set the termination condition of the integration to =hits-ground?= as
+   previous; but we use this condition as transition to bounce.
+2. Set the selection of the integration to if =(stop? vel)= then terminate
+   ultimately -- return the $x$ component, else invert the sign of $v$ component
+   then continue the iteration (actually to support this code we need to amend
+   the =integrate-gen= to pass =iter= to the parameter of =select=).
+
+
+First, we implement the arbitrary number bounces version:
+#+BEGIN_SRC scheme
+(define (integrate-gen terminate? select)
+  (lambda (x0 y0 u0 v0 dt g m beta)
+    (define (iter x y u v t)
+      (if (terminate? x y u v t)        ;termination condition
+          (select x y u v t iter)
+          (let ((speed (sqrt (+ (square u)
+                                (square v))))
+                (v-factor (* (/ 1 m)
+                             beta)))
+            (let ((dx (* u dt))
+                  (dy (* v dt))
+                  (du (* (- v-factor)
+                         speed
+                         u
+                         dt))
+                  (dv (* (- (+ (* v-factor
+                                  speed
+                                  v)
+                               g))
+                         dt)))
+              (iter (+ x dx)            ;transition
+                    (+ y dy)
+                    (+ u du)
+                    (+ v dv)
+                    (+ t dt))))))
+    (iter x0 y0 u0 v0 0)))
+
+(define (travel-distance-with-arbitrary-bounces2 elevation speed angle)
+  (define (hits-the-ground? y) (< y 0))
+  (define (stop? vel) (< (abs vel) .1))
+  (define integrate
+    (integrate-gen
+     (lambda (x y . rest) (hits-the-ground? y))
+     (lambda (x y u v t iter)
+       (if (begin (newline) (display v) (stop? v)) x
+           (iter x y u (- v) t)))))
+  (travel integrate elevation speed angle))
+#+END_SRC
+
+Unfortunately, this doesn't work:
+#+BEGIN_SRC scheme
+1 (user) => (travel-distance-with-arbitrary-bounces2 1.8 45 19)
+
+-12.888754064178412
+12.888754064178412
+-12.888754064178412
+12.888754064178412
+-12.888754064178412
+12.888754064178412
+-12.888754064178412
+...
+#+END_SRC
+
+The problem was the termination condition works immediately after we invert =v=
+as the =y= is less than 0. So we set the =y= to 0 to fix this:
+#+BEGIN_SRC scheme
+1 (user) => (travel-distance-with-arbitrary-bounces2 1.8 45 19)
+
+-12.888754064178412
+-11.453707821293339
+-10.59153109045374
+...
+-7.104654040674966
+-7.104654040675094
+-7.104654040674973
+-7.104654040675086
+;Quit!
+#+END_SRC
+We fixed our original bug but encountered with another: After experimenting with
+the debug code, that is, to change display x not v, we got:
+#+BEGIN_SRC scheme
+1 (user) => (travel-distance-with-arbitrary-bounces2 1.8 45 19)
+
+82.68319955602507
+126.84863975747217
+...
+379.04242193941747
+379.04242193941747
+379.04242193941747
+;Quit!
+#+END_SRC
+
+That is, it indicates that we should use =u= to determine whether the ball
+stopped. The reason behind of this is that our drag affect on primarily to velocity
+of x component. Then rerun our test:
+#+BEGIN_SRC scheme
+1 (user) => (travel-distance-with-arbitrary-bounces2 1.8 45 19)
+
+;Value: 361.2999476708538
+
+1 (user) => (travel-distance-with-arbitrary-bounces2 1.8 35 19)
+
+;Value: 338.6223063509878
+#+END_SRC
+
+This produces huge difference from the previous calculation: It is mainly due to the
+fact that we modeled the bounce as elastic collision, which is not certainly
+true.
+
+Now let's turn to the fixed numbered bounces case. To do this, we should hand
+over the =bounces= state variable to our integration method to keep track of
+that. To make our general integration procedure make this happen, we should
+amend that or make another procedure that manipulate state variable:
+#+BEGIN_SRC scheme
+(define (travel-distance-with-bounces2 elevation speed angle bounces)
+  (define (hits-the-ground? y) (< y 0))
+  (define (loop remaining-bounces x y u v)
+    ((integrate-gen
+      (lambda (x y . rest) (hits-the-ground? y))
+      (lambda (x y u v . rest)
+        (if (zero? remaining-bounces) x ;return accumulated distance
+            (loop (-1+ remaining-bounces) x 0 u (- v)))))
+     x y u v 0.01 gravity mass beta))   ;intermediate state variables
+  (let ((alpha (degree2radian angle)))
+    (loop bounces 0 elevation           ;initial condition
+          (* speed (cos alpha))
+          (* speed (sin alpha)))))
+#+END_SRC
+
+Then let's test:
+#+BEGIN_SRC scheme
+1 (user) => (travel-distance-with-bounces2 1.8 35 19 3)
+
+;Value: 144.40112681673043
+
+1 (user) => (travel-distance-with-bounces2 1.8 35 19 2)
+
+;Value: 123.89518783211233
+
+1 (user) => (travel-distance-with-bounces2 1.8 35 19 1)
+
+;Value: 97.3312222038267
+
+1 (user) => (travel-distance-with-bounces2 1.8 35 19 0)
+
+;Value: 59.61469931243074
+#+END_SRC

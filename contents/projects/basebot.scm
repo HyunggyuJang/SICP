@@ -301,7 +301,7 @@
   (lambda (x0 y0 u0 v0 dt g m beta)
     (define (iter x y u v t)
       (if (terminate? x y u v t)        ;termination condition
-          (select x y u v t)
+          (select x y u v t iter)
           (let ((speed (sqrt (+ (square u)
                                 (square v))))
                 (v-factor (* (/ 1 m)
@@ -327,9 +327,9 @@
 (define integrate                       ;returns x when y becomes negative.
   (integrate-gen
    (lambda (x y u v t) (< y 0))
-   (lambda (x y u v t) x)))
+   (lambda (x . rest) x)))
 
-(define (travel method elevation speed angle)
+(define (travel method elevation speed angle) ;initial condition setter
   (let ((alpha (degree2radian angle)))
     (method 0
             elevation
@@ -344,8 +344,6 @@
 
 (define (travel-distance elevation speed angle)
   (travel integrate elevation speed angle))
-
-
 
 ;; RUN SOME TEST CASES
 ;; (meters-to-feet (travel-distance 1 45 45)) ; 304.4 Home run
@@ -372,7 +370,7 @@
   (travel
    (integrate-gen
     (lambda (x y u v t) (< y 0))
-    (lambda (x y u v t) (make-dist-time x t)))
+    (lambda (x y u v t . rest) (make-dist-time x t)))
    elevation speed angle))
 
 ;; wrapper structure
@@ -381,7 +379,7 @@
 (define (time p) (cdr p))
 
 ;; governing the iteration
-(define (throw-desired-distance velocity desired-distance height)
+(define (throw-desired-distance2 velocity desired-distance height)
   (let ((epsilon 0.5))                  ;distance tolerance (m)
     ((iterate-on-angle
       -90                               ;lower bound angle
@@ -398,6 +396,32 @@
       cons)         ;construct pair that contains angle with minimum travel time
      velocity height)))     ;initial velocity and height at which the throw made
 
+(define (throw-desired-distance velocity desired-distance height)
+  (define tolerance 0.5)                ;tolerance 0.5m
+  (define upper-limit 90)
+  (define lower-limit -90)
+  (define increment 0.1)
+  (define (next ang) (+ ang increment))
+  (define (loop angle minimum-time minimum-angle)
+    (if (> angle upper-limit)
+        minimum-time
+        (integrate-and-update angle minimum-time minimum-angle)))
+  (define (integrate-and-update angle minimum-time minimum-angle)
+    (define (in-range? x) (< (abs (- desired-distance x)) tolerance))
+    (define (hit-ground? y) (< y 0))
+    (define (overshoot? x) (> x (+ desired-distance tolerance)))
+    (define integrate
+      (integrate-gen
+       (lambda (x y u v t) (or (hit-ground? y)
+                               (overshoot? x)))
+       (lambda (x y u v t . rest)
+         (if (and (in-range? x)
+                  (or (zero? minimum-time)
+                      (< t minimum-time)))
+             (loop (next angle) t angle)
+             (loop (next angle) minimum-time minimum-angle)))))
+    (travel integrate height velocity angle)) ;initial condition setter
+  (loop lower-limit 0 0))
 ;; a cather trying to throw someone out at second has to get it roughly 36 m
 ;; (or 120 ft) how quickly does the ball get there, if he throws at 55m/s,
 ;;  at 45m/s, at 35m/s?
@@ -413,4 +437,37 @@
         (iter (/ vel 2.) (-1+ remaining-bounces)
               (+ sum-dist (travel-distance 0 vel angle)))))
   (iter (/ speed 2.) bounces (travel-distance elevation speed angle))) ;initial condition
+
+(define (travel-distance-with-arbitrary-bounces elevation speed angle)
+  (define (stop? vel) (< vel .1))
+  (define (iter vel sum-dist)
+    (if (stop? vel)
+        sum-dist
+        (iter (/ vel 2.)
+              (+ sum-dist (travel-distance 0 vel angle)))))
+  (iter (/ speed 2.) (travel-distance elevation speed angle)))
 ;; Problem 9
+(define (travel-distance-with-arbitrary-bounces2 elevation speed angle)
+  (define (hits-the-ground? y) (< y 0))
+  (define (stop? vel) (< vel .5))
+  (define integrate
+    (integrate-gen
+     (lambda (x y . rest) (hits-the-ground? y))
+     (lambda (x y u v t iter)
+       (if (stop? u) x
+           (iter x 0 u (- v) t)))))
+  (travel integrate elevation speed angle))
+
+(define (travel-distance-with-bounces2 elevation speed angle bounces)
+  (define (hits-the-ground? y) (< y 0))
+  (define (loop remaining-bounces x y u v)
+    ((integrate-gen
+      (lambda (x y . rest) (hits-the-ground? y))
+      (lambda (x y u v . rest)
+        (if (zero? remaining-bounces) x ;return accumulated distance
+            (loop (-1+ remaining-bounces) x 0 u (- v)))))
+     x y u v 0.01 gravity mass beta))   ;intermediate state variables
+  (let ((alpha (degree2radian angle)))
+    (loop bounces 0 elevation           ;initial condition
+          (* speed (cos alpha))
+          (* speed (sin alpha)))))
