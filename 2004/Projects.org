@@ -1165,3 +1165,161 @@ Then let's test:
 
 ;Value: 59.61469931243074
 #+END_SRC
+* Project 2 -- Prisoner's Dilemma
+** Purpose
+Project 2 focuses on the use of higher order procedures. together with data
+structures. We will also further develop and demonstrate our ability to write
+clear, intelligible, well-documented procedures, as well as text cases for our
+procedures.
+** A Fable
+In the mid-1920's, the Nebraska State Police achieved what may still be their
+finest moment. After a 400-mile car chase over dirt roads and through corn
+fields, they finally caught up with the notorious bank robbers Bunny and Clod.
+The two criminals were brought back to the police station in Omaha for further
+interrogation. Bunny and Clod were questioned in separate rooms, and each was
+offered the same deal by the police. The deal went as follows (since both are
+the same, we need only describe the version presented to Bunny):
+
+#+BEGIN_QUOTE
+"Bunny, Here's the offer that we are making to both you and Clod. If you both
+hold out on us and don't confess to bank robbery, then we admit that we don't
+have enough proof to convict you. However, we will be able to jail you both for
+one year, for reckless driving and endangerment of corn. If you turn state's
+witness and help us convict Clod (assuming he doesn't confess) , then you will
+go free, and Clod will get twenty years in prison. On the other hand, if you
+don't confess and Clod does, then *he* will go free and *you* will get twenty years."
+
+"What happens if both Clod and I confess?" asked Bunny.
+
+"Then you both get ten years," responded the police.
+#+END_QUOTE
+
+Bunny, who had been a math major at Cal Tech before turning to crime, reasoned
+this way:
+#+BEGIN_QUOTE
+"Suppose Clod intends to confess. Then if I don't confess, I'll get twenty
+years, but if I do confess, I'll only get ten years. On the other hand, suppose
+Clod intends to hold out on the cops. Then if I don't confess, I'll go to jail
+for a year, but if I do confess, I'll go free. So no matter what Clod intends to
+do, I am better off confessing than holding out. So I'd better confess."
+#+END_QUOTE
+
+Naturally, Clod employed the very same reasoning. Both criminals confessed, and
+both went to jail for ten years (Well, actually they didn't go to jail. When
+they were in court, and heard that thy had both turned state's witness, they
+strangled each other. But that's another story.) The police, of course, were
+triumphant, since the criminals would have been free in a year bad both remained
+silent.
+** The Prisoner's Dilemma
+The Bunny and Clod story is an example of a situation known in mathematical game
+theory as the "prisoner's dilemma." A prisoner's dilemma always involves two
+"game players," and each has a choice between "cooperating" and "defecting." If
+the two players cooperate, they each do moderately well; if they both defect,
+they each do moderately poorly. If one player cooperates and the other defects,
+then the defector does  extremely well and the cooperator does extremely poorly.
+(In the case of the Bunny and Clod story, "cooperating" means cooperating with
+one's partner -- i.e. holding out on the police -- and  "defecting" means
+confessing to bank robbery.) Before formalizing the prisoner's dilemma
+situation, we need to introduce some basic game theory notation.
+** A Crash Course in Game Theory
+In game theory, we differentiate between a /game/, and a /play/. A /game/ refers
+to the set of possible choices and outcomes for the entire range of situations.
+A /play/ refers to a specific set of choices by the players, with the associated
+outcome for that particular scenario. Thus, in game theory, a /two-person
+binary-choice game/ is represented by two-by-two matrix. Here is a hypothetical
+game matrix:
+|                | *B* cooperates | *B* defects |
+|----------------+----------------+-------------|
+| *A* cooperates | *A* gets 5     | *A* gets 2  |
+|                | *B* gets 5     | *B* gets 3  |
+|----------------+----------------+-------------|
+| *A* defects    | *A* gets 3     | *A* gets 1  |
+|                | *B* gets 2     | *B* gets 1  |
+
+The two players in this case are called *A* and *B*, and the choices are called
+"cooperate" and "defect." Players *A* and *B* can play a single game by
+separately (and secretly) choosing either to cooperate or to defect. Once each
+player has made a choice, he announces it to the other player; and the two then
+look up their respective scores in the game matrix. Each entry in the matrix is
+a pair of numbers indicating a score for each player, depending on their
+choices. Thus, in the example above, if Player *A* chooses to cooperate while
+Player *B* defects, then *A* gets 2 points and *B* gets 3 points. If both
+players defect, they each get 1 point. Note, by the way, that the game matrix is
+a matter of public knowledge; for instance, Player *A* knows before the game
+even starts that if he and *B* both choose to defect, they will each get 1
+point.
+
+In an /iterated game/, the two players play repeatedly; thus after finishing one
+game, *A* and *B* may play another. (Admittedly, there is a little confusion in
+the terminology here; thus we refer to each iteration as a "play," which
+constitutes a single "round" of the larger, iterated game.) There are a number
+of ways in which iterated games may be played; in the simplest situation, *A*
+and *B* play for some fixed number of rounds (say 200), and before each round,
+they are able to look at the record of all previous rounds. For instance, before
+playing the tenth round of their iterated game, both *A* and *B* are able to
+study the results of the previous nine rounds.
+** An Analysis of a Simple Game Matrix
+The game depicted by the matrix above is a particularly easy one to analyze.
+Let's examine the situation from Player *A*'s point of view (Player *B*'s point
+of view is identical):
+
+#+BEGIN_QUOTE
+"Suppose *B* cooperates. Then I do better by cooperating myself (I receive five
+points instead of three). On the other hand, suppose *B* defects. I still do
+better by cooperating (since I get two points instead of one). So no matter what
+*B* does, I am better off cooperating."
+#+END_QUOTE
+
+Player *B* will, of course, reason the same way, and both will choose to
+cooperate. In the terminology of game theory, both *A* and *B* have a /dominant/
+choice -- i.e., a choice that gives a preferred outcome no matter what the other
+player chooses to do. The matrix shown above, by the way, does /not/ represent a
+prisoner's dilemma situation, since when both players make their dominant
+choice, they also both achieve their highest personal scores. We'll see an
+example of a prisoner's dilemma game very shortly.
+
+*To re-cap:* in any particular game using the above matrix, we would expect both
+ players to cooperate; and in an iterated game, we would expect both players to
+ cooperate repeatedly, on every round.
+** The Prisoner's Dilemma Game Matrix
+Now consider the following game matrix:
+|                | *B* cooperates | *B* defects |
+|----------------+----------------+-------------|
+| *A* cooperates | *A* gets 3     | *A* gets 0  |
+|                | *B* gets 3     | *B* gets 5  |
+|----------------+----------------+-------------|
+| *A* defects    | *A* gets 5     | *A* gets 1  |
+|                | *B* gets 0     | *B* gets 1  |
+
+In this case, Players *A* and *B* both have a dominant choice -- namely,
+defection. No matter what Player *B* does, Player *A* improves his own score by
+defecting, and vice versa.
+
+However, there is something odd about this game. It seems as through the two
+players would benefit by choosing to cooperate. Instead of winning only one
+point each, they could win three points each. So the "rational" choice of mutual
+defection has a puzzling self-destructive flavor.
+
+The second matrix is an example of a prisoner's dilemma game situation. Just to
+formalize the situation, let $CC$ be the number of points won by each player
+when they both cooperate; let $DD$ be the number of points won when both defect;
+let $CD$ be the number of points won by the cooperating party when the other
+defects, and let $DC$ be the number of points won by the defecting party when
+the other cooperates. Then the prisoner's dilemma situation is characterized by
+the following conditions:
+\begin{align*}
+DC > CC &> DD > CD\\
+CC &> \frac{DC + CD}{2}
+\end{align*}
+
+In the second game matrix, we have
+\[DC = 5,\quad CC = 3,\quad DD = 1,\quad CD = 0\]
+so both conditions are met. In the Bunny and Clod story, by the way, you can
+verify that:
+\[DC = 0,\quad CC= -1,\quad DD = -10,\quad CD = -20\]
+Again, these values satisfy the prisoner's dilemma conditions.
+** Axelrod's Tournament
+In the late 1970's, political scientist Robert Axelrod held a computer
+tournament designed to investigate the prisoner's dilemma situation (Actually,
+there were two tournaments. Their rules and results are described in Axelrod's
+book: /The Evaluation of Cooperation/.).

@@ -1,8 +1,8 @@
-;; 
+;;
 ;;  The play-loop procedure takes as its  arguments two prisoner's
 ;;  dilemma strategies, and plays an iterated game of approximately
 ;;  one hundred rounds.  A strategy is a procedure that takes
-;;  two arguments: a history of the player's previous plays and 
+;;  two arguments: a history of the player's previous plays and
 ;;  a history of the other player's previous plays.  The procedure
 ;;  returns either a "c" for cooperate or a "d" for defect.
 ;;
@@ -12,14 +12,14 @@
 (define (play-loop strat0 strat1)
   (define (play-loop-iter strat0 strat1 count history0 history1 limit)
     (cond ((= count limit) (print-out-results history0 history1 limit))
-	  (else (let ((result0 (strat0 history0 history1))
-		      (result1 (strat1 history1 history0)))
-		  (play-loop-iter strat0 strat1 (+ count 1)
-				  (extend-history result0 history0)
-				  (extend-history result1 history1)
-				  limit)))))
+          (else (let ((result0 (strat0 history0 history1))
+                      (result1 (strat1 history1 history0)))
+                  (play-loop-iter strat0 strat1 (+ count 1)
+                                  (extend-history result0 history0)
+                                  (extend-history result1 history1)
+                                  limit)))))
   (play-loop-iter strat0 strat1 0 the-empty-history the-empty-history
-		  (+ 90 (random 21))))
+                  (+ 90 (random 21))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -42,21 +42,21 @@
 (define (get-scores history0 history1)
   (define (get-scores-helper history0 history1 score0 score1)
     (cond ((empty-history? history0)
-	   (list score0 score1))
-	  (else (let ((game (make-play (most-recent-play history0)
-				       (most-recent-play history1))))
-		  (get-scores-helper (rest-of-plays history0)
-				     (rest-of-plays history1)
-				     (+ (get-player-points 0 game) score0)
-				     (+ (get-player-points 1 game) score1))))))
+           (list score0 score1))
+          (else (let ((game (make-play (most-recent-play history0)
+                                       (most-recent-play history1))))
+                  (get-scores-helper (rest-of-plays history0)
+                                     (rest-of-plays history1)
+                                     (+ (get-player-points 0 game) score0)
+                                     (+ (get-player-points 1 game) score1))))))
   (get-scores-helper history0 history1 0 0))
 
 (define (get-player-points num game)
   (list-ref (get-point-list game) num))
 
 (define *game-association-list*
-  ;; format is that first sublist identifies the players' choices 
-  ;; with "c" for cooperate and "d" for defect; and that second sublist 
+  ;; format is that first sublist identifies the players' choices
+  ;; with "c" for cooperate and "d" for defect; and that second sublist
   ;; specifies payout for each player
   '((("c" "c") (3 3))
     (("c" "d") (0 5))
@@ -67,6 +67,22 @@
   (cadr (extract-entry game *game-association-list*)))
 
 ;; note that you will need to write extract-entry
+(define (extract-entry play game-assc-list)
+  (cond ((null? game-assc-list)
+         (error "No matching error: There is no such play -- EXTRACT-ENTRY" play))
+        ((equal? play (caar game-assc-list))
+         (car game-assc-list))
+        (else (extract-entry play (cdr game-assc-list)))))
+
+;; test
+;; (define a-play (make-play "c" "d"))
+
+;; ;Value: a-play
+
+;; (extract-entry a-play *game-association-list*)
+
+;; ;Value: (("c" "d") (0 5))
+
 
 (define make-play list)
 
@@ -94,11 +110,11 @@
 (define (EGALITARIAN  my-history other-history)
   (define (count-instances-of test hist)
     (cond ((empty-history? hist) 0)
-	  ((string=? (most-recent-play hist) test)
-	   (+ (count-instances-of test (rest-of-plays hist)) 1))
-	  (else (count-instances-of test (rest-of-plays hist)))))
+          ((string=? (most-recent-play hist) test)
+           (+ (count-instances-of test (rest-of-plays hist)) 1))
+          (else (count-instances-of test (rest-of-plays hist)))))
   (let ((ds (count-instances-of "d" other-history))
-	(cs (count-instances-of "c" other-history)))
+        (cs (count-instances-of "c" other-history)))
     (if (> ds cs) "d" "c")))
 
 (define (EYE-FOR-EYE my-history other-history)
@@ -109,7 +125,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
 ;; code to use in 3 player game
-;;	    
+;;
 
 ;(define *game-association-list*
 ;  (list (list (list "c" "c" "c") (list 4 4 4))
@@ -122,29 +138,29 @@
 ;        (list (list "d" "d" "d") (list 1 1 1))))
 
 
-;; in expected-values: #f = don't care 
-;;                      X = actual-value needs to be #f or X 
-;(define (test-entry expected-values actual-values) 
-;   (cond ((null? expected-values) (null? actual-values)) 
-;         ((null? actual-values) #f) 
-;         ((or (not (car expected-values)) 
-;              (not (car actual-values)) 
-;              (= (car expected-values) (car actual-values))) 
-;          (test-entry (cdr expected-values) (cdr actual-values))) 
-;         (else #f))) 
+;; in expected-values: #f = don't care
+;;                      X = actual-value needs to be #f or X
+;(define (test-entry expected-values actual-values)
+;   (cond ((null? expected-values) (null? actual-values))
+;         ((null? actual-values) #f)
+;         ((or (not (car expected-values))
+;              (not (car actual-values))
+;              (= (car expected-values) (car actual-values)))
+;          (test-entry (cdr expected-values) (cdr actual-values)))
+;         (else #f)))
 ;
-;(define (is-he-a-fool? hist0 hist1 hist2) 
-;   (test-entry (list 1 1 1) 
-;               (get-probability-of-c 
+;(define (is-he-a-fool? hist0 hist1 hist2)
+;   (test-entry (list 1 1 1)
+;               (get-probability-of-c
 ;                (make-history-summary hist0 hist1 hist2))))
 ;
 ;(define (could-he-be-a-fool? hist0 hist1 hist2)
 ;  (test-entry (list 1 1 1)
-;              (map (lambda (elt) 
+;              (map (lambda (elt)
 ;                      (cond ((null? elt) 1)
-;                            ((= elt 1) 1)  
+;                            ((= elt 1) 1)
 ;                            (else 0)))
-;                   (get-probability-of-c (make-history-summary hist0 
+;                   (get-probability-of-c (make-history-summary hist0
 ;                                                               hist1
 ;                                                               hist2)))))
 
