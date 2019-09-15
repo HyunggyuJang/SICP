@@ -1322,4 +1322,406 @@ Again, these values satisfy the prisoner's dilemma conditions.
 In the late 1970's, political scientist Robert Axelrod held a computer
 tournament designed to investigate the prisoner's dilemma situation (Actually,
 there were two tournaments. Their rules and results are described in Axelrod's
-book: /The Evaluation of Cooperation/.).
+book: /The Evaluation of Cooperation/.). Contestants in the tournament submitted
+computer programs that would compete in an iterated prisoner's dilemma game of
+approximately two hundred rounds, using the second matrix above. Each
+contestant's program played five iterated games against each of the other
+programs submitted, and after all games had been played the scores were tallied.
+
+The contestants in Axelrod's tournament included professors of political
+science, mathematics, computer science, and economics. The winning program --
+the program with the highest average score -- was submitted by Anatol Rapoport,
+a professor of psychology at the University of Toronto. In this project, we will
+pursue Axelrod's investigations and make up our own Scheme programs to play the
+iterated prisoner's dilemma game.
+
+As part of this project, we will be running a similar tournament, but now
+involving a three-person prisoner's dilemma.
+
+Before we look at the two-player program, it is worth speculating on what
+possible strategies might be employed in the iterated prisoner's dilemma game.
+Here are some examples:
+
+- Nasty :: a program using the *Nasty* strategy simply defects on every round of
+     every game.
+- Patsy :: a program using the *Pasty* strategy cooperates on every round of
+     every game.
+- Spastic :: this program cooperates or defects on a random basis.
+- Egalitarian :: this program cooperates on the first round. On all subsequent
+     rounds, *Egalitarian* examines the history of the other player's actions,
+     counting the total number of defections and cooperations by the other
+     player. If the other player's defections outnumber her cooperations,
+     *Egalitarian* will defect; otherwise this strategy will cooperate.
+- Eye-for-Eye :: this program cooperates on the first round, and then on every
+     subsequent round it mimics the other player's previous move. Thus, if the
+     other player cooperates (defects) on the /n/th round, then *Eye-for-Eye*
+     will cooperate (defect) on the (/n/+1)st round.
+
+
+All of these strategies are extremely simple. (Indeed, the first three do not
+even pay any attention to the other player; their responses are uninfluenced by
+the previous rounds of the game.) Nevertheless, simplicity is not necessarily a
+disadvantage. Rapoport's first-prize program employed the *Eye-for-Eye*
+strategy, and achieved the highest average score in a field of far more
+complicated programs.
+** The Two-Player Prisoner's Dilemma Program
+A Scheme program for an iterated prisoner's dilemma game is provided as part of
+the code for this project. The procedure =play-loop= pits two players (or, to be
+more precise, two "strategies") against one another for approximately 100 games,
+then prints out the average score of each player.
+
+Player strategies are represented as procedures. Each strategy takes two inputs
+-- its own "history" (that is, a list of all its previous "plays," where for
+convenience we will use "c" to represent cooperate, and "d" to represent defect)
+and its opponent's "history." The strategy returns either the string "c" for
+"cooperate" or the string "d" for "defect." (Note that we will need to use
+procedures appropriate for comparing strings when we analyze these results.)
+
+At the beginning of an iterated game, each history is an empty list. As the game
+progresses, the histories grow (via =extend-history=) into lists of "=c="'s and
+"=d="'s, thus each history is stored from most recent to least recent. Note how
+each strategy must have its /own/ history as its first input. So in
+=play-loop-iter,strat0= has =history0= as its first input, and =strat1= has
+=history1= as its first input.
+
+The values from the game matrix are stored in a list named
+=*game-association-list*=. This list is used to calculate the scores at the end
+of the iterated game.
+#+BEGIN_SRC scheme
+(define *game-association-list*
+  '((("c" "c") (3 3))
+    (("c" "d") (0 5))
+    (("d" "c") (5 0))
+    (("d" "d") (1 1))))
+#+END_SRC
+
+Thus, if both players cooperate, the payoff to each player is a 3, if one player
+cooperates and the other defects, the defecting player gets a payoff of 5, the
+cooperating player gets a zero payoff, if both players defect, each gets a
+payoff of 1.
+
+Some sample strategies are given in the code. =Nasty= and =Patsy= are
+particularly simple; each returns a constant value regardless of the histories.
+=Spastic= also ignores the histories and chooses randomly between cooperation
+and defection. We should study =Egalitarian= and =Eye-for-Eye= to see that their
+behavior is consistent with the descriptions in the previous section.
+** Problem 1
+To be able to test out the system, we need to complete a definition for
+=extract-entry=. This procedure will retrieve the payoff information from the
+game association list. The procedure's behavior is as follows: it takes as input
+a play, represented as a list of choices for each strategy (i.e., a "c" or a
+"d"), and the game association list. Thus a play will in this case be a list of
+two entries (since there are two players), each of which is the choice of action
+for that player. Each entry in the game association list is a list itself, with
+a first element representing a list of game choices, and the second element
+representing a list of scores (or payoffs) for each player. Thus =extract-entry=
+wants to search down the game association list trying to match its first
+argument against the first element of each entry in the game association list,
+one by one. When it succeeds, it returns that whole entry.
+
+For example, we expect the following behavior:
+#+BEGIN_SRC scheme
+(define a-play (make-play "c" "d"))
+
+;Value: a-play
+
+(extract-entry a-play *game-association-list*)
+
+;Value: (("c" "d") (0 5))
+#+END_SRC
+
+It is easy stuff to do: Even though I've got worse condition, could implement
+this:
+#+BEGIN_SRC scheme
+(define (extract-entry play game-assc-list)
+  (cond ((null? game-assc-list)
+         (error "No matching error: There is no such play -- EXTRACT-ENTRY" play))
+        ((equal? play (caar game-assc-list))
+         (car game-assc-list))
+        (else (extract-entry play (cdr game-assc-list)))))
+#+END_SRC
+
+Here is extra tests:
+#+BEGIN_SRC scheme
+1 (user) => (define b-play (make-play "c" "c"))
+
+;Value: b-play
+
+1 (user) => (extract-entry b-play *game-association-list*)
+
+;Value: (("c" "c") (3 3))
+
+1 (user) => (extract-entry (make-play "d" "d") *game-association-list*)
+
+;Value: (("d" "d") (1 1))
+
+1 (user) => (extract-entry (make-play "d" "c") *game-association-list*)
+
+;Value: (("d" "c") (5 0))
+#+END_SRC
+
+We exploited the =equal= procedure that can compare list structure element-wise.
+** Problem 2
+Use =play-loop= to play games among the five defined strategies. Notice how a
+strategy's performance varies sharply depending on its opponent. For example,
+=Patsy= does quite well against =Eye-for-Eye= or against another =Patsy=, but it
+loses badly to =Nasty=. Pay special attention to =Eye-for-Eye=. Notice how it
+never eats its opponent -- but it never loses badly. Create a matrix in which
+you show the average score for tournaments pitting all possible pairings of the
+five different strategies: =Nasty=, =Patsy=, =Eye-for-Eye=, =Spastic=,
+=Egalitarian=. Describe the behavior you observe for the different strategies.
+
+Here is the matrix requested:
+|               | =Nasty=         | =Patsy=                  | =Eye-for-Eye=  | =Spastic=                | =Egalitarian=  |
+|---------------+-----------------+--------------------------+----------------+--------------------------+----------------|
+| =Nasty=       | (1., 1.)        | (5., 0)                  | (1.04, .99)    | (2.684, .579)            | (1.038, .990)  |
+| =Patsy=       | (0, 5.)         | (3., 3.)                 | (3., 3.)       | (1.412, 4.059)           | (3., 3.)       |
+| =Eye-for-Eye= | (.9897, 1.0412) | (3., 3.)                 | (3., 3.)       | (2.2\dot{8}, 2.2\dot{8}) | (3., 3.)       |
+| =Spastic=     | (.523, 2.907)   | (3.9\dot{7}, 1.5\dot{3}) | (2.209, 2.209) | (2.105, 2.248)           | (1.478, 2.239) |
+| =Egalitarian= | (.9902, 1.0392) | (3., 3.)                 | (3., 3.)       | (1.71, 3.86)             | (3., 3.)       |
+
+And the average score of each:
+| Strategy      | Average score |
+|---------------+---------------|
+| =Nasty=       |        2.1524 |
+| =Patsy=       |        2.0824 |
+| =Eye-for-Eye= |       2.45594 |
+| =Spastic=     |        2.3331 |
+| =Egalitarian= |       2.34004 |
+
+Note that the play between =Spastic= strategy and =Egalitarian=: It results to
+win one-side hugely but not fixed -- which one would win is not determined; it
+inherit the randomness of =Spastic=. From the average score matrix, we can
+verify ourselves that =Eye-for-Eye= strategy got the best score overall -- even
+if =Eye-for-Eye= never have won in above plays. Also note that =Nasty= always
+win or at least draw the other who matched to play with =Nasty=.
+
+For the other cases, we can observe that =Patsy=, =Eye-for-Eye=, =Egalitarian=
+always draw -- cooperate each other, =Spastic= tends to draw with =Eye-for-Eye=
+but not with =Egalitarian=.
+** Problem 3
+Games involving *Egalitarian* tend to be slower than other games. Why is that
+so? Use order-of-growth notation to explain our answer.
+
+Let /n/ to be the number of history (it would be same as other history). Then
+the step complexity can be deduced as \Theta(n); space complexity is also
+\Theta(n). The revised version or iterative version has \Theta(n) as its step
+complexity and \Theta(1) space complexity as it is iterative process.
+
+Consequently, the newer version doesn't improved the step complexity in the
+terms of order or growth; however the actual time it would take to complete
+approximately halved down as now we calculate =cs= and =ds= in a one loop -- not
+with separate loop as we did before.
+** Problem 4
+Write a new strategy =eye-for-two-eyes=. The strategy should always cooperate
+unless the opponent defected on both of the previous two rounds. (Looked at
+another way: =eye-for-two-eyes= should cooperate if the opponent cooperated on
+either of the previous two rounds.) Play =eye-for-two-eyes= against other
+strategies. Describe the behavior you observe.
+
+The code is straightforward:
+#+BEGIN_SRC scheme
+(define (EYE-FOR-TWO-EYE my-history other-history)
+  (define (has-history-less-than-2? hist)
+    (or (empty-history? hist)
+        (empty-history? (rest-of-plays hist))))
+  (define (defected-previous-2-rounds? hist)
+    (and (string=? (most-recent-play hist) "d")
+         (string=? (most-recent-play (rest-of-plays hist)) "d")))
+  (cond ((has-history-less-than-2? my-history) "c")
+        ((defected-previous-2-rounds? other-history) "d")
+        (else                           ;has "c" in previous 2 rounds
+         "c")))
+#+END_SRC
+
+Here is the observations:
+#+BEGIN_SRC scheme
+(play-loop nasty eye-for-two-eye)
+
+Player 1 Score:  1.0740740740740742
+Player 2 Score:  .9814814814814815
+
+(play-loop patsy eye-for-two-eye)
+
+Player 1 Score:  3.
+Player 2 Score:  3.
+
+(play-loop egalitarian eye-for-two-eye)
+
+Player 1 Score:  3.
+Player 2 Score:  3.
+
+(play-loop eye-for-eye eye-for-two-eye)
+
+Player 1 Score:  3.
+Player 2 Score:  3.
+
+(play-loop spastic eye-for-two-eye)
+
+Player 1 Score:  3.075268817204301
+Player 2 Score:  1.7849462365591398
+#+END_SRC
+
+The most obvious difference from =eye-for-eye= is that now the strategy lose
+hugely against =spastic=; also the difference the scores each strategy would get
+when it comes to with =nasty= got bigger than =eye-for-eye=. This is due to the
+fact that now the strategy get harder to defect than previous, which results to
+the bigger difference it get (this is bad thing since =eye-for-...= always loses
+against other strategies).
+** Problem 5
+Write a procedure =make-eye-for-n-eyes=. This procedure should take a number as
+input and return the appropriate =Eye-for-Eye=-like strategy. For example,
+=(make-eye-for-n-eyes 2)= should returns a strategy equivalent to
+=eye-for-two-eyes=. Use this procedure to create a new strategy and test it
+against the other strategies. Describe the observed behavior.
+
+Here is the code:
+#+BEGIN_SRC scheme
+(define (MAKE-EYE-FOR-n-EYE n)
+  (lambda (my-history other-history)
+    (define (has-history-less-than-n? n hist)
+      (cond ((zero? n) false)
+            ((empty-history? hist) true)
+            (else
+             (has-history-less-than-n? (-1+ n) (rest-of-plays hist)))))
+    (define (defected-previous-n-rounds? n hist)
+      (or (zero? n)
+          (and (string=? (most-recent-play hist) "d")
+               (defected-previous-n-rounds? (-1+ n) (rest-of-plays hist)))))
+    (cond ((has-history-less-than-n? n my-history) "c")
+          ((defected-previous-n-rounds? n other-history) "d")
+          (else                           ;has "c" in previous n rounds
+           "c"))))
+#+END_SRC
+
+And test:
+#+BEGIN_SRC scheme
+(play-loop nasty (make-eye-for-n-eye 5))
+
+Player 1 Score:  1.2222222222222223
+Player 2 Score:  .9444444444444444
+
+(play-loop egalitarian (make-eye-for-n-eye 5))
+
+Player 1 Score:  3.
+Player 2 Score:  3.
+
+(play-loop spastic (make-eye-for-n-eye 5))
+
+Player 1 Score:  4.038834951456311
+Player 2 Score:  1.4174757281553398
+
+(play-loop eye-for-eye (make-eye-for-n-eye 5))
+
+Player 1 Score:  3.
+Player 2 Score:  3.
+#+END_SRC
+
+This general procedure inherit the property of =Eye-for-Eye= -- it always loses
+against other strategies; it got worse -- the difference even got widen.
+** Problem 6
+Write a procedure =make-rotating-strategy= which takes as input two strategies
+(say, =strat0= and =strat1=) and two integers (say =freq0= and =freq1=).
+=make-rotating-strategy= should return a strategy which plays =strat0= for the
+first =freq0= rounds in the iterated game, then switches to =strat1= for the
+next =freq1= rounds, and so on. (Hint: you may find it useful to think about the
+=remainder= procedure in order to decide which strategy to use at each
+iteration.) Test it against other strategies and describe the performance.
+
+Here is the code:
+#+BEGIN_SRC scheme
+(define (length-history hist)
+  (if (empty-history? hist) 0
+      (1+ (length-history (rest-of-plays hist)))))
+(define (make-rotating-strategy strat0 strat1 freq0 freq1)
+  (lambda (my-history other-history)
+    (if (< (remainder (length-history my-history) (+ freq0 freq1))
+           freq0)
+        (strat0 my-history other-history)
+        (strat1 my-history other-history))))
+#+END_SRC
+
+Tests:
+#+BEGIN_SRC scheme
+(play-loop (make-rotating-strategy nasty eye-for-eye 10 80) egalitarian)
+
+Player 1 Score:  1.0396039603960396
+Player 2 Score:  .9900990099009901
+
+(play-loop (make-rotating-strategy nasty eye-for-eye 10 80) eye-for-eye)
+
+Player 1 Score:  1.0396039603960396
+Player 2 Score:  .9900990099009901
+
+(play-loop (make-rotating-strategy nasty eye-for-eye 10 80) patsy)
+
+Player 1 Score:  3.2795698924731185
+Player 2 Score:  2.5806451612903225
+
+(play-loop (make-rotating-strategy nasty eye-for-eye 10 80) nasty)
+
+Player 1 Score:  1.
+Player 2 Score:  1.
+
+(play-loop (make-rotating-strategy nasty eye-for-eye 10 80) spastic)
+
+Player 1 Score:  2.4361702127659575
+Player 2 Score:  1.9042553191489362
+
+(play-loop (make-rotating-strategy nasty eye-for-eye 10 80) spastic)
+
+Player 1 Score:  2.297872340425532
+Player 2 Score:  1.7127659574468086
+#+END_SRC
+
+We mixed =nasty= with =eye-for-eye= to complement each other: It becomes always
+win the other one like the original =nasty= and I wished it to get good average
+score as =eye-for-eye= does; but it turns out not.
+** Problem 7
+Write a new strategy, =make-higher-order-spastic=, which takes a list of
+strategies as input. It returns a new strategy that loops through this list of
+strategies, using the next one in the list for each play, and then starting
+again at the beginning of the list when it has used all the strategies. Test
+this new strategy against other strategies and describe the performance.
+
+We use the same strategy with the previous problem:
+#+BEGIN_SRC scheme
+(define (make-higher-order-spastic strats)
+  (lambda (my-history other-history)
+    (let* ((index (remainder (length-history my-history) (length strats)))
+           (strat (list-ref strats index)))
+      (strat my-history other-history))))
+#+END_SRC
+
+Tests:
+#+BEGIN_SRC scheme
+(play-loop (make-higher-order-spastic (list eye-for-eye patsy nasty)) eye-for-eye)
+
+Player 1 Score:  2.6989247311827955
+Player 2 Score:  2.6451612903225805
+
+(play-loop (make-higher-order-spastic (list eye-for-eye patsy nasty)) patsy)
+
+Player 1 Score:  3.6530612244897958
+Player 2 Score:  2.020408163265306
+
+(play-loop (make-higher-order-spastic (list eye-for-eye patsy nasty)) egalitarian)
+
+Player 1 Score:  3.6595744680851063
+Player 2 Score:  2.0106382978723403
+
+(play-loop (make-higher-order-spastic (list eye-for-eye patsy nasty)) spastic)
+
+Player 1 Score:  2.31
+Player 2 Score:  2.11
+
+(play-loop (make-higher-order-spastic (list eye-for-eye patsy nasty)) spastic)
+
+Player 1 Score:  2.0384615384615383
+Player 2 Score:  2.2788461538461537
+
+(play-loop (make-higher-order-spastic (list eye-for-eye patsy nasty)) nasty)
+
+Player 1 Score:  .6568627450980392
+Player 2 Score:  2.372549019607843
+#+END_SRC
