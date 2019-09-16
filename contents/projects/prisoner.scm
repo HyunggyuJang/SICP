@@ -212,7 +212,9 @@
 
 (define (play-loop strat0 strat1 strat2)
   (define (play-loop-iter strat0 strat1 strat2 count history0 history1 history2 limit)
-    (cond ((= count limit) (print-out-results history0 history1 history2 limit))
+    (cond ((= count limit)
+           (print-out-results history0 history1 history2 limit)
+           (list history0 history1 history2)) ;for testing
           (else (let ((result0 (strat0 history0 history1 history2))
                       (result1 (strat1 history1 history0 history2))
                       (result2 (strat2 history2 history0 history1)))
@@ -416,29 +418,81 @@
 ;; (t-action (make-action-history <cs> <ds> <as>)) = <as>
 (define (t-action action-history)
   (caddr action-history))
+
+;; Problem 13
+;; test cases
+;; (define summary (make-history-summary
+;;                  '("c" "c" "c" "c")     ;hist-0
+;;                  '("d" "d" "d" "c")     ;hist-1
+;;                  '("d" "d" "c" "c")))   ;hist-2
+;; (get-probability-of-c summary)
+;; ;; Value: (1 1 1)
+
+;; (define new-summary (make-history-summary
+;;                      '("c" "c" "c" "d" "c")
+;;                      '("d" "c" "d" "d" "c")
+;;                      '("d" "c" "c" "c" "c")))
+;; (get-probability-of-c new-summary)
+;; ;; Value: (0.5 1 ())
+
+;; history-summary -> List<number>
+(define (get-probability-of-c history-summary)
+  (define (get-prob action-history)
+    (if (zero? (t-action action-history))
+        '()
+        (* 1.0 (/ (c-action action-history)
+                  (t-action action-history)))))
+  (list (get-prob (cooperate-cooperate history-summary))
+        (get-prob (cooperate-defect history-summary))
+        (get-prob (defect-defect history-summary))))
+
+;; Problem 14
+
 ;; in expected-values: #f = don't care
 ;;                      X = actual-value needs to be #f or X
-                                        ;(define (test-entry expected-values actual-values)
-                                        ;   (cond ((null? expected-values) (null? actual-values))
-                                        ;         ((null? actual-values) #f)
-                                        ;         ((or (not (car expected-values))
-                                        ;              (not (car actual-values))
-                                        ;              (= (car expected-values) (car actual-values)))
-                                        ;          (test-entry (cdr expected-values) (cdr actual-values)))
-                                        ;         (else #f)))
-                                        ;
-                                        ;(define (is-he-a-fool? hist0 hist1 hist2)
-                                        ;   (test-entry (list 1 1 1)
-                                        ;               (get-probability-of-c
-                                        ;                (make-history-summary hist0 hist1 hist2))))
-                                        ;
-                                        ;(define (could-he-be-a-fool? hist0 hist1 hist2)
-                                        ;  (test-entry (list 1 1 1)
-                                        ;              (map (lambda (elt)
-                                        ;                      (cond ((null? elt) 1)
-                                        ;                            ((= elt 1) 1)
-                                        ;                            (else 0)))
-                                        ;                   (get-probability-of-c (make-history-summary hist0
-                                        ;                                                               hist1
-                                        ;                                                               hist2)))))
+(define (test-entry expected-values actual-values)
+  (cond ((null? expected-values) (null? actual-values))
+        ((null? actual-values) #f)
+        ((or (not (car expected-values))
+             (not (car actual-values))
+             (= (car expected-values) (car actual-values)))
+         (test-entry (cdr expected-values) (cdr actual-values)))
+        (else #f)))
 
+(define (is-he-a-fool? hist0 hist1 hist2)
+  (test-entry (list 1 1 1)
+              (get-probability-of-c
+               (make-history-summary hist0 hist1 hist2))))
+
+(define (could-he-be-a-fool? hist0 hist1 hist2)
+  (test-entry (list 1 1 1)
+              (map (lambda (elt)
+                     (cond ((null? elt) 1)
+                           ((= elt 1) 1)
+                           (else 0)))
+                   (get-probability-of-c (make-history-summary hist0
+                                                               hist1
+                                                               hist2)))))
+
+(define (is-he-soft-eye-for-eye? hist0 hist1 hist2)
+  (test-entry (list 1 1 0)
+              (get-probability-of-c
+               (make-history-summary hist0 hist1 hist2))))
+
+;; test for is-he-soft-eye-for-eye?
+(let ((result-histories (play-loop soft-eye-for-eye spastic-3 tough-eye-for-eye1)))
+  (is-he-soft-eye-for-eye? (car result-histories)
+                           (cadr result-histories)
+                           (caddr result-histories)))
+
+;; hist, hist, hist -> action
+(define (dont-tolerate-fools my-history other-history another-history)
+  (cond ((<= (length-history my-history) 10) "c")
+        ((and (could-he-be-a-fool? other-history my-history another-history)
+              (could-he-be-a-fool? another-history my-history other-history))
+         "d")
+        (else "c")))
+
+;; test for dont-tolerate-fools
+(play-loop dont-tolerate-fools patsy-3 patsy-3)
+(play-loop dont-tolerate-fools spastic-3 patsy-3)
