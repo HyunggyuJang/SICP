@@ -1725,3 +1725,548 @@ Player 2 Score:  2.2788461538461537
 Player 1 Score:  .6568627450980392
 Player 2 Score:  2.372549019607843
 #+END_SRC
+** Problem 8
+Write a procedure =gentle=, which takes as input a strategy (say =strat=) and a
+number between 0 and 1 (call it =gentleness-factor=). The =gentle= procedure
+should return a strategy that plays the same as =strat= except: when =strat=
+defects, the new strategy should have a =gentleness-factor= chance of
+cooperating. (If =gentleness-factor= is 0, the return strategy performs exactly
+the same as =strat=; if =gentleness-factor= is 0.5, the returned strategy
+cooperates half the time that =strat= defects; if =gentleness-factor= is 1, the
+returned strategy performs the same as =Patsy=.)
+
+Use =gentle= with a low value for =gentleness-factor= -- say, 0.1 -- to create
+two new strategies: =slightly-gentle-Nasty= and =slightly-gentle-Eye-for-Eye=.
+
+Here is the code:
+#+BEGIN_SRC scheme
+(define (gentle strat gentleness-factor)
+  (define (gentle-spastic)
+    (if (< (random 1.0) gentleness-factor)
+        "c"
+        "d"))
+  (lambda (my-history other-history)
+    (let ((result (strat my-history other-history)))
+      (if (string=? result "d")
+          (gentle-spastic)
+          result))))
+
+(define slightly-gentle-Nasty
+  (gentle nasty 0.1))
+
+(define slightly-gentle-Eye-for-Eye
+  (gentle eye-for-eye 0.1))
+#+END_SRC
+
+Here is the test:
+#+BEGIN_SRC scheme
+(play-loop nasty slightly-gentle-nasty)
+
+Player 1 Score:  1.4210526315789473
+Player 2 Score:  .8947368421052632
+
+(play-loop eye-for-eye slightly-gentle-eye-for-eye)
+
+Player 1 Score:  3.
+Player 2 Score:  3.
+
+(play-loop spastic slightly-gentle-eye-for-eye)
+
+Player 1 Score:  2.4285714285714284
+Player 2 Score:  2.020408163265306
+
+(play-loop nasty slightly-gentle-eye-for-eye)
+
+Player 1 Score:  1.2173913043478262
+Player 2 Score:  .9456521739130435
+#+END_SRC
+** The Three-Player Prisoner's Dilemma
+So far, all of our prisoner's dilemma examples have involved two players (and,
+indeed, most game-theory research on the prisoner's dilemma has focused on
+two-player games). But it is possible to create a prisoner's dilemma game
+involve three -- or even more -- players.
+
+Strategies from the two-player game do not necessarily extend to a three-person
+game in a natural way. For example, what does =Eye-for-Eye= mean? Should the
+player defect if /either/ of the opponents defected on the previous round? Or
+only if /both/ opponents defected? And are either of these strategies nearly as
+effective in the three-player game as =Eye-for-Eye= is in the two-player game?
+
+Before we analyze the three-player game more closely, we must introduce some
+notation for representing the payoffs. We use a notation similar to that used
+for the two-player game. For example, we let $DCC$ represent the payoff to a
+defecting player if both opponents cooperate. Note that the first position
+represents the player under consideration. The second and third positions
+represent the opponents.
+
+Another example: $CCD$ represents the payoff to a cooperating player if one
+opponent cooperates and the other opponent defects. Since we assume a symmetric
+game matrix, $CCD$ could be written as $CDC$. The choice is arbitrary.
+
+Now we are ready to discuss the payoffs for the three-player game. We impose
+three rules (Actually, there is no universal definition for the multi-player
+prisoner's dilemma. The constraints used here represent one possible version of
+the three-player prisoner's dilemma.):
+
+1. Defection should be the dominant choice for each player. In other words, it
+   should always be better for a player to defect, regardless of what the
+   opponents do. This rule gives three constraints:
+   \begin{align*}
+   DCC &> CCC\\
+   DDD &> CDD\\
+   DCD &> CCD
+   \end{align*}
+2. A player should always be better off if more of his opponents choose to
+   cooperate. This rule gives:
+   \begin{align*}
+   DCC &> DCD > DDD\\
+   CCC &> CCD > CDD\\
+   \end{align*}
+3. If one player's choice is fixed, the other two players should be left in a
+   two-player prisoner's dilemma. This rule gives the following constraints:
+   \begin{align*}
+    CCD &> DDD\\
+    CCC &> DCD\\
+    CCD &> \frac{CDD + DCD}{2}\\
+    CCC &> \frac{CCD + DCC}{2}
+   \end{align*}
+4. We can satisfy all of these constraints with the following payoffs:
+   $$CDD = 0,\quad DDD = 1,\quad CCD = 2,\quad DCD = 3,\quad CCC = 4,\quad DCC =
+   5.$$
+** Problem 9
+Revise the Scheme code for the two-player game to make a three-player iterated
+game. The program should take three strategies as input, keep track of three
+histories, and print out results for three players. We need to change only three
+procedures: =play-loop=, =print-out-results= and =get-scores=.
+
+We also need to change =*game-association-list*= as follows:
+#+BEGIN_SRC scheme
+(define *game-association-list*
+  (list (list (list "c" "c" "c") (list 4 4 4))
+        (list (list "c" "c" "d") (list 2 2 5))
+        (list (list "c" "d" "c") (list 2 5 2))
+        (list (list "d" "c" "c") (list 5 2 2))
+        (list (list "c" "d" "d") (list 0 3 3))
+        (list (list "d" "c" "d") (list 3 0 3))
+        (list (list "d" "d" "c") (list 3 3 0))
+        (list (list "d" "d" "d") (list 1 1 1))))
+#+END_SRC
+
+Here is the rest of code:
+#+BEGIN_SRC scheme
+(define (play-loop strat0 strat1 strat2)
+  (define (play-loop-iter strat0 strat1 strat2 count history0 history1 history2 limit)
+    (cond ((= count limit) (print-out-results history0 history1 history2 limit))
+          (else (let ((result0 (strat0 history0 history1 history2))
+                      (result1 (strat1 history1 history0 history2))
+                      (result2 (strat2 history2 history0 history1)))
+                  (play-loop-iter strat0 strat1 strat2 (+ count 1)
+                                  (extend-history result0 history0)
+                                  (extend-history result1 history1)
+                                  (extend-history result2 history2)
+                                  limit)))))
+  (play-loop-iter strat0 strat1 strat2 0 the-empty-history the-empty-history the-empty-history
+                  (+ 90 (random 21))))
+
+(define (print-out-results history0 history1 history2 number-of-games)
+  (let ((scores (get-scores history0 history1 history2)))
+    (newline)
+    (display "Player 1 Score:  ")
+    (display (* 1.0 (/ (car scores) number-of-games)))
+    (newline)
+    (display "Player 2 Score:  ")
+    (display (* 1.0 (/ (cadr scores) number-of-games)))
+    (newline)
+    (display "Player 3 Score:  ")
+    (display (* 1.0 (/ (caddr scores) number-of-games)))
+    (newline)
+    ))
+
+(define (get-scores history0 history1 history2)
+  (define (get-scores-helper history0 history1 history2 score0 score1 score2)
+    (cond ((empty-history? history0)
+           (list score0 score1 score2))
+          (else (let ((game (make-play (most-recent-play history0)
+                                       (most-recent-play history1)
+                                       (most-recent-play history2))))
+                  (get-scores-helper (rest-of-plays history0)
+                                     (rest-of-plays history1)
+                                     (rest-of-plays history2)
+                                     (+ (get-player-points 0 game) score0)
+                                     (+ (get-player-points 1 game) score1)
+                                     (+ (get-player-points 2 game) score2))))))
+  (get-scores-helper history0 history1 history2 0 0 0))
+#+END_SRC
+** Problem 10
+Write strategies =Patsy-3=, =Nasty-3=, and =spastic-3= that will work in a
+three-player game. Try them out to make sure our code is working.
+
+Write two new strategies: =tough-Eye-for-Eye= and =soft-Eye-for-Eye=.
+=tough-Eye-for-Eye= should defect if /either/ of the opponents defected on the
+previous round. =soft-Eye-for-Eye= should defect only if =both= opponents
+defected on the previous round. Play some games using these two new strategies.
+Describe the observed behavior of the strategies.
+
+First task:
+#+BEGIN_SRC scheme
+(define (NASTY-3 my-history other-history another-history)
+  "d")
+
+(define (PATSY-3 my-history other-history another-history)
+  "c")
+
+(define (SPASTIC-3 my-history other-history another-history)
+  (if (= (random 2) 0)
+      "c"
+      "d"))
+#+END_SRC
+
+And test:
+#+BEGIN_SRC scheme
+(play-loop nasty-3 patsy-3 spastic-3)
+
+Player 1 Score:  4.08
+Player 2 Score:  1.08
+Player 3 Score:  2.46
+#+END_SRC
+
+Second task:
+#+BEGIN_SRC scheme
+(define (tough-EYE-FOR-EYE my-history other-history another-history)
+  (cond ((empty-history? my-history) "c")
+        ((or (string=? (most-recent-play other-history) "d")
+             (string=? (most-recent-play another-history) "d"))
+         "d")
+        (else "c")))
+
+(define (soft-EYE-FOR-EYE my-history other-history another-history)
+  (cond ((empty-history? my-history) "c")
+        ((and (string=? (most-recent-play other-history) "d")
+              (string=? (most-recent-play another-history) "d"))
+         "d")
+        (else "c")))
+#+END_SRC
+
+And the behavior:
+#+BEGIN_SRC scheme
+(play-loop nasty-3 soft-eye-for-eye tough-eye-for-eye)
+
+Player 1 Score:  1.0588235294117647
+Player 2 Score:  1.
+Player 3 Score:  1.0294117647058822
+
+(play-loop patsy-3 soft-eye-for-eye tough-eye-for-eye)
+
+Player 1 Score:  4.
+Player 2 Score:  4.
+Player 3 Score:  4.
+
+(play-loop spastic-3 soft-eye-for-eye tough-eye-for-eye)
+
+Player 1 Score:  2.4479166666666665
+Player 2 Score:  1.9166666666666667
+Player 3 Score:  3.0104166666666665
+
+(play-loop spastic-3 soft-eye-for-eye tough-eye-for-eye)
+
+Player 1 Score:  2.172727272727273
+Player 2 Score:  1.7363636363636363
+Player 3 Score:  2.690909090909091
+#+END_SRC
+
+=soft-Eye-for-Eye= inherit the characteristic property of =Eye-for-Eye= -- never
+win against others; =tough-Eye-for-Eye= now tends to win with a slight
+difference against others.
+** Problem 11
+Write a procedure =make-combined-strategies= which takes as input two
+/two-player/ strategies and a "combining" procedure. =make-combined-strategies=
+should return a /three-player/ strategy that plays one of the two-player
+strategies against one of the opponents, and the other two-player strategy
+against the other opponents, then calls the "combining" procedure on the two
+two-player results. Here's an example: this call to =make-combined-strategies=
+returns a strategy equivalent to =tough-Eye-for-Eye= in Problem 10.
+
+The resulting strategy plays =Eye-for-Eye= against each opponent, and then calls
+the combining procedure on the two results. If either of the two two-player
+strategies has returned "d", then the three-player strategy will also return
+"d".
+
+#+BEGIN_SRC scheme
+(make-combined-strategies
+   Eye-for-Eye Eye-for-Eye
+   (lambda (r1 r2) (if (or (string=? r1 "d") (string=? r2 "d")) "d" "c")))
+#+END_SRC
+
+Here's another example. This call to =make-combined-strategies= returns a
+three-player strategy that plays =Eye-for-Eye= against one opponent,
+=Egalitarian= against another, and choose randomly between the two results:
+#+BEGIN_SRC scheme
+(make-combined-strategies
+   Eye-for-Eye Egalitarian
+   (lambda (r1 r2) (if (= (random 2) 0) r1 r2)))
+#+END_SRC
+
+The code:
+#+BEGIN_SRC scheme
+;; (hist, hist -> action), (hist, hist -> action), (action, action -> action)
+;; -> (hist, hist, hist -> action)
+(define (make-combined-strategies two-strat0 two-strat1 combiner)
+  (lambda (my-history other-history another-history)
+    (combiner (two-strat0 my-history other-history)
+              (two-strat1 my-hsitory another-history))))
+#+END_SRC
+We added the type notation of given procedure.
+
+Then test:
+#+BEGIN_SRC scheme
+(define tough-eye-for-eye1
+  (make-combined-strategies
+   Eye-for-Eye Eye-for-Eye
+   (lambda (r1 r2) (if (or (string=? r1 "d") (string=? r2 "d")) "d" "c"))))
+
+(define randomized-egal-eye
+  (make-combined-strategies
+   Eye-for-Eye Egalitarian
+   (lambda (r1 r2) (if (= (random 2) 0) r1 r2))))
+
+(play-loop tough-eye-for-eye1 spastic-3 tough-eye-for-eye)
+
+Player 1 Score:  2.0833333333333335
+Player 2 Score:  .5
+Player 3 Score:  2.0833333333333335
+
+(play-loop tough-eye-for-eye1 soft-eye-for-eye tough-eye-for-eye)
+
+Player 1 Score:  4.
+Player 2 Score:  4.
+Player 3 Score:  4.
+
+(play-loop tough-eye-for-eye1 randomized-egal-eye tough-eye-for-eye)
+
+Player 1 Score:  4.
+Player 2 Score:  4.
+Player 3 Score:  4.
+
+(play-loop tough-eye-for-eye1 randomized-egal-eye spastic-3)
+
+Player 1 Score:  2.988888888888889
+Player 2 Score:  2.188888888888889
+Player 3 Score:  2.5555555555555554
+#+END_SRC
+** Problem 12
+A natural idea in creating a prisoner's dilemma strategy is to try and deduce
+what kind of strategies the /other/ players might be using. In this problem, we
+will implement a simple version of this idea.
+
+The underlying idea is to keep track of how the strategy for one player
+correlates with the decisions of the other two players on the previous round (or
+course, you can imagine generalizing this to several previous rounds). Thus, we
+want to build an intermediary data structure which keeps track of what player-0
+did, correlated with what the other two players did, over the course of the
+histories for the three players. Imagine creating a procedure that takes three
+histories as arguments: call them =hist-0=, =hist-1= and =hist-2=. The idea is
+that we wish to characterize the strategy of the player responsible for
+=hist-0=. Given this is a three player game, there are three possible situations
+we need to keep track of: What did player-0 do on one round when the two other
+players both cooperated on the previous round; what did player-0 do on one round
+when one of the others cooperated and the other defected on the previous round;
+and what did player-0 do on one round when both other players defected on the
+previous round. Since these three situations will occur multiple times, we want
+to keep track of how often in each case did player-0 cooperate, and how often
+did she defect in response to these choices, and how often did each of these
+three cases occur (although that could be found by adding the number of times
+player-0 cooperated and defected).
+
+Thus, we should design and implement a data structure called a
+=history-summary=, which the overall structure shown in Figure 1 (please
+reference the relevant project document). The =history-summary= has three
+sub-pieces, one for the case where both player-1 and player-2 cooperated, one
+for when one of them cooperated and the other defected, and a third for when
+both of these players defected. This means that our data abstraction for a
+=history-summary= should have three selectors, for these three pieces. For each
+piece, there is another data structure that keeps track of the number of times
+player-0 cooperated on the next round, the number of times she defected, and the
+total number of examples (though as we noted, this is redundant). We may find it
+convenient to think of this as a kind of tree structure. Thus, our first task is
+to design constructors and selectors to implement this multilevel abstraction.
+
+Once we have designed our data abstraction, build a procedure that takes the
+three histories as arguments, and returns a history-summary. If we extract from
+this data structure the piece corresponding to =cooperate-cooperate=, this
+should give us all the information about what happened when player-1 and player-2
+both cooperated. Thus, we should be able to extract from this piece the number
+of times player-0 cooperated and the number of times she defected.
+
+REMEMBER: the goal of our data structure is to correlate player-0's behavior on
+round n, with player-1 and player-2's behavior on round n-1. For example, the
+result of an implementation, call it =make-history-summary=, on an example set
+of histories is shown below:
+#+BEGIN_SRC scheme
+(define summary
+  (make-history-summary
+   '("c" "c" "d" "d" "c" "d" "c" "c")   ;hist-0
+   '("c" "c" "c" "d" "d" "c" "d" "c")   ;hist-1
+   '("c" "c" "d" "d" "d" "c" "c" "c"))) ;hist-2
+
+summary
+;Value: ((3 0 3) (1 1 2) (0 2 2))
+#+END_SRC
+
+We implemented above specification as iterative process:
+#+BEGIN_SRC scheme
+;; constructor
+;; (hist,hist,hist) -> history-summary
+(define (make-history-summary hist-0 hist-1 hist-2)
+  (define (raise-exception)
+    (error "Invalid input histories -- MAKE-HISTORY-SUMMARY"
+           (list hist-0 hist-1 hist-2)))
+  (define (helper h0 prev-other-hist prev-another-hist sub-branches)
+    (let ((current-action (most-recent-play h0)))
+      (cond ((and (empty-history? prev-other-hist) ;termination condition
+                  (empty-history? prev-another-hist))
+             sub-branches)
+            ((or (empty-history? prev-other-hist) ;defensive programming
+                 (empty-history? prev-another-hist))
+             (raise-exception))
+            (else                       ;transition step
+             (let ((prev-other-action (most-recent-play prev-other-hist))
+                   (prev-another-action (most-recent-play prev-another-hist))
+                   (cc (car sub-branches)) ;cooperate-cooperate
+                   (cd (cadr sub-branches)) ;cooperate-defect
+                   (dd (caddr sub-branches))) ;defect-defect
+               (helper
+                (rest-of-plays h0)
+                (rest-of-plays prev-other-hist)
+                (rest-of-plays prev-another-hist)
+                (cond ((and (string=? prev-other-action "c")
+                            (string=? prev-another-action "c")) ;update cc
+                       (list (cond ((string=? current-action "c")
+                                    (increase-c-action cc)) ;update c
+                                   ((string=? current-action "d")
+                                    (increase-d-action cc)) ;update d
+                                   (else (raise-exception)))
+                             cd
+                             dd))
+                      ((and (string=? prev-other-action "d")
+                            (string=? prev-another-action "d")) ;update dd
+                       (list cc
+                             cd
+                             (cond ((string=? current-action "c")
+                                    (increase-c-action dd))
+                                   ((string=? current-action "d")
+                                    (increase-d-action dd))
+                                   (else (raise-exception)))))
+                      ((or (and (string=? prev-other-action "d") ;update cd
+                                (string=? prev-another-action "c"))
+                           (and (string=? prev-other-action "c")
+                                (string=? prev-another-action "d")))
+                       (list cc
+                             (cond ((string=? current-action "c")
+                                    (increase-c-action cd))
+                                   ((string=? current-action "d")
+                                    (increase-d-action cd))
+                                   (else (raise-exception)))
+                             dd))
+                      (else
+                       (raise-exception))))))))) ;defensive programming
+  (let ((cc (make-action-history 0 0 0))
+        (cd (make-action-history 0 0 0))
+        (dd (make-action-history 0 0 0)))
+      (cond ((and (empty-history? hist-0) ;trivial condition
+                  (empty-history? hist-1)
+                  (empty-history? hist-2))
+             (list cc cd dd))
+            ((or (empty-history? hist-0) ;defensive programming
+                 (empty-history? hist-1)
+                 (empty-history? hist-2))
+             (raise-exception))
+            (else                       ;nontrivial case
+             (helper hist-0             ;setup initial condition
+                     (rest-of-plays hist-1)
+                     (rest-of-plays hist-2)
+                     (list cc cd dd)))))
+  )
+
+;; selector
+(define (cooperate-cooperate history-summary)
+  (car history-summary))
+(define (cooperate-defect history-summary)
+  (cadr history-summary))
+(define (defect-defect history-summary)
+  (caddr history-summary))
+
+;; test for make-history-summary
+;; (define summary
+;;   (make-history-summary
+;;    '("c" "c" "d" "d" "c" "d" "c" "c")   ;hist-0
+;;    '("c" "c" "c" "d" "d" "c" "d" "c")   ;hist-1
+;;    '("c" "c" "d" "d" "d" "c" "c" "c"))) ;hist-2
+
+;; summary
+;; ;Value: ((3 0 3) (1 1 2) (0 2 2))
+
+;; operate on action-history
+;; action-history -> action-history
+(define (increase-c-action action-history)
+  (make-action-history
+   (1+ (c-action action-history))
+   (d-action action-history)
+   (1+ (t-action action-history))))
+(define (increase-d-action action-history)
+  (make-action-history
+   (c-action action-history)
+   (1+ (d-action action-history))
+   (1+ (t-action action-history))))
+
+;; lowest ADT for history-summary type
+;; integer, integer, integer -> action-history
+(define (make-action-history cooperations defections total-actions)
+  (list cooperations defections total-actions))
+;; (c-action (make-action-history <cs> <ds> <as>)) = <cs>
+(define (c-action action-history)
+  (car action-history))
+;; (d-action (make-action-history <cs> <ds> <as>)) = <ds>
+(define (d-action action-history)
+  (cadr action-history))
+;; (t-action (make-action-history <cs> <ds> <as>)) = <as>
+(define (t-action action-history)
+  (caddr action-history))
+#+END_SRC
+
+Then as usual we test our procedure:
+#+BEGIN_SRC scheme
+(define summary
+  (make-history-summary
+   '("c" "c" "d" "d" "c" "d" "c" "c")   ;hist-0
+   '("c" "c" "c" "d" "d" "c" "d" "c")   ;hist-1
+   '("c" "c" "d" "d" "d" "c" "c" "c")))
+
+;Value: summary
+
+summary
+
+;Value: ((3 0 3) (1 1 2) (0 2 2))
+
+(cooperate-defect summary)
+
+;Value: (1 1 2)
+
+(defect-defect summary)
+
+;Value: (0 2 2)
+
+(cooperate-cooperate summary)
+
+;Value: (3 0 3)
+#+END_SRC
+
+The algorithm behind this implementation is straightforward:
+1. Check the inputs are trivial case.
+2. If it is do the right thing; if not set up the initial condition for the
+   iterative process. You may find it helpful to draw table to catch up this process.
+3. Depending on the current looks update appropriately then iterate over (transition).
+4. If we encountered with termination condition then return the list of action-histories.
+
+
+In the above description, we omitted the gory details about the defensive programming
+and implementation details.
