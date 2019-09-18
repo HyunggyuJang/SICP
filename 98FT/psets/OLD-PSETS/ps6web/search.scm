@@ -32,9 +32,9 @@
 
 ;;;; Searching a network
 
-;;; A strategy-maker takes two arguments 
+;;; A strategy-maker takes two arguments
 ;;;   GOAL?: a test to see if a place is the goal place
-;;;   NEIGHBORS: a procedure to deliver the places one can get to 
+;;;   NEIGHBORS: a procedure to deliver the places one can get to
 ;;;     from a given place
 ;;; it returns a procedure that, given a place returns
 ;;;      #T if the place is the goal or
@@ -135,7 +135,7 @@
 
 
 (define test-data
-  (list 
+  (list
    (make-graph-entry 'a '(b i m) '(some words))
    (make-graph-entry 'b '(c d e h) '(more words))
    (make-graph-entry 'c '() '(some words at node c))

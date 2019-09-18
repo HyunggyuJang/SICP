@@ -2454,3 +2454,128 @@ Player 3 Score:  3.1868131868131866
 
 If we inspect the resulting histories from =play-loop=, we can convince ourself
 that our implementation is highly likely correct.
+* Project 3 -- Crawling adn Indexing the World Wide Web
+This project explores some issues that arise in constructing a "spider" or a
+"web agent" that crawls over documents in the World Wide Web. For purposes of
+this project, the Web is an extremely large collection of documents. Each
+document contains some text and also links to other documents, in the form of
+URLs.
+
+In this project, we'll be working with programs that can start with an initial
+document and follow the reference to other documents to do useful things. For
+example, we could construct an index of all the words occurring in documents,
+and make this available to people looking for information on the web (as do many
+of the search engines on the web, such as Google or Yahoo).
+
+Usually, we aren't fluent with the details of HTTP, URLs, URIs, HTML, XML, XSL,
+HTTP-NG, DOM, and the rest of the alphabet soup that makes up the technical
+details of the Web, here's a simplified version of what goes on behind the
+scenes:
+
+1. The Web consists of a very large number of things called documents,
+   identified by names called URLs (Uniform Resource Locators). For example, the
+   6.001 home page has the URL http://sicp.csail.mit.edu/. The first portion of
+   a URL (~http://~) reveals the name of a protocol (in this case hypertext
+   transmission protocol, or HTTP) that can be used to fetch the document, and
+   the rest of the URL contains information needed by the protocol to specify
+   which document is intended. (A protocol is a particular set of rules for how
+   to communicate information.)
+2. By using the HTTP protocol, a program (most commonly a browser but any
+   program can do this -- "web agents" and spiders are examples of such programs
+   that aren't browsers)[fn:1] can retrieve a document whose URL starts with
+   ~HTTP:~. The document is returned to the program, along with information
+   about how it is encoded, for example, ASCII or Unicode text, HTML, images in
+   GIF or JPG or MPEG or PNG or some other format, an Excel or Lotus
+   spreadsheet, etc.
+3. Documents encoded in HTML (HyperText Markup Language) form can contain a
+   mixture of text, images, formatting information, and links to other
+   documents. Thus, when a browser (or other program) gets an HTML document, it
+   can extract the links from it, yielding URLs for other documents in the Web.
+   If these are in HTML format, then they too can be retrieved and will yield
+   yet more links, and so on.
+4. A /spider/ is a program that starts with an initial set of URLs, retrieves
+   the corresponding documents, adds the links from these documents to the set
+   of URLs and keeps on going. Every time it retrieves a document, it does some
+   (hopefully useful) work in addition to just finding the embedded links.
+5. One particularly interesting kind of spider constructs an /index/ of the
+   documents it has seen. This index is similar to the index at the end of a
+   book: it has certain key words and phrases, and for each entry it lists all
+   of the URLs that contain that word or phrase. There are many kinds of
+   indexes, and the art/science of deciding what words or phrases to index and
+   how to extract them is at the cutting edge of research (it's part of the
+   discipline called /information retrieval/). We'll talk mostly about /full
+   text indexing/, which means that every word in the document (except, perhaps,
+   the very common words like "and", "the," "a," and "an") is indexed.
+
+
+In this project, we'll be interested in three tasks related to searching the
+World Wide Web. First, we will develop a way to think about the "web" of links
+as a directed graph. Second, we will build procedures to help in traversing or
+searching through graphs such as the Web. Third, we will consider ways to build
+an index for some set of web pages to support fast retrieval of URLs that
+contain a given word.
+
+** Directed Graphs
+The essence of the Web, for the purpose of understanding the process of
+searching, is captured by a formal abstraction called a /directed graph/. A
+graph (like the one in Figure 1), consists of
+/nodes/ and /edges/. In this figure, the nodes are labeled U through Z. Nods are
+connected to other nodes via /edges/. In a directed graph, each edge has a
+direction so that the existence of an /outgoing edgy/ from one node to another
+node (e.g. from node Y to node X). Notice that there can be multiple outgoing
+edges from a node as well as multiple /incoming/ edges to a node, e.g. there are
+edges from both Y and Z to W. The set of nodes reachable via a single outgoing
+edge from a given node is referred to as the node's /children/. For example, the
+children of node W are nodes U and X. Lastly, a graph is said to contain a cycle
+if you start from some node and manage to return to that same node after
+traversing one or more edges. So for example, the nodes W, X and Y form a cycle,
+as does the node V by itself.
+
+#+BEGIN_SRC dot :file ../image/fig1.png
+digraph {
+X -> V;
+V -> V;
+X -> Y;
+Y -> W;
+Y -> Z;
+W -> X;
+W -> U;
+W -> Z;
+U -> W;
+}
+#+END_SRC
+
+#+caption: Figure 1: An example of a general graph.
+#+RESULTS:
+[[file:../image/fig1.png]]
+
+A second example of a directed graph is shown in Figure 2. This particular
+directed graph happens to be a tree: each node is pointed to by only one other
+node and thus there is no sharing of nodes, and there are no cycles (or loops).
+
+#+BEGIN_SRC dot :file ../image/fig2.png
+digraph {
+A -> { B I M };
+B -> { C D E H };
+E -> { F G };
+I -> { J K L };
+}
+#+END_SRC
+
+#+caption: Figure 2: An example of a tree, viewed as a directed graph.
+#+RESULTS:
+[[file:../image/fig2.png]]
+
+In order to traverse a directed graph, let's assume that we have two selectors
+for getting information from the graph:
+- =(find-node-children <graph> <node>)= returns a list of the nodes in =<graph>=
+  that can be reached in one step by outbound edges from =<node>=. For example,
+  in Figure 2 the children of node B are C, D, E, and H -- things that can be
+  reached in one hop by an outgoing edge.
+
+* Footnotes
+
+[fn:1] In fact, when I worked in software company, where develop program using
+machine learning, I've implemented server side application that has the features
+of cloud server; in there, I've dealt with HTTP (REST API) to do the task for
+the purpose of training.
