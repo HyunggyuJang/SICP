@@ -223,11 +223,12 @@
                       (cons current visited))))))))
   (search-inner (list initial-state) '()))
 
-(define (BFS-final start goal? graph)
+(define (BFS-final start goal? node-proc graph)
   (search-final start
                 goal?
                 find-node-children
                 (lambda (new old) (append old new))
+                node-proc
                 graph))
 
 (define (DFS start goal? graph)
@@ -420,7 +421,20 @@
   (for-each (lambda (word) (add-to-index! index word url))
        (find-url-text web url)))
 
+;; Exercise 5
+(define (make-web-index web root-url)
+  (let ((web-index (make-index)))
+    (bfs-final root-url
+               (lambda (url) false)
+               (lambda (url)
+                 (add-document-to-index! web-index web url))
+               web)
+    (lambda (word) (find-in-index web-index word))))
 
+;; test for make-web-index
+;; (define find-documents (make-web-index the-web 'http://sicp.csail.mit.edu/))
+
+;; (find-documents 'collaborative)
 
 ;; Example use
 ;;

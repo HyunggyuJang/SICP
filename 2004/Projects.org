@@ -3518,11 +3518,12 @@ Here is the result:
 #+END_SRC
 with breadth first search:
 #+BEGIN_SRC scheme
-(define (BFS-final start goal? graph)
+(define (BFS-final start goal? node-proc graph)
   (search-final start
                 goal?
                 find-node-children
                 (lambda (new old) (append old new))
+                node-proc
                 graph))
 #+END_SRC
 
@@ -3540,6 +3541,36 @@ find?
 (define find-documents (make-web-index the-web 'http://sicp.csail.mit.edu/))
 
 (find-documents 'collaborative)
+#+END_SRC
+
+To implement given task, we use the same strategy as =add-document-to-index!=
+with the state variable; that is, using state variable =web-index=, to which we
+collect all the documents as we traverse. More specifically, for each node (URL)
+apply =(add-document-to-index! web-index web URL)= to collect all the documents
+into =web-index=. Then return =(lambda (word) (find-in-index web-index word))=
+to accomplish what we requested.
+
+We traverse using =BFS-final= and for the counterpart of what we used in
+previous example to apply each -- =for-each= procedure we use =node-proc=, which
+we extended =search= procedure for this.
+
+Then here is the code of it:
+#+BEGIN_SRC scheme
+(define (make-web-index web root-url)
+  (let ((web-index (make-index)))
+    (bfs-final root-url
+               (lambda (url) false)
+               (lambda (url)
+                 (add-document-to-index! web-index web url))
+               web)
+    (lambda (word) (find-in-index web-index word))))
+#+END_SRC
+
+Then we have the answer of the final question of this exercise:
+#+BEGIN_SRC scheme
+(find-documents 'collaborative)
+
+;Value: (http://sicp.csail.mit.edu/psets http://sicp.csail.mit.edu/)
 #+END_SRC
 * Footnotes
 
