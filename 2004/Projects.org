@@ -3326,6 +3326,221 @@ following procedures:
 
 Verify that our =add-to-index!= works with the other index procedures by showing
 the result of evaluating the insertions and finds presented in Warmup Exercise 1.
+
+=Add-to-index!= is already guided by the pseudocode. So if we follow that
+instruction, we can fill the blanks:
+#+BEGIN_SRC scheme
+(define (add-to-index! index key value) ; Index,Key,Val -> Index
+  (let ((index-entry (find-entry-in-index index key)))
+    (if (null? index-entry)
+        ;; no entry -- create and insert a new one...
+        (let ((new-entry (list key (list value))))
+          (set-cdr! index (cons new-entry (cdr index))))
+
+        ;; entry exists -- insert value if not already there...
+        (let ((value-list (cadr index-entry)))
+          (if (not (memv value value-list))
+              ;; not already there
+              (set-car! (cdr index-entry)
+                        (cons value value-list))))))
+  index)
+#+END_SRC
+
+Then test returns expected values:
+#+BEGIN_SRC scheme
+(define test-index (make-index))
+
+;Value: test-index
+
+(add-to-index! test-index 'key1 'value1)
+
+;Value: (index (key1 (value1)))
+
+(add-to-index! test-index 'key2 'value2)
+
+;Value: (index (key2 (value2)) (key1 (value1)))
+
+(add-to-index! test-index 'key1 'another-value1)
+
+;Value: (index (key2 (value2)) (key1 (another-value1 value1)))
+
+(find-in-index test-index 'key1)
+
+;Value: (another-value1 value1)
+
+(find-in-index test-index 'key2)
+
+;Value: (value2)
+#+END_SRC
+*** Computer Exercise 4: A Web Index
+Given this index data abstraction, we want to write a procedure to use the index
+to keep track of all the documents (URLs) that contain a particular word:
+- =(add-document-to-index! index web url)= :: Add an entry in the index for each
+     word in the contents of the URL (so that the key for that entry is a word,
+     and the data in the entry is the URL).
+
+
+This will enable us later on to get back the list of all documents (URLs) that
+appear under that key (and thus contain that word). Here's an example of how it
+should work:
+#+BEGIN_SRC scheme
+(define the-web-index (make-index))
+
+(add-document-to-index! the-web-index
+                        the-web
+                        'http://sicp.csail.mit.edu/)
+
+(find-in-index the-web-index 'help)
+;Value: (http://sicp.csail.mit.edu/)
+
+(find-in-index the-web-index '*magic*)
+;Value: #f
+#+END_SRC
+
+Write this procedure and show it working on appropriate test cases.
+
+Here is the implementation. The idea behind below code is for each of word from
+contents apply =add-to-index!=:
+#+BEGIN_SRC dot :file ../image/fig4.png
+digraph {
+        subgraph cluster {
+        label="Contents of url"
+        word;
+        }
+        word -> "(add-to-index! index word url)"
+        }
+#+END_SRC
+
+#+caption: Figure 4: The algorithm behind the =add-document-to-index!=.
+#+RESULTS:
+[[file:../image/fig4.png]]
+
+And the code:
+#+BEGIN_SRC scheme
+(define (add-document-to-index! index web url)
+  (for-each (lambda (word) (add-to-index! index word url))
+       (find-url-text web url)))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+(define the-web-index (make-index))
+
+;Value: the-web-index
+
+(add-document-to-index! the-web-index
+                        the-web
+                        'http://sicp.csail.mit.edu/)
+
+;Unspecified return value
+
+(find-in-index the-web-index 'help)
+
+;Value: (http://sicp.csail.mit.edu/)
+
+(find-in-index the-web-index '*magic*)
+
+;Value: ()
+#+END_SRC
+
+Here we spot the bug in the provided example: by the type contract,
+=find-in-index= can not return =#f=.
+
+The appropriate contract of =add-document-to-index!= is
+- \[\forall x \in \text{contents of url}.~\text{url} \in
+  (\text{find-in-index}~index~x)\]
+  #+BEGIN_SRC scheme
+(let ((url 'http://sicp.csail.mit.edu/)
+      (web the-web)
+      (index the-web-index))
+    (fold-left (lambda (t word)
+                 (and t
+                      (memv url
+                            (find-in-index index word))))
+               true
+               (find-url-text web url)))
+
+;Value: (http://sicp.csail.mit.edu/)
+  #+END_SRC
+
+- \[\neg \exists x \notin \text{contents of url}.~\text{url} \in
+  (\text{find-in-index}~index~x)\]
+  #+BEGIN_SRC scheme
+(find-in-index the-web-index '*magic*)
+
+;Value: ()
+  #+END_SRC
+*** Computer Exercise 5: Crawling the Web to Build an Index.
+Now let's simulate what a typical search engine's spider does: Crawl the entire
+=web= (recall: use a goal procedure that always returns false) and produce a
+full-text index of everything we find.
+
+To do this, we are first going to need to create one last set of search
+procedures. The only modification we need to make is to allow for a specific
+action to take place at each node that we visit (so we will want to be able to
+pass this procedure in as an argument). Create a final =search= procedure that
+accomplishes this, and then use that to create a breadth-first strategy using
+this idea.
+
+Here is the result:
+#+BEGIN_SRC scheme
+;; search-final: Node, (Node->Boolean), (Graph, Node -> List<Node>)
+;;               (List<Node>, List<Node> -> List<Node>), (Node->anytype),
+;;               Graph
+;;                 --> Boolean
+(define (search-final initial-state goal? successors merge node-proc graph)
+  ;; initial-state is the start state of the search
+  ;;
+  ;; goal? is the predicate that determines whether we have
+  ;; reached the goal
+  ;;
+  ;; successors computes from the current state all successor states
+  ;;
+  ;; merge combines new states with the set of states still to explore
+  ;;
+  ;; node-proc applied to each node it visit
+  (define (search-inner still-to-do visited)
+    ;; visited stores all the nodes traversed so far.
+    (if (null? still-to-do)
+        #f
+        (let ((current (car still-to-do)))
+          (cond ((memv current visited) ;if it visied then skip this node (as well as its children)
+                 (search-inner (cdr still-to-do) visited))
+                (else                   ;else visit!
+                 (if *search-debug*     ;debugging code
+                     (write-line (list 'now-at current)))
+                 (node-proc current)    ;apply node-proc to current
+                 (if (goal? current) #t
+                     (search-inner      ;recursive case
+                      (merge (successors graph current) (cdr still-to-do))
+                      (cons current visited))))))))
+  (search-inner (list initial-state) '()))
+#+END_SRC
+with breadth first search:
+#+BEGIN_SRC scheme
+(define (BFS-final start goal? graph)
+  (search-final start
+                goal?
+                find-node-children
+                (lambda (new old) (append old new))
+                graph))
+#+END_SRC
+
+Next, write a procedure, =make-web-index=, that creates a new index, finds all
+the URLs that can be reached from a given web and initial URL, indexes them, and
+returns a procedure that can be used to look up all the URLs of documents
+containing a given word. Our procedure should use a breadth first strategy to
+actually traverse =the-web= (why? think about that). We will also want to make
+use of the index manipulating procedures from above.
+
+We can test our program by trying the following example. Which document(s) do we
+find?
+
+#+BEGIN_SRC scheme
+(define find-documents (make-web-index the-web 'http://sicp.csail.mit.edu/))
+
+(find-documents 'collaborative)
+#+END_SRC
 * Footnotes
 
 [fn:4] It is due to the existence of the cycle within the graph.

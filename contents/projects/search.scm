@@ -190,6 +190,46 @@
                       (cons current visited))))))))
   (search-inner (list initial-state) '()))
 
+;; Exercise 5
+;; search-final: Node, (Node->Boolean), (Graph, Node -> List<Node>)
+;;               (List<Node>, List<Node> -> List<Node>), (Node->anytype),
+;;               Graph
+;;                 --> Boolean
+(define (search-final initial-state goal? successors merge node-proc graph)
+  ;; initial-state is the start state of the search
+  ;;
+  ;; goal? is the predicate that determines whether we have
+  ;; reached the goal
+  ;;
+  ;; successors computes from the current state all successor states
+  ;;
+  ;; merge combines new states with the set of states still to explore
+  ;;
+  ;; node-proc applied to each node it visit
+  (define (search-inner still-to-do visited)
+    ;; visited stores all the nodes traversed so far.
+    (if (null? still-to-do)
+        #f
+        (let ((current (car still-to-do)))
+          (cond ((memv current visited) ;if it visied then skip this node (as well as its children)
+                 (search-inner (cdr still-to-do) visited))
+                (else                   ;else visit!
+                 (if *search-debug*     ;debugging code
+                     (write-line (list 'now-at current)))
+                 (node-proc current)    ;apply node-proc to current
+                 (if (goal? current) #t
+                     (search-inner      ;recursive case
+                      (merge (successors graph current) (cdr still-to-do))
+                      (cons current visited))))))))
+  (search-inner (list initial-state) '()))
+
+(define (BFS-final start goal? graph)
+  (search-final start
+                goal?
+                find-node-children
+                (lambda (new old) (append old new))
+                graph))
+
 (define (DFS start goal? graph)
   (search-with-cycles start
                       goal?
@@ -279,17 +319,20 @@
         (cadr index-entry)
         '())))
 
-;; TO BE IMPLEMENTED
-;;(define (add-to-index! index key value) ; Index,Key,Val -> Index
-;;  (let ((index-entry (find-entry-in-index index key)))
-;;    (if (null? index-entry)
-;;      ;; no entry -- create and insert a new one...
-;;	;... TO BE IMPLEMENTED
-;;
-;;      ;; entry exists -- insert value if not already there...
-;;	;... TO BE IMPLEMENTED
-;;	))
-;;  index)
+(define (add-to-index! index key value) ; Index,Key,Val -> Index
+  (let ((index-entry (find-entry-in-index index key)))
+    (if (null? index-entry)
+        ;; no entry -- create and insert a new one...
+        (let ((new-entry (list key (list value))))
+          (set-cdr! index (cons new-entry (cdr index))))
+
+        ;; entry exists -- insert value if not already there...
+        (let ((value-list (cadr index-entry)))
+          (if (not (memv value value-list))
+              ;; not already there
+              (set-car! (cdr index-entry)
+                        (cons value value-list))))))
+  index)
 
 ;; Testing
 ;; (define test-index (make-index))
@@ -317,7 +360,7 @@
 ;; Text = list<Word>
 ;; Word = symbol
 
-; Procedures to get web links and web page contents:
+                                        ; Procedures to get web links and web page contents:
 
 (define (find-URL-links web url)
   (find-node-children web url))
@@ -371,11 +414,12 @@
 ;; web, and then key each of the words in the
 ;; text into the index.
 
-;; TO BE IMPLEMENTED
+;; Exercise 4
 ;; add-document-to-index!: Index, Web, URL
-;; (define (add-document-to-index! index web url)
-;; ...
-;; )
+(define (add-document-to-index! index web url)
+  (for-each (lambda (word) (add-to-index! index word url))
+       (find-url-text web url)))
+
 
 
 ;; Example use
@@ -386,13 +430,24 @@
 ;;                         the-web
 ;;                         'http://sicp.csail.mit.edu/)
 ;;
-;; (find-in-index 'help)
+;; (find-in-index the-web-index 'help)
 ;; ;Value: (http://sicp.csail.mit.edu/)
 ;;
-;; (find-in-index '*magic*)
+;; (find-in-index the-web-index '*magic*)
 ;; ;Value: #f
 
 
+;; test for add-document-to-index!
+;; (let ((url 'http://sicp.csail.mit.edu/)
+;;       (web the-web)
+;;       (index the-web-index))
+;;     (fold-left (lambda (t word)
+;;                  (and t
+;;                       (memv url
+;;                             (find-in-index index word))))
+;;                true
+;;                (find-url-text web url)))
+;; ;Value: (http://sicp.csail.mit.edu/)
 ;;------------------------------------------------------------
 ;; utility for timing procedure calls.
 ;; returns the time in seconds
