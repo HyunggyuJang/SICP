@@ -2531,16 +2531,14 @@ if you start from some node and manage to return to that same node after
 traversing one or more edges. So for example, the nodes W, X and Y form a cycle,
 as does the node V by itself.
 
-#+BEGIN_SRC dot :file ../image/fig1.png
+#+BEGIN_SRC dot :file ../image/fig1.png 
 digraph {
-X -> V;
+X -> { V Y };
 V -> V;
-X -> Y;
-Y -> W;
-Y -> Z;
+Y -> { Z W };
 W -> X;
+Z -> W;
 W -> U;
-W -> Z;
 U -> W;
 }
 #+END_SRC
@@ -2572,8 +2570,777 @@ for getting information from the graph:
   that can be reached in one step by outbound edges from =<node>=. For example,
   in Figure 2 the children of node B are C, D, E, and H -- things that can be
   reached in one hop by an outgoing edge.
+- =(find-node-contents <graph> <node>)= returns the contents of the node. For
+  example, when we represent the web as a graph, we will want the node contents
+  to be an alphabetized list of all of the words occuring in the document at /node/.
 
+
+Note, we have not said anything yet about the actual representation of a graph,
+a node, or an edge. We are simply stating an abstract definition of a data
+structure.
+
+*** The Web as a Graph
+The Web itself can be thought as a directed graph in which the nodes are HTML
+documents and the edges are hyperlinks to other HTML documents. For example, in
+Figure 2 the node labeled B would be a URL, and a directed edge exists between
+two nodes B and E if the document represented by node B contains a link to the
+document represented by node E (as it does in this case).
+
+As mentioned earlier, a web spider (or web crawler) is a program that traverses
+the web. A web spider might support procedures such as:
+- =(find-URL-links <web> <URL>)= returns a list of the URLs that are outbound links
+  from /URL/.
+- =(find-URL-text <web> <URL>)= returns an alphabetized list of all the words
+  occurring in the document at /URL/.
+
+
+Note, we have not said anything yet about the actual representation of the web
+as we did in graph: we are simply stating an abstract definition of a data
+structure.
+
+In a real web crawler, =find-URL-links= would involve retrieving the document
+over the network using its URL, parsing the HTML information returned by the web
+server, and extracting the link information from ~<a href=...>~, ~<image
+src=...>~ and similar tags. Similarly, in a real web crawler, =<find-URL-text
+<web> <URL>= would retrieve the document, discard all of the mark-up commands
+(such as =<body>=, =<html>=, =<ul>=, etc.), alphabetize (and remove duplicates
+from) the text, and return the resulting list of words.
+
+For this project our programs will not actually go out the retrieve documents
+over the web. Instead, we will represent a collection of web documents as a
+/graph/ as discussed earlier. When we load the code for this project, we will
+have available a global variable, =the-web=, which holds the graph
+representation for a set of documents for use in this project.
+
+*Note:* it is important to separate our particular representation of information
+on the web from the idea of the web as a loose collection of documents. We are
+choosing to use a graph to capture a simple version of the web -- this is simply
+to provide us with a concrete representation of the web, so that we can examine
+issues related to exploring the web. In practice, we would never build an entire
+representation of the web, we would simply take advantage of the abstraction to
+conceptualize the structure of the web, especially since it is a dynamic thing
+that constantly changes.
+
+Our implementation of =find-URL-links= and =find-URL-text= will simply use the
+graph procedures to get web links (children) and web page contents:
+
+#+BEGIN_SRC scheme
+(define (find-URL-links web url)
+  (find-node-children web url))
+
+(define (find-URL-text web url)
+  (find-node-contents web url))
+#+END_SRC
+
+In other words, we are converting operations that would normally apply to the
+web itself into operations that work on the internal representation of the web
+as a graph.
+*** Directed Graph Abstraction
+We will build a graph abstraction to capture the relationships as shown in
+Figure 1 and 2, as well as enable us to have some contents at each node. We
+should study the code in =search.scm= provided with the project very closely;
+parts of it are described in the following discussion.
+
+We will assume that our graph is represented as a collection of graph-elements.
+Each graph-element will itself consist of a node (represented as a symbol -- the
+name of the node), a list of children nodes, and some contents stored at the
+node (which in general can be of any type). The constructors, type predicate,
+and accessors for the =graph-element= abstraction are shown below:
+#+BEGIN_SRC scheme
+;;; Graph Abstraction
+;;;
+;;;   Graph                     a collection of Graph-Elements
+;;;   Graph-Element               a node, outgoing children from the
+;;;                               node, and contents for the node
+;;;   Node = symbol             a symbol label or name for the node
+;;;   Contents = anytype        the contents for the node
+
+;;---------------
+;; Graph-Element
+
+; make-graph-element: Node,list<Node>,Contents -> Element
+(define (make-graph-element node children contents)
+  (list 'graph-element node children contents))
+
+(define (graph-element? element)            ; anytype -> boolean
+  (and (pair? element) (eq? 'graph-element (car element))))
+
+; Get the node (the name) from the Graph-Element
+(define (graph-element->node element)       ; Graph-Element -> Node
+  (if (not (graph-element? element))
+      (error "object not element: " element)
+      (first (cdr element))))
+
+; Get the children (a list of outgoing node names)
+; from the Graph-Element
+(define (graph-element->children element)   ; Graph-Element -> list<Node>
+  (if (not (graph-element? element))
+      (error "object not element: " element)
+      (second (cdr element))))
+
+; Get the contents from the Graph-Element
+(define (graph-element->contents element)   ; Graph-Element -> Contents
+  (if (not (graph-element? element))
+      (error "object not element: " element)
+      (third (cdr element))))
+#+END_SRC
+
+Given this representation for a graph-element, we can build the graph out of
+these elements as follows:
+#+BEGIN_SRC scheme
+(define (make-graph elements)            ; list<Element> -> Graph
+  (cons 'graph elements))
+
+(define (graph? graph)                  ; anytype -> boolean
+  (and (pair? graph) (eq? 'graph (car graph))))
+
+(define (graph-elements graph)           ; Graph -> list<Graph-Element>
+  (if (not (graph? graph))
+      (error "object not a graph: " graph)
+      (cdr graph)))
+
+(define (graph-root graph)		; Graph -> Node|null
+  (let ((elements (graph-elements graph)))
+    (if (null? elements)
+        '()
+        (graph-element->node (car elements)))))
+#+END_SRC
+
+In the above implementation, we will arbitrarily consider the first
+graph-element to hold the "root" for the graph. The procedure =graph-root=
+returns the root node.
+
+Given these abstractions, we can construct the graph in Figure 2 (with node =a=
+as the root) using:
+#+BEGIN_SRC scheme
+(define test-graph
+  (make-graph (list
+   (make-graph-element 'a '(b i m) '(some words))
+   (make-graph-element 'b '(c d e h) '(more words))
+   (make-graph-element 'c '() '(at c node some words))
+   (make-graph-element 'd '() '())
+   (make-graph-element 'e '(f g) '(and even more words))
+   (make-graph-element 'f '() '())
+   (make-graph-element 'g '() '())
+   (make-graph-element 'h '() '())
+   (make-graph-element 'i '(j k l) '(more words yet))
+   (make-graph-element 'j '() '())
+   (make-graph-element 'k '() '())
+   (make-graph-element 'l '() '()))))
+#+END_SRC
+
+Note that several of the nodes have no children, and that several have no
+contents.
+
+We would like to have some accessors to get connectivity and contents
+information out of the graph. We first define a procedure to find a
+graph-element in a graph, given the node (i.e. the symbol or name that
+identifies the element):
+
+#+BEGIN_SRC scheme
+; Find the specified node in the graph
+(define (find-graph-element graph node)   ; Graph,Node -> Graph-Element|null
+  (define (find elements)
+    (cond ((null? elements) '())
+          ((eq? (graph-element->node (car elements)) node)
+           (car elements))
+          (else (find (cdr elements)))))
+  (find (graph-elements graph)))
+#+END_SRC
+
+We are often more interested in the node children or node contents, rather than
+the graph-element. The =find-node-children= and =find-node-contents= accessor
+procedure can be implemented as follows:
+
+#+BEGIN_SRC scheme
+; Find the children of the specified node in the graph
+(define (find-node-children graph node)        ; Graph,Node -> list<Node>|null
+  (let ((element (find-graph-element graph node)))
+    (if (not (null? element))
+        (graph-element->children element)
+        '())))
+
+; Find the contents of the specified node in the graph
+(define (find-node-contents graph node)         ; Graph,Node -> Contents|null
+  (let ((element (find-graph-element graph node)))
+    (if (not (null? element))
+        (graph-element->contents element)
+        '())))
+#+END_SRC
+
+In our representation above, we use node names (~Node = symbol~) to reference a
+=graph-element= in a =graph=; the children of a node are represented as a list
+of other node names. An alternative to this approach would be to make the node
+itself a full abstract data type, so that a node /object/ would have identity,
+and the children of a node could be, for example, a list of the actual children
+node objects. The tradeoff would be more work in building the graph (e.g. to
+link together actual node objects as nodes and edges are added to a
+graph[fn:2]), but substantial savings when nodes are requested from the graph
+(i.e. by avoiding a linear search of the graph-elements for the matching node
+name) -- e.g. to extract the node's contents or children. With such an
+alternative abstraction, when requesting a child node one can achieve constant
+time access (in the size of the graph), as opposed to linear time access as in
+the current implementation[fn:3].
+** Searching a Graph
+How can we search a graph? The basic idea is that we need to start at some node
+and traverse the graph in some fashion looking for some goal. The search might
+succeed (meaning that some goal is found), or it might fail (meaning that some
+goal was not found). This very basic and abstract search behavior can be
+captured in the following procedure:
+
+#+BEGIN_SRC scheme
+;; search: Node, (Node->Boolean), (Graph, Node -> List<Node>)
+;;         (List<Node>, List<Node> -> List<Node>), Graph
+;;           --> Boolean
+
+(define (search initial-state goal? successors merge graph)
+  ;; initial-state is the start state of the search
+  ;;
+  ;; goal? is the predicate that determines whether we have
+  ;; reached the goal
+  ;;
+  ;; successors computes from the current state all successor states
+  ;;
+  ;; merge combines new states with the set of states still to explore
+  (define (search-inner still-to-do)
+    (if (null? still-to-do)
+        #f
+        (let ((current (car still-to-do)))
+          (if *search-debug*
+              (write-line (list 'now-at current)))
+          (if (goal? current)
+              #t
+              (search-inner
+               (merge (successors graph current) (cdr still-to-do)))))))
+  (search-inner (list initial-state)))
+#+END_SRC
+
+Note the use of the =*search-debug*= flag. If we set this global variable to
+=#t=, we will see the order in which the procedure is traversing the graph.
+
+*** Looking at search
+What does this search procedure do? Well, let's look at it a bit more closely.
+=Search= takes several arguments. The first is the initial state of the search.
+For our purposes, this will be a =Node= or in other words, the name of some node
+in our graph. The second is a =goal?= procedure, which is applied to a node to
+determine if we have reached our goal. This procedure will presumably examine
+some aspect of the node (for example, maybe it wants to see if a particular word
+is contained in the contents of that node) to decide if the search has reached
+its termination point. The third is a procedure for finding the =successors= of
+the node, which in this case basically means finding the children of a node in
+the graph on which we are searching. The fourth is a procedure for combining the
+children of a node with any other nodes that we still have to search. And the
+final argument is the graph over which we are searching.
+
+Looking at the code, you can see that we start with a list of nodes to search.
+If the first one meets our =goal?= criterion, we stop. If not, we get the
+children of the current node, and combine them in some fashion with the other
+nodes in our collection to search. This then becomes our new list of nodes to
+consider, and we continue.
+*** Search Strategies
+There are two common approaches for searching directed graphs, called
+/depth-first search/ and /breath-first search/. In a depth-first search we start
+at a node, pick one of the outgoing links from it, explore that link (and all of
+that link's outgoing links, and so on) before returning to explore the next link
+out of our original node. For the graph in Figure 2, that would mean we would
+examine the nodes (if we go left-to-right as well as depth-first) in the order:
+/a, b, c, d, e, g, h, i, j, k, l,/ and finally /m/ (unless we found our goal
+earlier, of course). The name "depth-first" comes from the fact that we go down
+the graph (in the above drawing) before we go across.
+
+In a breadth-first search, we visit a node and then all of its "siblings" first,
+before exploring any "children." For Figure 2, we'd visit the nodes in the order
+/a, b, i, m, c, d, e, h, j, k, l, f, g/.
+
+We can abstract the notions of depth-first, breadth-first, and other kinds of
+searches using the idea of a /search strategy/. A search strategy will basically
+come down to what choice we make for how to order the nodes to be explored.
+*** A Depth-First Strategy
+Here's an initial attempt at a depth-first search strategy. It doesn't quite
+work on all cases, but it's a good place to start.
+
+#+BEGIN_SRC scheme
+(define (DFS-simple start goal? graph)
+  (search start
+          goal?
+          find-node-children
+          (lambda (new old) (append new old))
+          graph))
+#+END_SRC
+
+And here is an example of using it:
+
+#+BEGIN_SRC scheme
+(DFS-simple 'a
+            (lambda (node) (eq? node 'l))
+            test-graph)
+#+END_SRC
+
+In this case, we are searching a particular graph =test-graph=, starting from a
+node with name =a=. We are looking for a node named =l= (hence our second
+argument). We use our graph abstraction to extract the children of a node (i.e.
+=find-node-children=). The key element is how we choose to order the set of
+nodes to be explored. Note the fourth argument. We can see that this will
+basically take the list of nodes to be explored, and add the new children in
+front of the list. This should give us a depth first search (you should think
+carefully about why).
+
+This simple method does not work in general, but it does work for the graph in
+Figure 2. (See Warm Up Exercise 2 for some thoughts on why this algorithm does
+not work on all graphs.[fn:4])
+** An Index Abstraction
+We will also be interested in constructing an index of web pages. To do this, we
+will first construct a general purpose index abstraction, and then use it for
+our purpose of web indexing.
+
+An =Index= enables us to associate values with keys, and to retrieve those
+values later on given the key. Here we will assume that a key is a Scheme
+symbol (i.e. ~Key = symbol~), and that a value is also a symbol (i.e. ~Val =
+symbol~). Our index will be a mutable data structure.
+
+A concrete implementation for an =index= is as follows. An =Index= will be a
+tagged data object that holds a list of =INdex-Entries=. Each =Index-Entry=
+associates a =Key= with a list of values for that =Key=, i.e.
+#+BEGIN_SRC scheme
+;;   Index = Pair<Index-Tag, list<Index-Entry>>
+;;   Index-Entry = list<Key, list<Val>>
+#+END_SRC
+
+Thus our index implementation is shown (partially) below. We will be asked in
+the exercises to complete the implementation. The index implementation makes use
+of the Scheme procedure =assv=; you will find it helpful to consult the [[https://www.gnu.org/software/mit-scheme/documentation/mit-scheme-ref/Association-Lists.html][Scheme
+manual]] as to what this procedure does.
+
+#+BEGIN_SRC scheme
+(define (make-index)            ; void -> Index
+  (list 'index))
+
+(define (index? index)          ; antype -> boolean
+  (and (pair? index) (eq? 'index (car index))))
+
+                                        ; This is an internal helper procedure not to
+                                        ; be used externally.
+(define (find-entry-in-index index key)
+  (if (not (index? index))
+      (error "object not an index: " index)
+      (let ((entry (assv key (cdr index))))
+        (if entry entry '()))))
+
+
+                                        ; returns a list of values associated with key
+(define (find-in-index index key)       ; Index,Key -> list<Val>
+  (let ((index-entry (find-entry-in-index index key)))
+    (if (not (null? index-entry))
+        (cadr index-entry)
+        '())))
+
+;; TO BE IMPLEMENTED
+(define (add-to-index! index key value) ; Index,Key,Val -> Index
+  (let ((index-entry (find-entry-in-index index key)))
+    (if (null? index-entry)
+        ;; no entry -- create and insert a new one...
+                                        ;... TO BE IMPLEMENTED
+
+        ;; entry exists -- insert value if not already there...
+                                        ;... TO BE IMPLEMENTED
+        ))
+  index)
+#+END_SRC
+
+An example use of the index is shown below
+#+BEGIN_SRC scheme
+(define test-index (make-index))
+(add-to-index! test-index 'key1 'value1)
+(add-to-index! test-index 'key2 'value2)
+(add-to-index! test-index 'key1 'another-value1)
+
+(find-in-index test-index 'key1)
+;Value: (another-value1 value1)
+(find-in-index test-index 'key2)
+;Value: (value2)
+#+END_SRC
+** Warmup Exercises
+These exercises will get we thinking about the project. We suggested to do them
+early. Doing these stuffs will help us to understand aspects of the project.
+
+*** Warmup Exercise 1: Index Implementation.
+In order to simply /use/ the index abstraction, one should not need to
+understand the underlying implementation (both the structure of the data
+representation and the implementation of the abstract procedures). In one of the
+programming exercises, however, you will be asked to complete the implementation
+of =add-to-index!= partially shown above. In order to do this, we /will/ need to
+understand the index implementation.
+
+Draw a box and pointer diagram, and show the corresponding printed
+representation, to illustrate the implementation of an =Index= as defined in
+Section 3. Think about how you want the following expressions to create and then
+mutate your data structure:
+
+#+BEGIN_SRC scheme
+(define test-index (make-index))
+(add-to-index! test-index 'key1 'value1)
+(add-to-index! test-index 'key2 'value2)
+(add-to-index! test-index 'key1 'another-value1)
+#+END_SRC
+
+I've done this using the Digital Paper. You should find yourself comfortable to
+draw box and pointer diagram with mutation beforehand.
+*** Warmup Exercise 2: The Web as General Graph
+Although we've been presenting the concepts and ideas in this problem set in the
+context of the Web, for the project you will be ysing data structures that have
+been pre-bulit. Thus, we will not be interfacing or touching the Web directly;
+instead, we will be dealing with a graph data structure they've created for us
+called =the-web=.
+
+The following partial definition of =the-web= mimics a subset of the graph of
+web pages at the 6.001 web site. Each node here is the URL of a web page and the
+children nodes are the URLs referenced in the links on the page.
+
+#+BEGIN_SRC scheme
+(define the-web
+  (list
+   (make-graph-element
+    'http://sicp.csail.mit.edu/
+    '(http://sicp.csail.mit.edu/SchemeImplementations/
+      http://sicp.csail.mit.edu/projects/)
+    '(... words extracted from http://sicp.csail.mit.edu/ ...))
+   (make-graph-element
+    'http://sicp.csail.mit.edu/projects/
+    '(http://sicp.csail.mit.edu/collaborative-work.html
+      http://sicp.csail.mit.edu/getting-help.html)
+    '(... words extracted from http://sicp.csail.mit.edu/SchemeImplementations/ ...))
+   (make-graph-element
+    'http://sicp.csail.mit.edu/getting-help.html
+    '(http://sicp.csail.mit.edu/
+      http://sicp.csail.mit.edu/SchemeImplementations/)
+    '(... words extracted from http://sicp.csail.mit.edu/getting-help.html))
+   ...))
+#+END_SRC
+
+Explain why our depth first strategy (using =DFS-simple=) will fail on this
+graph. (If it helps, note that this graph has the same kind of form as Figure
+1.) What is the essential difference between the =test-graph= and =the-web=
+examples that cause =DFS-simple= to fail here?
+
+We reason though following steps:
+1. We can explain this situation by simulating with substitution model on each
+   case and capture the common pattern appears all of each; we are allowed to
+   use substitution model since =DFS-simple= doesn't involve any mutation in it.
+2. The captured one is if given graph has cycle(s) in it, then =DFS-simple=
+   fails, i.e. it falls into infinite loop over that cycle, which is the one the
+   traverser encountered first.
+
+
+You should make sure that you understand what I've described above using the
+substitution model with some example.
+** Programming assignment: A web spider
+Begin by loading the code for the project from the web site. This will define
+the search and data structure procedures listed above. Just to make sure
+everything is working, evaluate
+
+#+BEGIN_SRC scheme
+(DFS-simple 'a
+            (lambda (node) (eq? node 'l))
+            test-graph)
+#+END_SRC
+
+This should traverse the =test-graph= graph until the search finds node =l=
+(lowercase =L=), and you should see the nodes being visited in depth-first order
+like this:
+#+BEGIN_SRC scheme
+(DFS-simple 'a
+            (lambda (node) (eq? node 'l))
+            test-graph)
+(now-at a)
+(now-at b)
+(now-at c)
+(now-at d)
+(now-at e)
+(now-at f)
+(now-at g)
+(now-at h)
+(now-at i)
+(now-at j)
+(now-at k)
+(now-at l)
+;Value: #t
+#+END_SRC
+
+*** Computer Exercise 1: A breadth-first search.
+Our previous example used a depth-first strategy. A breadth-first search
+strategy can be obtained by modifying /only one line/ of the =DFS-simple=,
+leaving the total number of characters in the expression unchanged! Do this to
+create a new procedure (call it =DFS-simple=), demonstrate that it works on
+=test-graph=, and write a short (but clear) explanation of why it works.
+
+The answer is
+#+BEGIN_SRC scheme
+(define (BFS-simple start goal? graph)
+  (search start
+          goal?
+          find-node-children
+          (lambda (new old) (append old new))
+          graph))
+#+END_SRC
+since it visits new added nodes only after visiting old nodes; i.e. it will
+basically take the list of nodes to be explored, and add the new children to the
+end of the list. This should give =BFS= as it visits child nodes only after
+visiting all the siblings.
+*** Marking nodes
+In Warmup Exercise 2, we discussed a problem with =DFS-simple=. One way to fix
+this problem is to keep track of what nodes we have visited. The basic idea is
+that when we move to a "new" node, we can check to see if we have already
+examined that node. If we have, we can simply remove it from our list of nodes
+to explore, ignore any children (since they will have also already been
+visited), and move on to the next node in the list.
+*** Computer Exercise 2: Marking visited nodes.
+We should be able to use the definition of =search= as a starting point to
+create a new procedure (call it =search-with-cycles=) that keeps track of
+already visited nodes, and implements the idea described above.
+
+To show that our implementation works, we should use it with a depth first
+strategy to create a new procedure (call it =DFS=) that implements full depth
+first search. Use it to walk the sample graph =test-cycle= which is defined for
+us in =search.scm=. Show it visits nodes at most once. Also create a breadth
+first search, and also show that it only visits nodes once (albeit in a
+different order).
+
+Once we get sure these procedures are working, give the order in which the nodes
+are visited for depth-first search and for breadth first search of =the-web=. We
+should provide a =goal?= procedure that always returns false so that the entire
+web is traversed, and start the walk at the node labeled
+=http://sicp.csail.mit.edu/=.
+
+**** Implementation
+We can implement requested procedures using either with assignment or in
+functional programming style. Here we consider functional programming style, you
+should come up with the imperative style easily as well.
+
+In functional programming, we need additional parameter to keep track of the
+state variable named =visited=, which stores all the nodes it visited:
+#+BEGIN_SRC scheme
+(define (search-with-cycles initial-state goal? successors merge graph)
+  ;; initial-state is the start state of the search
+  ;;
+  ;; goal? is the predicate that determines whether we have
+  ;; reached the goal
+  ;;
+  ;; successors computes from the current state all successor states
+  ;;
+  ;; merge combines new states with the set of states still to explore
+  (define (search-inner still-to-do visited)
+    ;; visited stores all the nodes traversed so far.
+    (if (null? still-to-do)
+        #f
+        (let ((current (car still-to-do)))
+          (if *search-debug*
+              (write-line (list 'now-at current)))
+          (cond ((memv current visited)
+                 (search-inner (cdr still-to-do) visited))
+                ((goal? current) #t)
+                (else (search-inner     ;recursive case
+                       (merge (successors graph current) (cdr still-to-do))
+                       (cons current visited)))))))
+  (search-inner (list initial-state) '()))
+#+END_SRC
+
+And the =DFS=:
+#+BEGIN_SRC scheme
+(define (DFS start goal? graph)
+  (search-with-cycles start
+                      goal?
+                      find-node-children
+                      (lambda (new old) (append new old))
+                      graph))
+#+END_SRC
+
+And the test:
+#+BEGIN_SRC scheme
+test-cycle
+
+;Value: (graph (graph-element a (b c) (words for node a)) (graph-element b (c) (words for node b)) (graph-element c (a) (words for node c)))
+
+(DFS 'a
+     (lambda (node) false)
+     test-cycle)
+(now-at a)
+(now-at b)
+(now-at c)
+(now-at a)
+(now-at c)
+;Value: #f
+#+END_SRC
+
+The structure of =test-cycle= can be structured as following figure:
+#+BEGIN_SRC dot :file ../image/fig3.png
+digraph {
+A -> { B C };
+B -> C;
+C -> A;
+}
+#+END_SRC
+
+#+caption: Figure 3: The abstract structure of test-cycle.
+#+RESULTS:
+[[file:../image/fig3.png]]
+
+Our procedure works as expected? Yes and no!
+- We expected to terminate even with the graph that contains cycle; and it is.
+- We also expected to visit each node at most once; but not!
+
+
+What's wrong with our =DFS= or =search-with-cycles=? The answer is nothing! just
+we misused the debug code in the wrong place the canonical place would be the
+after the checking whether the current is visited already or not:
+#+BEGIN_SRC scheme
+(define (search-with-cycles initial-state goal? successors merge graph)
+  ;; initial-state is the start state of the search
+  ;;
+  ;; goal? is the predicate that determines whether we have
+  ;; reached the goal
+  ;;
+  ;; successors computes from the current state all successor states
+  ;;
+  ;; merge combines new states with the set of states still to explore
+  (define (search-inner still-to-do visited)
+    ;; visited stores all the nodes traversed so far.
+    (if (null? still-to-do)
+        #f
+        (let ((current (car still-to-do)))
+          (cond ((memv current visited) ;if it visied then skip this node (as well as its children)
+                 (search-inner (cdr still-to-do) visited))
+                (else                   ;else visit!
+                 (if *search-debug*
+                     (write-line (list 'now-at current)))
+                 (if (goal? current) #t
+                     (search-inner      ;recursive case
+                      (merge (successors graph current) (cdr still-to-do))
+                      (cons current visited))))))))
+  (search-inner (list initial-state) '()))
+#+END_SRC
+
+Then our test works as
+#+BEGIN_SRC scheme
+(DFS 'a
+     (lambda (node) false)
+     test-cycle)
+(now-at a)
+(now-at b)
+(now-at c)
+;Value: #f
+#+END_SRC
+as expected.
+
+Then =BFS= is analogous to =DFS=:
+#+BEGIN_SRC scheme
+(define (BFS start goal? graph)
+  (search-with-cycles start
+                      goal?
+                      find-node-children
+                      (lambda (new old) (append old new))
+                      graph))
+#+END_SRC
+
+As usual we test =BFS=:
+#+BEGIN_SRC scheme
+(BFS 'a
+     (lambda (node) false)
+     test-cycle)
+(now-at a)
+(now-at b)
+(now-at c)
+;Value: #f
+#+END_SRC
+
+=BFS= visits nodes same order as =DFS= coincidently.
+**** Application to =the-web=
+To make available =the-web= we should first load appropriate Scheme source file
+that contains which:
+#+BEGIN_SRC scheme
+(load "generate.scm")
+
+;Loading "generate.scm"... done
+;Value: generate-random-web
+
+the-web
+
+;Value: (graph (graph-element http://sicp.csail.mit.edu/...
+#+END_SRC
+
+Then let's do the right things!
+#+BEGIN_SRC scheme
+(DFS 'http://sicp.csail.mit.edu/
+     (lambda (node) false)
+     the-web)
+(now-at http://sicp.csail.mit.edu/)
+(now-at http://sicp.csail.mit.edu/schemeimplementations)
+(now-at http://sicp.csail.mit.edu/getting-help.html)
+(now-at http://sicp.csail.mit.edu/lab-use.html)
+(now-at *the-goal*)
+(now-at http://sicp.csail.mit.edu/psets)
+;Value: #f
+
+(BFS 'http://sicp.csail.mit.edu/
+     (lambda (node) false)
+     the-web)
+(now-at http://sicp.csail.mit.edu/)
+(now-at http://sicp.csail.mit.edu/schemeimplementations)
+(now-at http://sicp.csail.mit.edu/psets)
+(now-at http://sicp.csail.mit.edu/getting-help.html)
+(now-at http://sicp.csail.mit.edu/lab-use.html)
+(now-at *the-goal*)
+;Value: #f
+#+END_SRC
+
+Now the distinct two strategies produce different order of visiting.
+** Indexing the web
+Now let's turn to the problem of creating a full-text index of documents on the
+Web, like the one created by Google or other search engines. We'll assume that
+we have a graph that represents the World Wide Web, and this graph uses node
+names that correspond to URLs (as in =the-web= sample given earlier). Remember,
+we're assuming that we have a procedure =find-URL-text= which, for this web
+representation, gets us the alphabetized text at the node. For example,
+=(find-URL-text the-web 'http://sicp.csail.mit.edu/)= yields the list:
+#+BEGIN_SRC scheme
+(18:30:02 2004 6001-WEBMASTER@CSAIL.MIT.EDU 8 ABOUT ALL AM AND ANNOUNCEMENTS
+          ANSWERS ARE ASSIGNMENT ASSIGNMENTS BY CALENDAR CAN CHANGE
+          COLLABORATIVE COMMENTS COMPUTER COPYRIGHT CURRENT DO DOCUMENTATION EDT
+          FALL FIND FOR GENERAL GET GETTING GUIDELINES HELP HOW I IN INDIVIDUAL
+          INFORMATION INSTITUTE INTERPRETATION IS LAST LECTURE MASSACHUSETTS ME
+          MICROQUIZZES MODIFIED MY NEW NOTES OCT OF ON ON-LINE ORAL OWN PAST
+          POLICY POSTED PRESENTATIONS PREVIOUS PROBLEM PROGRAMS RECITATION
+          RECITATIONS RECORDS RESERVED RIGHTS SCHEME SECTION SECTIONS SEND SET
+          SETS SITE SOFTWARE STAFF STRUCTURE SUBJECT TECHNOLOGY TELL TERMS THE
+          THIS THU TO UP USE WEEK WHAT WHERE WHICH WORK WRITING)
+#+END_SRC
+
+*** Computer Exercise 3: The Index Abstraction
+Our first task is to complete the implementation of the =index= abstraction.
+Complete the definition of =add-to-index!= so that have we available the
+following procedures:
+- =(make-index)= :: Creates a new index.
+- =(add-to-index! index key value)= :: Add the value under the given key in the index.
+- =(find-in-index index key)= :: Returns a list of all the values that have been
+     entered into the index under the specified key.
+
+
+Verify that our =add-to-index!= works with the other index procedures by showing
+the result of evaluating the insertions and finds presented in Warmup Exercise 1.
 * Footnotes
+
+[fn:4] It is due to the existence of the cycle within the graph.
+
+[fn:3] To implement such ADT, we need to use the message passing style which we
+supposed to have not learned yet; also we supposed to not know exactly what is
+/object/, which referenced in the discourse, that is core entity composing the
+message passing programming.
+
+
+[fn:2] Conceptually graph become a procedure that takes nodes with the edges,
+which describe the connectivity between nodes, then connect the nodes according
+to given edges; And it would return root node. Its purpose is side-effect --
+connecting the nodes.
+
 
 [fn:1] In fact, when I worked in software company, where develop program using
 machine learning, I've implemented server side application that has the features
