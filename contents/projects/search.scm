@@ -457,11 +457,45 @@
 ;;       (index the-web-index))
 ;;     (fold-left (lambda (t word)
 ;;                  (and t
-;;                       (memv url
-;;                             (find-in-index index word))))
+;;                       (not (null? (memv url ; url in find-in-index?
+;;                                         (find-in-index index word))))))
 ;;                true
 ;;                (find-url-text web url)))
-;; ;Value: (http://sicp.csail.mit.edu/)
+;; ;Value: #t
+
+;; Exercise 6
+;;; search-any
+;;;; index, Node, anytype -> Node | false
+(define (search-any web start-node word)
+  (let* ((found false)
+         (found? (bfs
+                  start-node
+                  (lambda (url)
+                    (if (memv word
+                              (find-url-text web url))
+                        ;; if word in the contents of current url
+                        ;; set found current url and terminate
+                        (begin (set! found url) true)
+                        ;; otherwise keep searching
+                        false))
+                  web)))
+    (if found?
+        found
+        false)))
+
+;;; search-all
+;;;; index, Node, anytype -> List<Node>
+(define (search-all web start-node word)
+  (let ((found '()))
+    (bfs-final
+     start-node (lambda (url) false)
+     (lambda (url)
+       (if (memv word
+                 (find-url-text web url))
+           (set! found (cons url found))))
+     web)
+    found))
+
 ;;------------------------------------------------------------
 ;; utility for timing procedure calls.
 ;; returns the time in seconds
@@ -474,3 +508,128 @@
       (display (- (runtime) start))
       val)))
 
+;; Exercise 7
+
+;; int, (void -> undefined) -> undefined
+(define (repeat n proc)
+  (if (not (zero? n))
+      (begin (proc)
+             (repeat (-1+ n) proc))))
+
+(define (test-each number-of-repeatation number-of-nodes)
+  (let ((web (generate-random-web number-of-nodes))
+        (start-node '*start*)
+        (existing-word 'help)
+        (nonexisting-word 'Susanhockfield)
+        (n number-of-repeatation)
+        )
+    ;; -------------------------
+    ;; search-any test
+    (newline)
+    (display "search-any -- find existing word")
+    (timed repeat n (lambda () (search-any web start-node existing-word)))
+    (newline)
+    (newline)
+    (display "search-any -- find nonexisting word")
+    (timed repeat n (lambda () (search-any web start-node nonexisting-word)))
+    ;; -------------------------
+    ;; search-all test
+    (newline)
+    (newline)
+    (display "search-all -- find existing word")
+    (timed repeat n (lambda () (search-all web start-node existing-word)))
+    ;; -------------------------
+    ;; make-web-index
+    (let ((find-documents (make-web-index web start-node)))
+      ;; -------------------------
+      ;; find-documents test
+      (newline)
+      (newline)
+      (display "find-documents -- find existing word")
+      (timed repeat n (lambda () (find-documents existing-word)))
+      (newline)
+      (newline)
+      (display "find-documents -- find nonexisting word")
+      (timed repeat n (lambda () (find-documents nonexisting-word)))
+      ;; -------------------------
+      )
+    ))
+
+;; Exercise 8
+;;; Index -> Optimizeed-Index
+(define (optimize-index ind)
+  ;; change the representaion of index from Alist to
+  ;; sorted vector with repect to key in alphabetical order.
+  (cons (car ind)                       ;type-tag
+        (sort! (list->vector (cdr ind))
+               (lambda (x y)
+                 (symbol<? (car x) (car y))) ;compare key of bindings
+               ))
+  )
+
+;; Exercise 9
+(define (find-entry-in-optimized-index optind k)
+  ;; type: Optimized-Index, Key -> Index-Entry
+  ;; k is a symbol representing the key we are looking for
+  ;; this procedure does a binary search, so it takes O(log n)
+  ;; time where n is the number of entries in optind
+  (define (binary-search high low)
+    ;; int, int -> nil | Index-Entry
+    (let* ((middle (quotient (+ high low) 2))
+           (current-entry (vector-ref (cdr optind) middle))
+           (current-key (car current-entry)))
+      (cond ((< high low)               ;termination condition
+             '())
+            ((symbol<? k current-key)
+             (binary-search (-1+ middle) low)) ;search left half
+            ((symbol>? k current-key)
+             (binary-search high (1+ middle))) ;search right half
+            ((symbol=? k current-key)
+             current-entry)      ;return found values
+            (else error "Invalid inputs" (list optind k))))) ;defensive programming
+  (binary-search (-1+ (vector-length (cdr optind))) 0) ;initial condition
+  )
+
+;; test for the performance of find-entry-in-index, find-entry-in-optimized-index
+(define (test-find-index number-of-repeatation number-of-nodes)
+  (let ((web (generate-random-web number-of-nodes))
+        (start-node '*start*)
+        (existing-word 'help)
+        (nonexisting-word 'Susanhockfield)
+        (n number-of-repeatation)
+        )
+    ;; -------------------------
+    ;; construct web-index
+    (let ((web-index (make-index)))
+      (bfs-final start-node
+                 (lambda (url) false)
+                 (lambda (url)
+                   (add-document-to-index! web-index web url))
+                 web)
+      ;; -------------------------
+      ;; find-entry-in-index
+      (newline)
+      (newline)
+      (display "find-entry-in-index -- find existing word")
+      (timed repeat n (lambda () (find-entry-in-index web-index existing-word)))
+      (newline)
+      (newline)
+      (display "find-entry-in-index -- find nonexisting word")
+      (timed repeat n (lambda () (find-entry-in-index web-index nonexisting-word)))
+      (let ((optind (optimize-index web-index)))
+        (newline)
+        (newline)
+        (display "number of words (keys) in optind (web-index)\t")
+        (display (vector-length (cdr optind)))
+        ;; -------------------------
+        ;; find-entry-in-optimized-index
+        (newline)
+        (newline)
+        (display "find-entry-in-optimized-index -- find existing word")
+        (timed repeat n (lambda () (find-entry-in-optimized-index optind existing-word)))
+        (newline)
+        (newline)
+        (display "find-entry-in-optimized-index -- find nonexisting word")
+        (timed repeat n (lambda () (find-entry-in-optimized-index optind nonexisting-word)))))
+      ;; -------------------------
+    ))

@@ -3455,12 +3455,12 @@ The appropriate contract of =add-document-to-index!= is
       (index the-web-index))
     (fold-left (lambda (t word)
                  (and t
-                      (memv url
-                            (find-in-index index word))))
+                      (not (null? (memv url ; url in find-in-index?
+                                        (find-in-index index word))))))
                true
                (find-url-text web url)))
 
-;Value: (http://sicp.csail.mit.edu/)
+;Value: #t
   #+END_SRC
 
 - \[\neg \exists x \notin \text{contents of url}.~\text{url} \in
@@ -3475,8 +3475,7 @@ Now let's simulate what a typical search engine's spider does: Crawl the entire
 =web= (recall: use a goal procedure that always returns false) and produce a
 full-text index of everything we find.
 
-To do this, we are first going to need to create one last set of search
-procedures. The only modification we need to make is to allow for a specific
+To do this, we are first going to need to create one last set of search procedures. The only modification we need to make is to allow for a specific
 action to take place at each node that we visit (so we will want to be able to
 pass this procedure in as an argument). Create a final =search= procedure that
 accomplishes this, and then use that to create a breadth-first strategy using
@@ -3572,6 +3571,785 @@ Then we have the answer of the final question of this exercise:
 
 ;Value: (http://sicp.csail.mit.edu/psets http://sicp.csail.mit.edu/)
 #+END_SRC
+*** Computer Exercise 6: A dynamic web search.
+Let's put everything together by comparing the performance of crawling the web
+to find a desired document, versus using a full-text index of the web. Note the
+difference: a dynamic search would traverse UYRLs in real-time when a user
+initiates a search, while the full-text index is the result of some
+precomputation stage that has occurred prior to any user initiated search. This
+won't be a full or fair comparison, but it should give us some ideas about
+tradeoffs in designing real systems that analyze the contents of the actual Web.
+
+To investigate crawling, write two procedures:
+1. =(search-any web start-node word)= searches or traverses the indicated web
+   (using a breadth first strategy) and returns the /first/ document that it
+   finds that contains the given word. It should stop searching as soon as it
+   finds such a document.
+2. =(search-all web start-node word)= searches the /entire/ web (using a breadth
+   first strategy) and returns /all/ documents that contain the given word.
+
+
+Show that our procedures work by using =search-any= and =search-all= to look for
+the word ='collaborative= in =the-web= structure. Make sure this is consistent
+with what we found in [[Computer Exercise 5: Crawling the Web to Build an Index.][Computer Exercise 5]].
+
+Let's first think about why we use "breadth first search" at above situations?
+It can be answer by the use case of these procedure; specifically we assume that
+our discourse is web crawling, user of our procedure normally want to know most
+relevant information from what they started. Yet we haven't defined what the
+"distance" is from node to node, we can consider the minimum number of edges
+that connect given nodes as "distance". Consequently, as minimum distance is
+minimum depth in our discourse, we use breadth first search rather than depth
+first search since breadth first search guarantee that goal node is found along
+with minimum depth of path from start node.
+
+**** =search-any=
+Return to our task, now let's do design the first procedure. As it should
+terminate as soon as it found goal node, we should make =goal?= parameter
+cleverly so that it somehow record found goal node, which contains given word,
+then terminate (since =goal?= return only true or false we should use side
+effect to do our job). So, to do our job, we need to use state variable
+combination with assignment.
+
+And here is the implementation:
+#+BEGIN_SRC scheme
+;; index, Node, anytype -> Node | false
+(define (search-any web start-node word)
+  (let* ((found false)
+         (found? (bfs
+                  start-node
+                  (lambda (url)
+                    (if (memv word
+                              (find-url-text web url))
+                        ;; if word in the contents of current url
+                        ;; set found current url and terminate
+                        (begin (set! found url) true)
+                        ;; otherwise keep searching
+                        false))
+                  web)))
+    (if found?
+        found
+        false)))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+(search-any the-web 'http://sicp.csail.mit.edu/ 'collaborative)
+(now-at http://sicp.csail.mit.edu/)
+;Value: http://sicp.csail.mit.edu/
+#+END_SRC
+**** =search-all=
+Contrast to =search-any=, this procedure's =goal?= should not return true
+always; instead, we make clever =node-proc= to collect all the found URL that
+contains given word.
+
+The code:
+#+BEGIN_SRC scheme
+(define (search-all web start-node word)
+  (let ((found '()))
+    (bfs-final
+     start-node (lambda (url) false)
+     (lambda (url)
+       (if (memv word
+                 (find-url-text web url))
+           (set! found (cons url found))))
+     web)
+    found))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+(search-all the-web 'http://sicp.csail.mit.edu/ 'collaborative)
+(now-at http://sicp.csail.mit.edu/)
+(now-at http://sicp.csail.mit.edu/schemeimplementations)
+(now-at http://sicp.csail.mit.edu/psets)
+(now-at http://sicp.csail.mit.edu/getting-help.html)
+(now-at http://sicp.csail.mit.edu/lab-use.html)
+(now-at *the-goal*)
+;Value: (http://sicp.csail.mit.edu/psets http://sicp.csail.mit.edu/)
+#+END_SRC
+, which agrees with what we found in previous exercise.
+*** Computer Exercise 7: Comparison -- Web Index vs. Dynamic Search.
+Let's compare the technique of dynamic web searching with web indexing using
+=make-web-index= and =find-documents=. We've provided a program,
+=(generate-random-web <size>)=, that we can use to create test webs of different
+sizes (total number of nodes) with some randomly generated text. Use this to
+build several test webs. We don't have to make them too big; the procedure will
+in fact not build anything larger than size 200. For each web, measure the
+amount of time it takes, starting from the node named =*start*=:
+- to use =search-any= to find a document containing the word ='help=;
+- to use =search-any= to find a document containing a word that is not in the
+  test web: ='Susanhockfield=;
+- to use =search-all= to find all documents containing the word ='help=;
+- to run =make-web-index= to create an index for the test web;
+- to use =find-documents= to find all documents containing the word ='help=, not
+  including the time needed to create the index.
+- to use =find-documents= to find all documents containing the word
+  ='Susanhockfield= (there won't be any), not including the time needed to
+  create the index.
+
+
+Note that although =find-documents= was originally created in Exercise 5 to deal
+with =the-web=, we can use the same method (utilizing =make-web-index=) to apply
+this idea to any random test web.
+
+To enable we to do timing, we are provided a special function call =timed=. To
+use it, place the symbol =timed= at the beginning of a combination that we want
+to evaluate, e.g.
+#+BEGIN_SRC scheme
+(timed factorial 25)
+#+END_SRC
+will apply the procedure =factorial= to the argument 25, print out the time (in
+seconds) it takes to compute this, and return the result.
+
+Write a few short paragraphs explaining the measurements we made and what
+conclusions we might want to draw about searching and crawling the real Web. If
+we were building a service to help people find information on the Web, what
+kinds of factors would we consider in deciding which method to use?
+
+To test given procedures in a systematic way, we first consider to make test
+procedure as follows.
+#+BEGIN_SRC scheme
+(define (test-each)
+  (let ((web (generate-random-web 200))
+        (start-node '*start*)
+        (existing-word 'help)
+        (nonexisting-word 'Susanhockfield))
+    ;; -------------------------
+    ;; search-any test
+    (newline)
+    (display "search-any -- find existing word")
+    (timed search-any web start-node existing-word)
+    (newline)
+    (newline)
+    (display "search-any -- find nonexisting word")
+    (timed search-any web start-node nonexisting-word)
+    ;; -------------------------
+    ;; search-all test
+    (newline)
+    (newline)
+    (display "search-all -- find existing word")
+    (timed search-all web start-node existing-word)
+    ;; -------------------------
+    ;; make-web-index
+    (let ((find-documents (make-web-index web start-node)))
+      ;; -------------------------
+      ;; find-documents test
+      (newline)
+      (newline)
+      (display "find-documents -- find existing word")
+      (timed find-documents existing-word)
+      (newline)
+      (newline)
+      (display "find-documents -- find nonexisting word")
+      (timed find-documents nonexisting-word)
+      ;; -------------------------
+      )
+    ))
+#+END_SRC
+
+Let's run the test!
+
+#+BEGIN_SRC scheme
+(test-each)
+
+search-any -- find existing word
+time expended: .00999999999999801
+
+search-any -- find nonexisting word
+time expended: .09000000000000341
+
+search-all -- find existing word
+time expended: .0799999999999983
+
+find-documents -- find existing word
+time expended: 0.
+
+find-documents -- find nonexisting word
+time expended: 0.
+;Value: ()
+#+END_SRC
+
+The problem is that the computation is way too fast that we can't estimate well.
+To fix this, let we define auxiliary procedure called =repeat=. Using this, we
+can change our test procedure as
+#+BEGIN_SRC scheme
+(define (test-each)
+  ;; int, (void -> undefined) -> undefined
+  (define (repeat n proc)
+    (if (not (zero? n))
+        (begin (proc)
+               (repeat (-1+ n) proc))))
+  (let ((web (generate-random-web 200))
+        (start-node '*start*)
+        (existing-word 'help)
+        (nonexisting-word 'Susanhockfield)
+        (n 10)                          ;number of repeatation
+        )
+    ;; -------------------------
+    ;; search-any test
+    (newline)
+    (display "search-any -- find existing word")
+    (timed repeat n (lambda () (search-any web start-node existing-word)))
+    (newline)
+    (newline)
+    (display "search-any -- find nonexisting word")
+    (timed repeat n (lambda () (search-any web start-node nonexisting-word)))
+    ;; -------------------------
+    ;; search-all test
+    (newline)
+    (newline)
+    (display "search-all -- find existing word")
+    (timed repeat n (lambda () (search-all web start-node existing-word)))
+    ;; -------------------------
+    ;; make-web-index
+    (let ((find-documents (make-web-index web start-node)))
+      ;; -------------------------
+      ;; find-documents test
+      (newline)
+      (newline)
+      (display "find-documents -- find existing word")
+      (timed repeat n (lambda () (find-documents existing-word)))
+      (newline)
+      (newline)
+      (display "find-documents -- find nonexisting word")
+      (timed repeat n (lambda () (find-documents nonexisting-word)))
+      ;; -------------------------
+      )
+    ))
+#+END_SRC
+
+Then repeat our test:
+#+BEGIN_SRC scheme
+(test-each)
+
+search-any -- find existing word
+time expended: 0.
+
+search-any -- find nonexisting word
+time expended: .8400000000000034
+
+search-all -- find existing word
+time expended: .8200000000000003
+
+find-documents -- find existing word
+time expended: 0.
+
+find-documents -- find nonexisting word
+time expended: 0.
+;Unspecified return value
+#+END_SRC
+
+Still there are evaluation can not be estimated:
+Let we do with setting =n= to 100
+#+BEGIN_SRC scheme
+(test-each)
+
+search-any -- find existing word
+time expended: .0899999999999963
+
+search-any -- find nonexisting word
+time expended: 8.219999999999999
+
+search-all -- find existing word
+time expended: 8.199999999999996
+
+find-documents -- find existing word
+time expended: 0.
+
+find-documents -- find nonexisting word
+time expended: 9.999999999990905e-3
+;Unspecified return value
+#+END_SRC
+
+To estimate the order of growth let our test procedure take additional
+parameters:
+#+BEGIN_SRC scheme
+(define (test-each number-of-repeatation number-of-nodes)
+  ;; int, (void -> undefined) -> undefined
+  (define (repeat n proc)
+    (if (not (zero? n))
+        (begin (proc)
+               (repeat (-1+ n) proc))))
+  (let ((web (generate-random-web number-of-nodes))
+        (start-node '*start*)
+        (existing-word 'help)
+        (nonexisting-word 'Susanhockfield)
+        (n number-of-repeatation)
+        )
+    ;; -------------------------
+    ;; search-any test
+    (newline)
+    (display "search-any -- find existing word")
+    (timed repeat n (lambda () (search-any web start-node existing-word)))
+    (newline)
+    (newline)
+    (display "search-any -- find nonexisting word")
+    (timed repeat n (lambda () (search-any web start-node nonexisting-word)))
+    ;; -------------------------
+    ;; search-all test
+    (newline)
+    (newline)
+    (display "search-all -- find existing word")
+    (timed repeat n (lambda () (search-all web start-node existing-word)))
+    ;; -------------------------
+    ;; make-web-index
+    (let ((find-documents (make-web-index web start-node)))
+      ;; -------------------------
+      ;; find-documents test
+      (newline)
+      (newline)
+      (display "find-documents -- find existing word")
+      (timed repeat n (lambda () (find-documents existing-word)))
+      (newline)
+      (newline)
+      (display "find-documents -- find nonexisting word")
+      (timed repeat n (lambda () (find-documents nonexisting-word)))
+      ;; -------------------------
+      )
+    ))
+#+END_SRC
+
+From the series of experiment we can guess the order of growth of =search-any=
+and =search-all= as \Theta(n^{2}):
+#+BEGIN_SRC scheme
+(test-each 100 100)
+
+search-any -- find existing word
+time expended: .18999999999999773
+
+search-any -- find nonexisting word
+time expended: 2.1599999999999966
+
+search-all -- find existing word
+time expended: 2.1599999999999966
+
+find-documents -- find existing word
+time expended: 0.
+
+find-documents -- find nonexisting word
+time expended: 0.
+;Unspecified return value
+
+(test-each 100 50)
+
+search-any -- find existing word
+time expended: 2.9999999999986926e-2
+
+search-any -- find nonexisting word
+time expended: .5800000000000125
+
+search-all -- find existing word
+time expended: .5799999999999983
+
+find-documents -- find existing word
+time expended: 0.
+
+find-documents -- find nonexisting word
+time expended: 0.
+;Unspecified return value
+#+END_SRC
+
+We can deduce above observation using asymptotic analysis:
+=BFS= traverse through =n= number of URLs; each of node apply =goal?= and
+=node-proc=. Either of =search-any= or =search-all= use \Theta(n) step
+complexity procedure for it. As consequence it possess \Theta(n^{2}) complexity.
+
+Whereas, in =find-documents= we can deduce the order of growth in step as
+\Theta(n) where n is the number of words (keys) in the index.
+
+Words for conclusion: The bigger the size of input we deal with, the more
+difference these result in; As the real world web crawler should deal with huge
+number of nodes, we would be better to use the preprocessed version rather than
+the dynamic one if we really matter of the speed it takes. But, there are
+important fact that matters in the real world; since web is nature that grows
+dynamically if we choose to use full-text indexed search, our user confront to
+lag in the information -- the search discourse is static.
+
+So if we allowed to maintain only the recent information not the real-time
+update, we definitely want to use the precomputed one; otherwise we would be
+better off to dynamic search. Or we could combine both method by using the
+dynamic programming paradigm -- memoization.
+
+For those who interested in the order of growth of =make-web-index=, we estimate
+that in approximative fashion since it involves lots of parameters. It
+approximately possess \Theta(n^3) if we assume the number of words of each nodes
+is approximately equals to the number of nodes (if the words are almost
+duplicative in among the nodes).
+*** Computer Exercise 8: Using a better indexing scheme.
+A professionally written version of our procedures for creating an index would
+pay careful attention to the efficiency of the algorithm used, and would
+probably involve alphabetical order and more complicated data structures than we
+have currently used. In this exercise, we should create a more efficient
+indexing scheme.
+
+There are many ways to optimize our indexing scheme. We could optimize the time
+to create the index, or the time to query the index after it is built. Many data
+structures (red-black trees, hash tables) could be used to optimize these tasks.
+Furthermore, the index is a two-level abstraction, so there are two structures
+we could optimize: the list of values associated with each entry, and the list
+of keys.
+
+Since, in our formulation, we just return /all/ of the values associated with a
+key, we're going to focus on optimizing the time to search for a particular key
+in the index.
+
+Modify our index abstraction as follows. Create a new abstraction
+=Optimized-Index= which contains =key= s and corresponding =Index-Entry= s in
+=vector= form. A vector is simple another data structure. It has a fixed length,
+it stores its entries in a linear fashion, and it can store and retrieve entries
+at any point in its structure in a constant time (compare this to a list). We
+can look up more details about a vector in the Scheme manual.
+
+There should be a constructor =(optimize-index ind)= which takes a normal index
+=ind= and returns a corresponding =Optimized-Index=. The constructor should sort
+the data, in alphabetical order of keys. Then, to query for a particular key, we
+will use a /binary search/, as described in the next problem.
+
+We will find the following procedures useful:
+- =(symbol<? x y): symbol, symbol -> boolean=
+  determines if the symbol =x= comes before the symbol =y= in alphabetical order.
+- =(make-vector k init): int, X -> vector<X>=
+  creates a new vector of length =k= with all entries initialized to =init=.
+- =(vector-set! vec k obj): vector<X>, int, X -> unspecifed=
+  set the =k= th entry of =vec= to =obj=.
+- =(vector-ref vec k): vector<X>, int -> X=
+  returns the =k= th entry of =vec=.
+- =(vector-length vec): vector<X> -> int=
+  returns the length of =vec=.
+- =(sort! vec proc): vector<X>, (X, X -> boolean) -> vector<X>=
+  sorts the elements of =vec=, using the =proc= to compare values (i.e., if
+  =(proc a b)= is =true= then =a= will appear before =b= in the vector. The
+  original vector is mutated into this sorted order, and returned.)
+
+
+We may also use the conversion procedure =list->vector=. Here is a demonstration
+usage of =sort!= and =list->vector=:
+#+BEGIN_SRC scheme
+(sort! (list->vector (list 8 6 4 3 9 2 5 1 7)) <)
+
+;Value: #(1 2 3 4 5 6 7 8 9)
+#+END_SRC
+
+Note: Make sure that our sorting procedure maintains the correct associations
+between keys and index entries. If we just sort keys without somehow rearranging
+the values in the corresponding way, our optimized index will give the wrong
+answer. In testing, we should verify that this problem doesn't occur.
+
+The idea to code it is change the representation of the index from ='index x
+List<k x List<v> x nil>= to sorted vector as ='index x vector<k x List<v> x nil>=
+
+And here is the implementation:
+#+BEGIN_SRC scheme
+(define (optimize-index ind)
+  ;; change the representaion of index from Alist to
+  ;; sorted vector with repect to key in alphabetical order.
+  (cons (car ind)                       ;type-tag
+        (sort! (list->vector (cdr ind))
+               (lambda (x y)
+                 (symbol<? (car x) (car y))) ;compare key of bindings
+               ))
+  )
+#+END_SRC
+We return newly produced =Optimized-Index= not mutating given =ind= as our
+procedure doesn't end with bang(!).
+
+Then test:
+#+BEGIN_SRC scheme
+(bfs-final 'http://sicp.csail.mit.edu/
+               (lambda (url) false)
+               (lambda (url)
+                 (add-document-to-index! the-web-index the-web url))
+               the-web)
+(now-at http://sicp.csail.mit.edu/)
+(now-at http://sicp.csail.mit.edu/schemeimplementations)
+(now-at http://sicp.csail.mit.edu/psets)
+(now-at http://sicp.csail.mit.edu/getting-help.html)
+(now-at http://sicp.csail.mit.edu/lab-use.html)
+(now-at *the-goal*)
+;Value: #f
+
+(define opt-ind (optimize-index the-web-index))
+
+;Value: opt-ind
+
+the-web-index
+
+;Value: (index (yourself (http://sicp.csail.mit.edu/lab-use.html)) (working ...
+
+opt-ind
+
+;Value: (index . #((|0| (http://sicp.csail.mit.edu/psets)) (|09:38:18| (http:/...
+#+END_SRC
+
+Works well.
+*** Problem 9.
+The idea behind a binary search is that if we know a vector has sorted elements,
+we can search for a particular key without examining every member of the vector.
+Initially, our "search domain" is 1,...,$n$ where $n$ is the length of the
+vector. Then, we check the middle ($n/2$ th) element of the vector, and see if
+it holds the key we are seeking. If it is not a match, we compare that element
+against our key. If we see that our key is greater than the middle element, we
+can recursively call a binary search on the right half of the vector (i.e., make
+the search domain $n/2 + 1,\ldots,n$). Conversely, if the key is smaller than
+the middle index, we continue the search in the left half. This continues until
+our search domain only has 1 item in it; either it is the item we are seeking,
+or we conclude that the item we are seeking is not in our vector.
+
+We need to complete the following definition:
+#+BEGIN_SRC scheme
+(define (find-entry-in-optimized-index optind k)
+  ;; type: Optimized-Index, Key -> List<Val>
+  ;; k is a symbol representing the key we are looking for
+  ;; this procedure does a binary search, so it takes O(log n)
+  ;; time where n is the number of entries in optind
+  ;; ...
+  )
+#+END_SRC
+
+Use the procedure =timed= to test our optimized index and see if searches really
+do run faster (and correctly). We may need to create a helper procedure that
+makes many (say, 1000) queries, since a single search in either index will
+probably be too fact to accurately time (like we did before with =repeat=).
+
+To implement the binary search we should manipulate the index of vector as a
+pointer; make =high= and =low= as state variable and implement each condition --
+termination condition, transition, initial condition. Our code evolve iteratively.
+
+Here is the result:
+#+BEGIN_SRC scheme
+(define (find-entry-in-optimized-index optind k)
+  ;; type: Optimized-Index, Key -> List<Val>
+  ;; k is a symbol representing the key we are looking for
+  ;; this procedure does a binary search, so it takes O(log n)
+  ;; time where n is the number of entries in optind
+  (define (binary-search high low)
+    ;; int, int -> false | List<Val>
+    (let* ((middle (quotient (+ high low) 2))
+           (current-entry (vector-ref (cdr optind) middle))
+           (current-key (car current-entry)))
+      (cond ((= high low)               ;termination condition
+             (if (eq? k current-key)
+                 (cadr current-entry)   ;corresponding value list
+                 false))
+            ((symbol<? k current-key)
+             (binary-search (-1+ middle) low)) ;search left half
+            ((symbol>? k current-key)
+             (binary-search high (1+ middle))) ;search right half
+            ((symbol=? k current-key)
+             (cadr current-entry))      ;return found values
+            (else error "Invalid inputs" (list optind k))))) ;defensive programming
+  (binary-search (-1+ (vector-length (cdr optind))) 0) ;initial condition
+  )
+#+END_SRC
+
+And the test:
+#+BEGIN_SRC scheme
+(find-entry-in-optimized-index opt-ind 'work)
+
+;Value: (http://sicp.csail.mit.edu/psets http://sicp.csail.mit.edu/schemeimplementations http://sicp.csail.mit.edu/)
+
+(find-entry-in-index the-web-index 'work)
+
+;Value: (work (http://sicp.csail.mit.edu/psets http://sicp.csail.mit.edu/schemeimplementations http://sicp.csail.mit.edu/))
+
+(find-entry-in-optimized-index opt-ind '*goal*)
+
+;Quit!
+#+END_SRC
+
+It falls in infinite loop; it is due to ill-defined algorithm we should fix
+specified informal algorithm as to
+#+BEGIN_SRC scheme
+(define (find-entry-in-optimized-index optind k)
+  ;; type: Optimized-Index, Key -> List<Val>
+  ;; k is a symbol representing the key we are looking for
+  ;; this procedure does a binary search, so it takes O(log n)
+  ;; time where n is the number of entries in optind
+  (define (binary-search high low)
+    ;; int, int -> false | List<Val>
+    (let* ((middle (quotient (+ high low) 2))
+           (current-entry (vector-ref (cdr optind) middle))
+           (current-key (car current-entry)))
+      (cond ((< high low)               ;termination condition
+             false)
+            ((symbol<? k current-key)
+             (binary-search (-1+ middle) low)) ;search left half
+            ((symbol>? k current-key)
+             (binary-search high (1+ middle))) ;search right half
+            ((symbol=? k current-key)
+             (cadr current-entry))      ;return found values
+            (else error "Invalid inputs" (list optind k))))) ;defensive programming
+  (binary-search (-1+ (vector-length (cdr optind))) 0) ;initial condition
+  )
+#+END_SRC
+i.e. the search domain can be empty.
+
+It fixes our bug:
+#+BEGIN_SRC scheme
+(find-entry-in-optimized-index opt-ind '*goal*)
+
+;Value: #f
+
+(find-entry-in-optimized-index opt-ind 'working)
+
+;Value: (http://sicp.csail.mit.edu/lab-use.html)
+#+END_SRC
+
+I found it is suspicious that the signatures of =find-entry-in-optimized-index=
+does not agree with its counter part -- =find-entry-in-index=; as its name
+suggest, we should return found entry not the values:
+#+BEGIN_SRC scheme
+(define (find-entry-in-optimized-index optind k)
+  ;; type: Optimized-Index, Key -> Index-Entry
+  ;; k is a symbol representing the key we are looking for
+  ;; this procedure does a binary search, so it takes O(log n)
+  ;; time where n is the number of entries in optind
+  (define (binary-search high low)
+    ;; int, int -> nil | Index-Entry
+    (let* ((middle (quotient (+ high low) 2))
+           (current-entry (vector-ref (cdr optind) middle))
+           (current-key (car current-entry)))
+      (cond ((< high low)               ;termination condition
+             '())
+            ((symbol<? k current-key)
+             (binary-search (-1+ middle) low)) ;search left half
+            ((symbol>? k current-key)
+             (binary-search high (1+ middle))) ;search right half
+            ((symbol=? k current-key)
+             current-entry)      ;return found values
+            (else error "Invalid inputs" (list optind k))))) ;defensive programming
+  (binary-search (-1+ (vector-length (cdr optind))) 0) ;initial condition
+  )
+#+END_SRC
+
+Then test procedure:
+#+BEGIN_SRC scheme
+(define (test-find-index number-of-repeatation number-of-nodes)
+  (let ((web (generate-random-web number-of-nodes))
+        (start-node '*start*)
+        (existing-word 'help)
+        (nonexisting-word 'Susanhockfield)
+        (n number-of-repeatation)
+        )
+    ;; -------------------------
+    ;; construct web-index
+    (let ((web-index (make-index)))
+      (bfs-final start-node
+                 (lambda (url) false)
+                 (lambda (url)
+                   (add-document-to-index! web-index web url))
+                 web)
+      ;; -------------------------
+      ;; find-entry-in-index
+      (newline)
+      (newline)
+      (display "find-entry-in-index -- find existing word")
+      (timed repeat n (lambda () (find-entry-in-index web-index existing-word)))
+      (newline)
+      (newline)
+      (display "find-entry-in-index -- find nonexisting word")
+      (timed repeat n (lambda () (find-entry-in-index web-index nonexisting-word)))
+      (let ((optind (optimize-index web-index)))
+        ;; -------------------------
+        ;; find-entry-in-optimized-index
+        (newline)
+        (newline)
+        (display "find-entry-in-optimized-index -- find existing word")
+        (timed repeat n (lambda () (find-entry-in-optimized-index optind existing-word)))
+        (newline)
+        (newline)
+        (display "find-entry-in-optimized-index -- find nonexisting word")
+        (timed repeat n (lambda () (find-entry-in-optimized-index optind nonexisting-word)))))
+      ;; -------------------------
+    ))
+#+END_SRC
+
+Then here is series of experiment:
+#+BEGIN_SRC scheme
+(test-find-index 20000 200)
+
+
+find-entry-in-index -- find existing word
+time expended: .10999999999999943
+
+find-entry-in-index -- find nonexisting word
+time expended: .13000000000000256
+
+find-entry-in-optimized-index -- find existing word
+time expended: .6199999999999974
+
+find-entry-in-optimized-index -- find nonexisting word
+time expended: .7000000000000028
+;Unspecified return value
+
+(test-find-index 20000 2)
+
+
+find-entry-in-index -- find existing word
+time expended: .09000000000000341
+
+find-entry-in-index -- find nonexisting word
+time expended: .0799999999999983
+
+find-entry-in-optimized-index -- find existing word
+time expended: .6200000000000045
+
+find-entry-in-optimized-index -- find nonexisting word
+time expended: .7199999999999989
+;Unspecified return value
+#+END_SRC
+
+Seems like our procedures doesn't depend on the size of input. Is it right? No!
+Along with the our asymptotic complexity, =find-entry-in-index= should have
+\Theta(n) where n is the input size; =find-entry-in-optimized-index= should have
+\Theta(\log n)! What's wrong? The answer is that what we referred as input size
+-- n -- is different in each context of above dialog. In the latter, =n= is the
+number of keys in the index; whereas the former is the number of nodes in the
+graph. Let we inspect the /actual/ words in it.
+#+BEGIN_SRC scheme
+(test-find-index 20000 2)
+
+
+find-entry-in-index -- find existing word
+time expended: .05999999999999517
+
+find-entry-in-index -- find nonexisting word
+time expended: .10000000000000142
+
+number of words (keys) in optind (web-index)	322
+
+find-entry-in-optimized-index -- find existing word
+time expended: .6200000000000045
+
+find-entry-in-optimized-index -- find nonexisting word
+time expended: .6599999999999966
+;Unspecified return value
+
+(test-find-index 20000 200)
+
+
+find-entry-in-index -- find existing word
+time expended: .10999999999999943
+
+find-entry-in-index -- find nonexisting word
+time expended: .12999999999999545
+
+number of words (keys) in optind (web-index)	447
+
+find-entry-in-optimized-index -- find existing word
+time expended: .6200000000000045
+
+find-entry-in-optimized-index -- find nonexisting word
+time expended: .7100000000000009
+;Unspecified return value
+#+END_SRC
+
+So the actual n doesn't changed as many nodes changed.
+
+It concludes our linear search method has less computation factor than optimized
+one if we do not consider the scale effect (asymptotic analysis). So with
+current dispose, we can not tell it actually run faster than the previous one.
 * Footnotes
 
 [fn:4] It is due to the existence of the cycle within the graph.
