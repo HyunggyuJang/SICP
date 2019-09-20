@@ -7,9 +7,9 @@
 
 ;;--------------------
 ;; named-object
-;; 
+;;
 ;; Named objects are the basic underlying object type in our
-;; system. For example, persons, places, and things will all 
+;; system. For example, persons, places, and things will all
 ;; be kinds of (inherit from) named objects.
 ;;
 ;; Behavior (messages) supported by all named objects:
@@ -38,11 +38,11 @@
 ;;--------------------
 ;; container
 ;;
-;; A container holds THINGS.  
-;; 
-;; This class is not meant for "stand-alone" objects; rather, 
+;; A container holds THINGS.
+;;
+;; This class is not meant for "stand-alone" objects; rather,
 ;; it is expected that other classes will inherit from the
-;; container class in order to be able to contain things. 
+;; container class in order to be able to contain things.
 ;; For this reason, there is no create-container procedure.
 
 (define (container self)
@@ -96,7 +96,7 @@
 ;;
 ;; A mobile thing is a thing that has a LOCATION that can change.
 
-(define (create-mobile-thing name location) 
+(define (create-mobile-thing name location)
   ; symbol, location -> mobile-thing
   (create-instance mobile-thing name location))
 
@@ -122,8 +122,8 @@
 ;; A place is a container (so things may be in the place).
 ;;
 ;; A place has EXITS, which are passages from one place
-;; to another.  One can retrieve all of the exits of a 
-;; place, or an exit in a given direction from place. 
+;; to another.  One can retrieve all of the exits of a
+;; place, or an exit in a given direction from place.
 
 (define (create-place name)     ; symbol -> place
   (create-instance place name))
@@ -175,7 +175,7 @@
 	(ask whom 'LEAVE-ROOM)
 	(ask screen 'TELL-ROOM (ask whom 'location)
 	     (list (ask whom 'NAME)
-		   "moves from" 
+		   "moves from"
 		   (ask (ask whom 'LOCATION) 'NAME)
 		   "to"
 		   (ask to 'NAME)))
@@ -196,7 +196,7 @@
 ;;--------------------
 ;; person
 ;;
-;; There are several kinds of person:  
+;; There are several kinds of person:
 ;;   There are autonomous persons, including vampires, and there
 ;;   is the avatar of the user.  The foundation is here.
 ;;
@@ -229,22 +229,22 @@
       (lambda ()
 	(ask self 'SAY '("Yaaaah! I am upset!"))
 	'I-feel-better-now)
-        
+
       'PEOPLE-AROUND        ; other people in room...
       (lambda ()
 	(delq self (find-all (ask self 'LOCATION) 'PERSON)))
-        
+
       'STUFF-AROUND         ; stuff (non people) in room...
       (lambda ()
 	(let* ((in-room (ask (ask self 'LOCATION) 'THINGS))
 	       (stuff (filter (lambda (x) (not (ask x 'IS-A 'PERSON))) in-room)))
 	  stuff))
-        
+
       'PEEK-AROUND          ; other people's stuff...
       (lambda ()
 	(let ((people (ask self 'PEOPLE-AROUND)))
 	  (fold-right append '() (map (lambda (p) (ask p 'THINGS)) people))))
-     
+
       'TAKE
       (lambda (thing)
 	(cond ((ask self 'HAVE-THING? thing)  ; already have it
@@ -258,29 +258,29 @@
 	       #F)
 	      (else
 	       (let ((owner (ask thing 'LOCATION)))
-		 (ask self 'SAY (list "I take" (ask thing 'NAME) 
+		 (ask self 'SAY (list "I take" (ask thing 'NAME)
 				      "from" (ask owner 'NAME)))
 		 (if (ask owner 'IS-A 'PERSON)
 		     (ask owner 'LOSE thing self)
 		     (ask thing 'CHANGE-LOCATION self))
 		 thing))))
-        
+
       'LOSE
       (lambda (thing lose-to)
 	(ask self 'SAY (list "I lose" (ask thing 'NAME)))
 	(ask self 'HAVE-FIT)
 	(ask thing 'CHANGE-LOCATION lose-to))
-        
+
       'DROP
       (lambda (thing)
 	(ask self 'SAY (list "I drop" (ask thing 'NAME)
 			     "at" (ask (ask self 'LOCATION) 'NAME)))
 	(ask thing 'CHANGE-LOCATION (ask self 'LOCATION)))
-      
+
       'GO-EXIT
       (lambda (exit)
 	(ask exit 'USE self))
-        
+
       'GO
       (lambda (direction) ; symbol -> boolean
 	(let ((exit (ask (ask self 'LOCATION) 'EXIT-TOWARDS direction)))
@@ -295,7 +295,7 @@
 	(set! health (- health hits))
 	(if (<= health 0) (ask self 'DIE perp))
 	health)
-        
+
       'DIE          ; depends on global variable "death-exit"
       (lambda (perp)
 	(for-each (lambda (item) (ask self 'LOSE item (ask self 'LOCATION)))
@@ -303,7 +303,7 @@
 	(ask screen 'TELL-WORLD
 	     '("An earth-shattering, soul-piercing scream is heard..."))
 	(ask self 'DESTROY))
-      
+
       'ENTER-ROOM
       (lambda ()
 	(let ((others (ask self 'PEOPLE-AROUND)))
@@ -330,7 +330,7 @@
       (lambda ()
 	(ask person-part 'INSTALL)
 	(ask clock 'ADD-CALLBACK
-	     (create-clock-callback 'move-and-take-stuff self 
+	     (create-clock-callback 'move-and-take-stuff self
 				    'MOVE-AND-TAKE-STUFF)))
       'MOVE-AND-TAKE-STUFF
       (lambda ()
@@ -390,7 +390,7 @@
 		    (ask self 'SAY '("What are you doing still up?"
 				     "Everyone back to their rooms!"))
 		    (for-each (lambda (person)
-				(ask person 'EMIT 
+				(ask person 'EMIT
 				     (list (ask person 'NAME) "goes home to"
 					   (ask (ask person 'CREATION-SITE) 'NAME)))
 				(ask person 'CHANGE-LOCATION
@@ -515,10 +515,10 @@
 	(let ((success? (ask person-part 'GO direction)))
 	  (if success? (ask clock 'TICK))
 	  success?))
-      
+
       'DIE
       (lambda (perp)
 	(ask self 'SAY (list "I am slain!"))
 	(ask person-part 'DIE perp)))
-     
+
      person-part)))
