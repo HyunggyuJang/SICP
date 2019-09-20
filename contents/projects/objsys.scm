@@ -72,7 +72,7 @@
          (error "bad typename" typename))
         ((not (method-list? methods))
          (error "bad method list" methods))
-        ((and super-parts (not (filter handler? super-parts)))
+        ((and (not (null? super-parts)) (null? (filter handler? super-parts)))
          (error "bad part list" super-parts))
         (else
          (named-lambda (handler message)
@@ -151,7 +151,7 @@
    (make-methods
     'IS-A
     (lambda (type)
-      (memq type (ask self 'TYPE))))))
+      (if (memq type (ask self 'TYPE)) #t #f)))))
 
 ;;------------------------------------------------------------
 ;; Object Interface
