@@ -53,7 +53,7 @@
      (make-methods
       'THINGS      (lambda () things)
       'HAVE-THING? (lambda (thing)
-                     (not (memq thing things)))
+                     (memq thing things))
       'ADD-THING   (lambda (thing)
                      (if (not (ask self 'HAVE-THING? thing))
                          (set! things (cons thing things)))
