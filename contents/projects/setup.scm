@@ -37,7 +37,7 @@
         (baker (create-place 'baker))
         (legal-seafood (create-place 'legal-seafood))
         (graduation-stage (create-place 'graduation-stage)))
-    
+
     ; Connect up places
     (can-go-both-ways lobby-10 'up 'down 10-250)
     (can-go-both-ways grendels-den 'up 'down lobby-10)
@@ -59,7 +59,7 @@
     (can-go-both-ways eecs-hq 'up 'down 6001-lab)
     (can-go-both-ways legal-seafood 'east 'west great-court)
     (can-go-both-ways great-court 'up 'down graduation-stage)
-    
+
     ; Create some things
     (create-thing 'blackboard 10-250)
     (create-thing 'lovely-trees great-court)
@@ -70,7 +70,7 @@
     (create-mobile-thing 'sicp stata-center)
     (create-mobile-thing 'engineering-book barker-library)
     (create-mobile-thing 'diploma graduation-stage)
-    
+
     (list 10-250 lobby-10 grendels-den barker-library lobby-7
           eecs-hq eecs-ug-office edgerton-hall 34-301 6001-lab
           building-13 great-court stata-center
@@ -155,7 +155,7 @@
     ;uncomment after writing chosen one
 ;    (create-chosen-one 'hairy-cdr (pick-random rooms)
 ;		       (random-number 3) (random-number 3))
-    
+
     (set! me (create-avatar name (pick-random rooms)))
     (ask screen 'SET-ME me)
     (set! all-rooms rooms)

@@ -47,20 +47,20 @@
 
 (define (container self)
   (let ((root-part (root-object self))
-	(things '()))
+        (things '()))
     (make-handler
      'container
      (make-methods
       'THINGS      (lambda () things)
       'HAVE-THING? (lambda (thing)
-		     (not (null? (memq thing things))))
+                     (not (memq thing things)))
       'ADD-THING   (lambda (thing)
-		     (if (not (ask self 'HAVE-THING? thing))
-			 (set! things (cons thing things)))
-		     'DONE)
+                     (if (not (ask self 'HAVE-THING? thing))
+                         (set! things (cons thing things)))
+                     'DONE)
       'DEL-THING   (lambda (thing)
-		     (set! things (delq thing things))
-		     'DONE))
+                     (set! things (delq thing things))
+                     'DONE))
      root-part)))
 
 
