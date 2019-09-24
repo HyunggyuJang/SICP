@@ -151,7 +151,7 @@
    (make-methods
     'IS-A
     (lambda (type)
-      (if (memq type (ask self 'TYPE)))))))
+      (if (memq type (ask self 'TYPE)) #t #f)))))
 
 ;;------------------------------------------------------------
 ;; Object Interface
@@ -303,11 +303,11 @@
                    (set! callbacks '()))
       'TICK
       (lambda ()
-        (set! removed-callbacks '())
+        (set! removed-callbacks '())    ;for resloving the concurrent events
         (for-each (lambda (x)
                     (if (not (memq x removed-callbacks))
                         (ask x 'activate)))
-                  (reverse callbacks))
+                  (reverse callbacks))  ;capture the past callbacks
         (set! the-time (+ the-time 1)))
       'ADD-CALLBACK
       (lambda (cb)

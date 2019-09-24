@@ -4448,7 +4448,7 @@ follows:
 
 Let's look at these different elements in a bit more detail.
 
-** Classes and Instances
+*** Classes and Instances
 Here is the template for a class definition in our object system. This is quite
 similar to the one introduced in the lecture (which was not available to us but
 2004's version), but its interface have been cleaned up a little bit to make
@@ -4591,7 +4591,868 @@ The root object provides a basis for providing common behaviors to all classes.
 Specifically, it provides a convenient method (=IS-A=) to see if a type
 descriptor is in the =TYPE= list. We will by convention use this class as the
 root for all other classes.
+
+Named-objects have no other local state than the =name= variable. They do have
+four methods: =TYPE=, =NAME=, =INSTALL=, and =DESTROY=. The =TYPE= method comes
+from the =make-handler= procedure and it indicates that =named-object= s have the
+type =named-object= in addition to any type descriptors that the =root-part=
+has. The =INSTALL= method is not required, but if it exists, it is called when
+an instance is created. In the case of =named-object=, there is nothing to do at
+creation time, but we'll later see examples where this method is non-trivial.
+The =NAME= is a /selector/ in that is returns the name with which the object was
+created.
+
+However, the =named-object= procedure only builds a /handler/ for an object of
+type =named-object=. In order to get an /instance/, we need a
+=create-named-object= procedure:
+#+BEGIN_SRC scheme
+(define (create-named-object name)      ; symbol -> named-object
+  (create-instance named-object name))
+#+END_SRC
+
+Here, an instance is created using the =named-object= procedure. The
+=create-instance= procedure builds a handler procedure that serves as a
+container for the real handler for the instance. It also attaches a tag or label
+to the handler, so that we know we are working with an instance. We need this
+extra complexity because each /foo/ procedure expects =self= as an argument, so
+we build an instance object, then create the handler, passing the instance
+object in for =self=. We'll explore more of this system in the questions below.
+*** Using Instances
+Once we have an instance, we can call the /methods/ on it using the =ask=
+procedure:
+#+BEGIN_SRC scheme
+(define book (create-named-object 'sicp))
+
+(ask book 'NAME)
+;Value: sicp
+                                        ;
+(ask book 'TYPE)
+;Value: (named-object root)
+#+END_SRC
+
+The =ask= procedure retrieves the method of the given name from the instance,
+and then calls it. Retrieving a method from a handler is done with =get-method=,
+which ends up calling the handler procedure with the method name as the
+=message=. The specifics of the =ask= procedure and related procedures can be
+found in =objsys.scm=.
+*** Inheritance and Subclasses
+We've already built a class, =named-object=, that /inherited/ from its parent
+class, =root-object=. If the handler for a =named-object= is sent a message that
+it doesn't recognize, it attempts to get a method from its parent (last line of
+=make-handler= procedure). Each handler creates a private handler for its parent
+to pass these messages to (the =let= statement in =named-object=). Because this
+parent handler is part of the same instance as the overall handler, the =self=
+value is the same in both.
+
+However, let's move on to a subclass of =named-object= called a =thing=. A
+=thing= is an object that will have a location in addition to a name. Thus, we
+may think of a thing as a kind of named object except that it also handles the
+messages that are special to things. This arrangement is described in various
+ways in object-oriented jargon, e.g., "the =thing= class /inherits/ from the
+=named-object= class," or "=thing= is a /subclass/ of =named-object=," or
+"=named-object= is a /superclass/ of =thing=."
+
+#+BEGIN_SRC scheme
+(define (create-thing name location)    ; symbol, location -> thing
+  (create-instance thing name location))
+
+(define (thing self name location)
+  (let ((named-part (named-object self name)))
+    (make-handler
+     'thing
+     (make-methods
+      'INSTALL  (lambda ()
+                  (ask named-part 'INSTALL)
+                  (ask (ask self 'LOCATION) 'ADD-THING self))
+      'LOCATION (lambda () location)
+      'DESTROY  (lambda ()
+                  (ask (ask self 'LOCATION) 'DEL-THING self))
+      'EMIT     (lambda (text)
+                  (ask screen 'TELL-ROOM (ask self 'LOCATION)
+                       (append (list "At" (ask (ask self 'LOCATION) 'NAME))
+                               text))))
+     named-part)))
+#+END_SRC
+
+A very interesting (and confusing!) property of object-oriented systems is that
+subclasses can /specialize/ or /override/ methods of their superclasses. In
+lecture, we saw this with professors =SAY= ing things differently than students.
+A subclass /overrides/ a method on the /superclass/ by supplying a method of the
+same name. For example, =thing= /overrides/ the =INSTALL= method of
+=named-object=. When the user of the object tries to get the method named
+=INSTALL=, it will be found in =thing= and =thing= 's version of the method will
+be returned (because it never reaches the =else= clause in =make-handler= which
+checks the parent =named-part=). The =thing= class /overrides/ two methods on
+=named-object= explicitly (as well as two implicitly); =INSTALL= and =DESTROY=
+would be the former case and =TYPE= and =METHODS= methods be the latter as we
+will describe below.
+
+One of the methods which =thing= overrides in an implicit manner is the =TYPE=
+method. This is one of the methods that every class is supposed to override, as
+it allows the class to include its /type descriptor/ in the list of types that
+the object has. This allows the class of an instance to be discovered at run
+time:
+
+#+BEGIN_SRC scheme
+(define building (create-thing 'stata-center MIT))
+
+(ask building 'TYPE)
+;Value: (thing named-object root)
+#+END_SRC
+
+There is a handy method on the =root-object= called =IS-A= that uses the =TYPE=
+method to determine if an object has a certain type:
+
+#+BEGIN_SRC scheme
+(ask building 'IS-A 'thing)
+
+;Value: #t
+
+(ask building 'IS-A 'named-object)
+
+;Value: #t
+
+(ask book 'IS-A 'thing)
+
+;Value: #f
+
+(ask book 'IS-A 'named-object)
+
+;Value: #t
+#+END_SRC
+
+You'll note that =building= is considered to be both a =thing= and a
+=named-object=, because even though it was built as a =thing=, =thing= s inherit
+from =named-object=.
+
+*** Using superclass methods
+In the =thing= code, the =DESTROY= method uses =(ask self 'LOCATION)= in order
+to figure out where to remove itself from. However, it could have just
+referenced the =location= variable. It doesn't because one of the tenets of
+object-oriented programming is *"if there's a method that does what you need,
+use it."* The idea is to re-use code as much as is reasonable. (It turns out
+just using =location= would be a bug in this case; we'll be able to see why
+after doing the warm-up exercises! -- more specifically we will encounter specified
+situation in warmup exercise 6)
+
+Some of the time, when we specialize a method, we want the subclass' method to
+do something completely different than the superclass. For example, the way
+massive-stars DIE (supernova!) is very different than the way stars DIE (burn
+out). However, the rest of the time, we may want to specify some /additional/
+behavior to the original. This presents a problem: how to call our superclass'
+method from within the overriding method. Following the usual pattern of =(ask
+self 'METHOD)= will give rise to an infinite loop! Thus, instead of =ask= ing
+our =self=, we =ask= our superclass-=part=. Note that we do this with the
+=INSTALL= method of a thing, where we explicitly ask the super-part to also
+install, as well as doing some specific actions. /*This is the only situation in
+which we should be asking our superclass-part!*/
+** Classes for a Simulated World
+When we read the code in =objtypes.scm=, we will see definitions of several
+different classes of objects that define a host of interesting behaviors and
+capabilities using the OOP style discussed in the previous section. Here we give
+a brief "tour" of some of the important classes in our simulated world.
+
+*** Container class
+Once we have =thing= s, it is easy to imagine that we might want containers for
+things. We can define a utility =container= class as shown below:
+#+BEGIN_SRC scheme
+(define (container self)
+  (let ((root-part (root-object self))
+        (things '()))
+    (make-handler
+     'container
+     (make-methods
+      'THINGS      (lambda () things)
+      'HAVE-THING? (lambda (thing)
+                     (if (memq thing things) #t #f))
+      'ADD-THING (lambda (thing)
+                   (if (not (ask self 'HAVE-THING? thing))
+                       (set! things (cons thing things)))
+                   'DONE)
+      'DEL-THING (lambda (thing)
+                   (set! things (delq thing things))
+                   'DONE))
+     root-part)))
+#+END_SRC
+
+Note that a container does not inherit from =named-object=, so it does not
+support messages such as =NAME= or =INSTALL=. Containers are not meant to be
+stand-alone objects (there's no =create-container= procedure); rather, they are
+only meant to be used internally by other objects to gain the capability of
+adding things, deleting things, and checking if one has something.
+*** Place class
+Our simulated world needs places (e.g. rooms or spaces) where interesting things
+will occur. The definition of the =place= class is shown below.
+#+BEGIN_SRC scheme
+(define (create-place name)     ; symbol -> place
+  (create-instance place name))
+
+(define (place self name)
+  (let ((named-part (named-object self name))
+        (container-part (container self))
+        (exits '()))
+    (make-handler
+     'place
+     (make-methods
+      'EXITS (lambda () exits)
+      'EXIT-TOWARDS
+      (lambda (direction)
+        (find-exit-in-direction exits direction))
+      'ADD-EXIT
+      (lambda (exit)
+        (let ((direction (ask exit 'DIRECTION)))
+          (if (ask self 'EXIT-TOWARDS direction)
+              (error (list name "already has exit" direction))
+              (set! exits (cons exit exits)))
+          'DONE)))
+     container-part named-part)))
+#+END_SRC
+
+If we look at the first and last lines of =place=, we notice that =place=
+inherits from two different classes: it has both an internal =named-part= and an
+internal =container-part=. If the place receives a message that doesn't match
+any of its methods, the get-method procedure will first check the
+=container-part= for the method, then use the =named-part=. This is generally
+called "multiple inheritance," which comes with a host of issues as discussed
+briefly in lecture. We'll note that =named-object= and =container= only share
+one method of the same name, =TYPE=, and =place= overrides it (by the definition
+of =make-handler=). The =TYPE= method calls the =type-extend= procedure with
+/both/ parent-parts. Retrieving the type of a place:
+#+BEGIN_SRC scheme
+(define stata (create-place 'stata-center))
+
+;Value: stata
+
+(ask stata 'TYPE)
+
+;Value: (place container root named-object)
+#+END_SRC
+
+We aren't guaranteed anything about the order of the type-descriptors except
+that the first descriptor in the list is the class that you instantiated to
+create the instance. We can also see that our place instances will each have
+their own internal variable =exits=, which will be a list of =exit= instances
+which lead from one place to another place; if we focus this relationship
+between place and exits we can think of theses as node and edges respectively,
+which we learned in the previous project -- web as graph. In our object-oriented
+terminology, we can say the place class establishes a "has-a" relationship with
+the exit class (as opposed to the "is-a" relationship denoting inheritance). We
+should examine the =objtypes.scm= file to understand the definition for exits.
+*** Mobile-thing class
+Now that we have things that can be contained in some place, we might also want
+=mobile-thing= s that can =CHANGE-LOCATION=.
+
+#+BEGIN_SRC scheme
+(define (create-mobile-thing name location)
+  ; symbol, location -> mobile-thing
+  (create-instance mobile-thing name location))
+
+(define (mobile-thing self name location)
+  (let ((thing-part (thing self name location)))
+    (make-handler
+     'mobile-thing
+     (make-methods
+      'LOCATION  (lambda () location) ; This shadows message to thing-part!
+      'CHANGE-LOCATION
+      (lambda (new-location)
+        (ask location 'DEL-THING self)
+        (ask new-location 'ADD-THING self)
+        (set! location new-location))
+      'ENTER-ROOM    (lambda () #t)
+      'LEAVE-ROOM    (lambda () #t)
+      'CREATION-SITE (lambda () (ask thing-part 'location)))
+     thing-part)))
+#+END_SRC
+
+When a mobile thing moves from one location to another it has to tell the old
+location to =DEL-THING= from its memory, and tell the new location to =ADD-THING=.
+You'll note that the =CHANGE-LOCATION= method adds and removes the =self= from
+locations, thus the location contains a reference to the /instance/ not the
+/handler/[fn:5]!
+*** Person class
+A person is a kind of mobile thing that is also a container. The objective of
+the multiple inheritance is that people can "contain things" which they carry
+around with them when they move.
+
+A person can =SAY= a list of phrases. A person can =TAKE= and =DROP= things.
+People also have a =health= meter which is reduced by =SUFFER= ing. If a
+person's =health= reaches zero, they =DIE=. Some of the other messages a person
+can handle are briefly shown below; we should consult the full definition of the
+=person= class in =objtypes.scm= to understand the full set of capabilities a
+person instance has.
+
+#+BEGIN_SRC scheme
+(define (create-person name birthplace) ; symbol, place -> person
+  (create-instance person name birthplace))
+
+(define (person self name birthplace)
+  (let ((mobile-thing-part (mobile-thing self name birthplace))
+        (container-part    (container self))
+        (health            3)
+        (strength          1))
+    (make-handler
+     'person
+     (make-methods
+      'STRENGTH (lambda () strength)
+      'HEALTH (lambda () health)
+      'SAY
+      (lambda (list-of-stuff)
+        (ask screen 'TELL-ROOM (ask self 'location)
+             (append (list "At" (ask (ask self 'LOCATION) 'NAME)
+                           (ask self 'NAME) "says --")
+                     list-of-stuff))
+        'SAID-AND-HEARD)
+      'HAVE-FIT
+      (lambda ()
+        (ask self 'SAY '("Yaaaah! I am upset!"))
+        'I-feel-better-now)
+
+      ...
+
+      'TAKE
+      (lambda (thing)
+        ...
+        )
+
+      'LOSE
+      (lambda (thing lose-to)
+        (ask self 'SAY (list "I lose" (ask thing 'NAME)))
+        (ask self 'HAVE-FIT)
+        (ask thing 'CHANGE-LOCATION lose-to))
+
+      'DROP
+      (lambda (thing)
+        (ask self 'SAY (list "I drop" (ask thing 'NAME)
+                             "at" (ask (ask self 'LOCATION) 'NAME)))
+        (ask thing 'CHANGE-LOCATION (ask self 'LOCATION)))
+      ...)
+     mobile-thing-part container-part)))
+#+END_SRC
+*** Avatar class
+One kind of character we will use in this project is an =avatar=. The avatar is
+a kind of person who must be able to do the sorts of things a person can do,
+such as =TAKE= things or =GO= in some direction. However, the avatar must be
+able to intercept the =GO= message, to do things that are special to the avatar,
+as well as do what a person does when it receives a =GO= message. This is again
+accomplished by =ask= ing the superclass-=part=.
+
+#+BEGIN_SRC scheme
+(define (create-avatar name birthplace)
+  ; symbol, place -> avatar
+  (create-instance avatar name birthplace))
+
+(define (avatar self name birthplace)
+  (let ((person-part (person self name birthplace)))
+    (make-handler
+     'avatar
+     (make-methods
+      'LOOK-AROUND          ; report on world around you
+      (lambda ()
+        ...)
+
+      'GO
+      (lambda (direction)  ; Shadows person's GO
+        (let ((success? (ask person-part 'GO direction)))
+          (if success? (ask clock 'TICK))
+          success?))
+
+      'DIE
+      (lambda (perp)
+        (ask self 'SAY (list "I am slain!"))
+        (ask person-part 'DIE perp)))
+
+     person-part)))
+#+END_SRC
+
+The avatar also implements an additional message, =LOOK-AROUND=, which we will
+find very useful when running simulations to get a picture of what the world
+looks like around the avatar.
+*** Clocks and Callbacks
+In order to provide for the passage of time in our system, we have a global
+clock object, whose implementation may be found in =objsys.scm=. This class has
+exactly one instance which is created when =objys.scm= is loaded and bound to
+the globally accessible variable =clock=. Unlike the real world, time passes
+only when we want it to, by asking the clock to =TICK=. The rest of the system
+finds out that time has passed because the clock informs them by sending them a
+message. However, not every object cares about time, so the clock only informs
+objects that have indicated to the clock that they care.
+
+In order to hear about the passage of time, an object registers a /callback/
+with the clock. A /callback/ is a promise to send a particular message to a
+particular object when the callback is activated. As with everything else in our
+system, a callback is an instance, in this case of the class =clock-callback=.
+=Clock-callback= is =ACTIVATE= d, it sends the object the message (e.g. it does
+=(ask object message)=).
+
+To register a callback with the clock, use =ADD-CALLBACK= to add our callback to
+the clock's list of callbacks. When the clock =TICK= s, it =ACTIVATE= s every
+callback on its list. An example of the process, which registers a callback
+named =do-thingy= to invoke the =THINGY= method on the current object:
+#+BEGIN_SRC scheme
+(ask clock 'ADD-CALLBACK
+     (create-clock-callback 'do-thingy self 'THINGY))
+#+END_SRC
+
+Remember to remove callbacks (with =REMOVE-CALLBACK=) when the object should no
+longer be responding to time.
+*** Autonomous-person class
+Our world would be a rather lifeless place unless we had objects that could
+somehow "act" on their own. We achieve this by further specializing the person
+class. An =autonomous-person= is a person who can move or take actions at
+regular intervals, as governed by the clock through a callback. As described
+above, the instance indicates that it wants to know when the clock ticks by
+registering a callback with the clock. It does this upon creation by placing the
+code to add the callback in the =INSTALL= method. Once again, the =INSTALL=
+method wants to specify additional behavior, so it calls the superclass' method
+by =ask= ing the =person-part=. Also note how, when an autonomous person dies,
+we sent a "remove-callback" message to the clock, so that we stop asking this
+character to act.
+
+#+BEGIN_SRC scheme
+(define (create-autonomous-person name birthplace activity miserly)
+  (create-instance autonomous-person name birthplace activity miserly))
+
+(define (autonomous-person self name birthplace activity miserly)
+  (let ((person-part (person self name birthplace)))
+    (make-handler
+     'autonomous-person
+     (make-methods
+      'INSTALL
+      (lambda ()
+        (ask person-part 'INSTALL)
+        (ask clock 'ADD-CALLBACK
+             (create-clock-callback 'move-and-take-stuff self
+                                    'MOVE-AND-TAKE-STUFF)))
+      'MOVE-AND-TAKE-STUFF
+      (lambda ()
+        ;; first move
+        (let loop ((moves (random-number activity)))
+          (if (= moves 0)
+              'done-moving
+              (begin
+                (ask self 'MOVE-SOMEWHERE)
+                (loop (- moves 1)))))
+        ;; then take stuff
+        (if (= (random miserly) 0)
+            (ask self 'TAKE-SOMETHING))
+        'done-for-this-tick)
+      'DIE
+      (lambda (perp)
+        (ask clock 'REMOVE-CALLBACK self 'move-and-take-stuff)
+        (ask self 'SAY '("SHREEEEK!  I, uh, suddenly feel very faint..."))
+        (ask person-part 'DIE perp))
+      'MOVE-SOMEWHERE
+      (lambda ()
+        (let ((exit (random-exit (ask self 'LOCATION))))
+          (if (not (null? exit)) (ask self 'GO-EXIT exit))))
+      'TAKE-SOMETHING
+      (lambda ()
+        (let* ((stuff-in-room (ask self 'STUFF-AROUND))
+               (other-peoples-stuff (ask self 'PEEK-AROUND))
+               (pick-from (append stuff-in-room other-peoples-stuff)))
+          (if (not (null? pick-from))
+              (ask self 'TAKE (pick-random pick-from))
+              #F))))
+     person-part)))
+
+#+END_SRC
+** Configuring and Running the Game
+Our world is built by the =setup= procedure that we will find in the file
+=setup.scm=. We are the deity of this world. When we call =setup= with our name,
+we create the world. It has rooms, objects, and people based on a minor
+technical college on the banks of the Mighty Chunk River; and it has an avatar
+(a manifestation of we, the deity, as a person in the world). The avatar is
+under our control. It goes under our name and is also the value of the
+globally-accessible variable =me=. Each time the avatar moves, simulated time
+passes in the world, and the various other creatures in the world age by a time
+step, possibly with a change in state (where they are, how healthy they are,
+etc.). This works by using a clock that sends an activate message to all
+callbacks that have been created. This causes certain objects to perform
+specific actions. In addition, we can cause time to pass by explicitly calling
+the clock, e.g. using =(run-clock 20)=.
+
+If we want to see everything that is happening in the world, which is default
+value, do
+#+BEGIN_SRC scheme
+(ask screen 'DEITY-MODE #t)
+#+END_SRC
+which causes the system to let we act as an all-seeing god. To turn this mode
+off, do
+#+BEGIN_SRC scheme
+(ask screen 'DEITY-MODE #f)
+#+END_SRC
+in which case we will only see or hear those things that take place in the same
+place as our avatar is. To check the status of this mode, do
+#+BEGIN_SRC scheme
+(ask screen 'DEITY-MODE?)
+#+END_SRC
+
+To make it easier to use the simulation, a convenient procedure is included,
+=thing-named= for referring to an object /at the location of the avatar/. This
+procedure is defined in the file =objsys.scm=
+
+When we start the simulation, we will find ourself (the avatar) in one of the
+locations of the world. There are various other characters present somewhere in
+the world. We can explore this world, but the real goal is to survive the
+onslaught of the denizens of darkness.
+
+Here is a sample run of a variant of the system (a few new objects have been
+added to this version but it gives we an idea of what will happen). Rather than
+describing what's happening, it is leaved to us to examine the code that defines
+the behavior of this world and interpret what is going on.
+
+#+BEGIN_SRC scheme
+(setup 'vandimort)
+
+;Value: ready
+
+(ask (ask me 'location) 'name)
+
+;Value: great-court
+
+(ask me 'look-around)
+
+You are in great-court
+You are not holding anything.
+You see stuff in the room: boil-spell flag-pole lovely-trees
+There are no other people around you.
+The exits are in directions: up west north
+;Value: ok
+
+(ask me 'take (thing-named 'boil-spell))
+
+At great-court vandimort says -- I take boil-spell from great-court
+;Value: (instance #[compound-procedure 46 handler])
+
+(ask me 'go 'north)
+
+vandimort moves from great-court to lobby-10
+--- the-clock Tick 0 ---
+ben-bitdiddle moves from eecs-ug-office to eecs-hq
+ben-bitdiddle moves from eecs-hq to |34-301|
+At |34-301| ben-bitdiddle says -- I take boil-spell from |34-301|
+alyssa-hacker moves from stata-center to stata-center
+At stata-center alyssa-hacker says -- Hi dr-evil
+course-6-frosh moves from bexley to baker
+At baker course-6-frosh says -- I take slug-spell from baker
+lambda-man moves from graduation-stage to great-court
+dr-evil moves from stata-center to stata-center
+At stata-center dr-evil says -- Hi alyssa-hacker
+At stata-center dr-evil says -- What are you doing still up? Everyone back to their rooms!
+At stata-center alyssa-hacker goes home to stata-center
+mr-bigglesworth moves from lobby-7 to lobby-10
+At lobby-10 mr-bigglesworth says -- Hi vandimort
+mr-bigglesworth moves from lobby-10 to grendels-den
+At grendels-den mr-bigglesworth says -- I'll let you off this once...
+grendel moves from barker-library to |10-250|
+grendel moves from |10-250| to lobby-10
+At lobby-10 grendel says -- Hi vandimort
+grendel moves from lobby-10 to grendels-den
+At grendels-den grendel says -- Hi mr-bigglesworth
+At grendels-den grendel takes a bite out of mr-bigglesworth
+At grendels-den mr-bigglesworth says -- Ouch! 1 hits is more than I want!
+registrar moves from legal-seafood to great-court
+At great-court registrar says -- Hi lambda-man
+;Value: #t
+
+(run-clock 2)
+
+--- the-clock Tick 1 ---
+ben-bitdiddle moves from |34-301| to stata-center
+At stata-center ben-bitdiddle says -- Hi alyssa-hacker dr-evil
+ben-bitdiddle moves from stata-center to |34-301|
+alyssa-hacker moves from stata-center to stata-center
+At stata-center alyssa-hacker says -- Hi dr-evil
+course-6-frosh moves from baker to bexley
+course-6-frosh moves from bexley to student-center
+At student-center course-6-frosh says -- I take slug-spell from student-center
+lambda-man moves from great-court to lobby-10
+At lobby-10 lambda-man says -- Hi vandimort
+At lobby-10 lambda-man says -- I take boil-spell from lobby-10
+dr-evil moves from stata-center to |34-301|
+At |34-301| dr-evil says -- Hi ben-bitdiddle
+dr-evil moves from |34-301| to eecs-hq
+dr-evil moves from eecs-hq to |34-301|
+At |34-301| dr-evil says -- Hi ben-bitdiddle
+At |34-301| dr-evil says -- What are you doing still up? Everyone back to their rooms!
+At |34-301| ben-bitdiddle goes home to eecs-ug-office
+mr-bigglesworth moves from grendels-den to lobby-10
+At lobby-10 mr-bigglesworth says -- Hi lambda-man vandimort
+mr-bigglesworth moves from lobby-10 to building-13
+At building-13 mr-bigglesworth says -- I'll let you off this once...
+grendel moves from grendels-den to lobby-10
+At lobby-10 grendel says -- Hi lambda-man vandimort
+At lobby-10 grendel takes a bite out of lambda-man
+At lobby-10 lambda-man says -- Ouch! 2 hits is more than I want!
+registrar moves from great-court to graduation-stage
+At graduation-stage registrar 's belly rumbles
+--- the-clock Tick 2 ---
+ben-bitdiddle moves from eecs-ug-office to eecs-hq
+At eecs-hq ben-bitdiddle says -- I take slug-spell from eecs-hq
+alyssa-hacker moves from stata-center to stata-center
+course-6-frosh moves from student-center to bexley
+At bexley course-6-frosh says -- I take slug-spell from bexley
+lambda-man moves from lobby-10 to building-13
+At building-13 lambda-man says -- Hi mr-bigglesworth
+dr-evil moves from |34-301| to edgerton-hall
+At edgerton-hall dr-evil says -- What are you doing still up? Everyone back to their rooms!
+mr-bigglesworth moves from building-13 to edgerton-hall
+At edgerton-hall mr-bigglesworth says -- Hi dr-evil
+mr-bigglesworth moves from edgerton-hall to legal-seafood
+At legal-seafood mr-bigglesworth says -- What are you doing still up? Everyone back to their rooms!
+grendel moves from lobby-10 to grendels-den
+grendel moves from grendels-den to lobby-10
+At lobby-10 grendel says -- Hi vandimort
+grendel moves from lobby-10 to great-court
+At great-court grendel 's belly rumbles
+registrar moves from graduation-stage to great-court
+At great-court registrar says -- Hi grendel
+At great-court registrar takes a bite out of grendel
+At great-court grendel says -- Ouch! 1 hits is more than I want!
+;Value: done
+
+(ask screen 'deity-mode #f)
+
+;Value: #t
+
+(run-clock 3)
+
+--- the-clock Tick 3 ---
+At lobby-10 lambda-man says -- Hi vandimort
+At lobby-10 registrar says -- Hi lambda-man vandimort
+--- the-clock Tick 4 ---
+lambda-man moves from lobby-10 to grendels-den
+At lobby-10 dr-evil says -- Hi registrar vandimort
+At lobby-10 dr-evil says -- What are you doing still up? Everyone back to their rooms!
+At lobby-10 registrar goes home to legal-seafood
+At lobby-10 vandimort goes home to great-court
+At great-court grendel says -- Hi vandimort
+grendel moves from great-court to legal-seafood
+At great-court registrar says -- Hi vandimort
+--- the-clock Tick 5 ---
+At great-court dr-evil says -- Hi registrar vandimort
+dr-evil moves from great-court to lobby-10
+At great-court grendel says -- Hi registrar vandimort
+grendel moves from great-court to legal-seafood
+registrar moves from great-court to graduation-stage
+An earth-shattering, soul-piercing scream is heard...
+;Value: done
+
+(ask me 'look-around)
+
+You are in great-court
+You are holding: boil-spell
+You see stuff in the room: flag-pole lovely-trees
+There are no other people around you.
+The exits are in directions: up west north
+;Value: ok
+#+END_SRC
+
+In parts of this project, we will be asked to elaborate or enhance the world
+(e.g. add things ins =setup.scm=), as well as add to the behaviors or kinds of
+objects in the system (e.g. modify =objtypes.scm=). If we do make such changes,
+we must remember to re-evaluate all definitions and re-run =(setup 'our-name)=
+if we change anything, just to make sure that all our definitions are up to
+date. An easy way to do this is to reload all the files (be sure to save our
+files to disk before reloading), and then re-evaluate =(setup 'our-name)=.
+** Warmup Exercises
+These exercises are intended to help us get a head start on understanding our
+object-oriented world before we start writing code. Note that for the first two
+exercises, the result is a diagram, which we can draw by hand.
+
+*** Warmup Exercise 1
+In the transcript above there is a line: =(ask (ask me 'location) 'name)=. What
+kind of value does =(ask me 'location)= return here? What other messages,
+besides name, can we send to this value?
+
+**** Answer
+It returns the instance of =place= class stored in =me= as part of state
+variable; more specifically, included in =mobile-thing=-part indirectly. We can
+call whatever method defined in =place= class (and the superclass' of it --
+=named-object=, =container=, =root-object=).
+*** Warmup Exercise 2
+Look through the code in =objtypes.scm= to discover which classes are defined in
+this system and how the classes are related. For example, =place= is a subclass
+of =named-object=. Also look thorough the code in =setup.scm= to see what the
+world looks like. Draw a class diagram like the ones presented in lecture. We
+will find such a diagram helpful (maybe indispensable) in doing the programming assignment.
+
+**** Answer
+I've done this manually; here we attempt to do the task by using the program
+called plantUML.
+
+#+BEGIN_SRC plantuml :file ../image/classdiagram.png
+class root-object {
+    self
+    {method} IS-A
+}
+
+class named-object {
+    name
+    __
+    NAME
+    INSTALL
+    DESTROY
+}
+
+class container {
+    things
+    __
+    THINGS
+    HAVE-THING?
+    ADD-THING
+    DEL-THING
+}
+
+class thing {
+    name
+    location
+    __
+    INSTALL
+    LOCATION
+    DESTROY
+    EMIT
+}
+
+class exit {
+    from
+    direction
+    to
+    __
+    INSTALL
+    FROM
+    TO
+    DIRECTION
+    USE
+}
+
+class place {
+    name
+    exits
+    __
+    EXITS
+    EXIT-TOWARDS
+    ADD-EXIT
+}
+
+class mobile-thing {
+    name
+    location
+    __
+    LOCATION
+    CHANGE-LOCATION
+    ENTER-ROOM
+    LEAVE-ROOM
+    CREATION-SITE
+}
+
+class spell {
+    name
+    location
+    incant
+    action
+    __
+    INCANT
+    ACTION
+    USE
+}
+
+class person {
+    name
+    birthplace
+    health
+    strength
+    __
+    STRENTH
+    HEALTH
+    SAY
+    HAVE-FIT
+    PEOPLE-AROUND
+    STUFF-AROUND
+    PEEK-AROUND
+    TAKE
+    LOSE
+    DROP
+    GO-EXIT
+    GO
+    SUFFER
+    DIE
+    ENTER-ROOM
+}
+
+class autonomous-person {
+    name
+    birthplace
+    activity
+    miserly
+    __
+    INSTALL
+    MOVE-AND-TAKE-STUFF
+    DIE
+    MOVE-SOMEWHERE
+    TAKE-SOMETHING
+}
+
+class avatar {
+    name
+    birthplace
+    __
+    LOOK-AROUND
+    GO
+    DIE
+}
+
+class hall-monitor {
+    name
+    birthplace
+    speed
+    irritability
+    __
+    INSTALL
+    IRRITATE-STUDENT
+    DIE
+}
+
+class troll {
+    name
+    birthplace
+    speed
+    hunger
+    __
+    INSTALL
+    EAT-PEOPLE
+    DIE
+}
+
+"root-object" <|-- "named-object"
+"root-object" <|-- "container"
+"named-object" <|-- "thing"
+"named-object" <|-- "exit"
+"named-object" <|-- "place"
+"container" <|-- "place"
+"container" <|-- "person"
+"thing" <|-- "mobile-thing"
+"mobile-thing" <|-- "spell"
+"mobile-thing" <|-- "person"
+"person" <|-- "autonomous-person"
+"person" <|-- "avatar"
+"autonomous-person" <|-- "hall-monitor"
+"autonomous-person" <|-- "troll"
+
+thing ..* place : "has-a"
+exit *..* place : "has-a"
+#+END_SRC
+
+#+caption: Class diagram
+#+RESULTS:
+[[file:../image/classdiagram.png]]
+
 * Footnotes
+
+[fn:5] We can ask only the objects -- instances -- to request the method;
+for the handler we should use specialized method called
+=find-method-from-handler-list=, which should not be called by user -- it only
+used internally.
 
 [fn:4] It is due to the existence of the cycle within the graph.
 

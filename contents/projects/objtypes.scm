@@ -80,15 +80,15 @@
      'thing
      (make-methods
       'INSTALL  (lambda ()
-		  (ask named-part 'INSTALL)
-		  (ask (ask self 'LOCATION) 'ADD-THING self))
+                  (ask named-part 'INSTALL)
+                  (ask (ask self 'LOCATION) 'ADD-THING self))
       'LOCATION (lambda () location)
       'DESTROY  (lambda ()
-		  (ask (ask self 'LOCATION) 'DEL-THING self))
+                  (ask (ask self 'LOCATION) 'DEL-THING self))
       'EMIT     (lambda (text)
-		  (ask screen 'TELL-ROOM (ask self 'LOCATION)
-		       (append (list "At" (ask (ask self 'LOCATION) 'NAME))
-			       text))))
+                  (ask screen 'TELL-ROOM (ask self 'LOCATION)
+                       (append (list "At" (ask (ask self 'LOCATION) 'NAME))
+                               text))))
      named-part)))
 
 ;;--------------------
@@ -130,22 +130,22 @@
 
 (define (place self name)
   (let ((named-part (named-object self name))
-	(container-part (container self))
-	(exits '()))
+        (container-part (container self))
+        (exits '()))
     (make-handler
      'place
      (make-methods
       'EXITS (lambda () exits)
       'EXIT-TOWARDS
       (lambda (direction)
-	(find-exit-in-direction exits direction))
+        (find-exit-in-direction exits direction))
       'ADD-EXIT
       (lambda (exit)
-	(let ((direction (ask exit 'DIRECTION)))
-	  (if (ask self 'EXIT-TOWARDS direction)
-	      (error (list name "already has exit" direction))
-	      (set! exits (cons exit exits)))
-	  'DONE)))
+        (let ((direction (ask exit 'DIRECTION)))
+          (if (ask self 'EXIT-TOWARDS direction)
+              (error (list name "already has exit" direction))
+              (set! exits (cons exit exits)))
+          'DONE)))
      container-part named-part)))
 
 ;;------------------------------------------------------------
@@ -220,56 +220,56 @@
       'HEALTH (lambda () health)
       'SAY
       (lambda (list-of-stuff)
-	(ask screen 'TELL-ROOM (ask self 'location)
-	     (append (list "At" (ask (ask self 'LOCATION) 'NAME)
-			   (ask self 'NAME) "says --")
-		     list-of-stuff))
-	'SAID-AND-HEARD)
+        (ask screen 'TELL-ROOM (ask self 'location)
+             (append (list "At" (ask (ask self 'LOCATION) 'NAME)
+                           (ask self 'NAME) "says --")
+                     list-of-stuff))
+        'SAID-AND-HEARD)
       'HAVE-FIT
       (lambda ()
-	(ask self 'SAY '("Yaaaah! I am upset!"))
-	'I-feel-better-now)
+        (ask self 'SAY '("Yaaaah! I am upset!"))
+        'I-feel-better-now)
 
       'PEOPLE-AROUND        ; other people in room...
       (lambda ()
-	(delq self (find-all (ask self 'LOCATION) 'PERSON)))
+        (delq self (find-all (ask self 'LOCATION) 'PERSON)))
 
       'STUFF-AROUND         ; stuff (non people) in room...
       (lambda ()
-	(let* ((in-room (ask (ask self 'LOCATION) 'THINGS))
-	       (stuff (filter (lambda (x) (not (ask x 'IS-A 'PERSON))) in-room)))
-	  stuff))
+        (let* ((in-room (ask (ask self 'LOCATION) 'THINGS))
+               (stuff (filter (lambda (x) (not (ask x 'IS-A 'PERSON))) in-room)))
+          stuff))
 
       'PEEK-AROUND          ; other people's stuff...
       (lambda ()
-	(let ((people (ask self 'PEOPLE-AROUND)))
-	  (fold-right append '() (map (lambda (p) (ask p 'THINGS)) people))))
+        (let ((people (ask self 'PEOPLE-AROUND)))
+          (fold-right append '() (map (lambda (p) (ask p 'THINGS)) people))))
 
       'TAKE
       (lambda (thing)
-	(cond ((ask self 'HAVE-THING? thing)  ; already have it
-	       (ask self 'SAY (list "I am already carrying"
-				    (ask thing 'NAME)))
-	       #f)
-	      ((or (ask thing 'IS-A 'PERSON)
-		   (not (ask thing 'IS-A 'MOBILE-THING)))
-	       (ask self 'SAY (list "I try but cannot take"
-				    (ask thing 'NAME)))
-	       #F)
-	      (else
-	       (let ((owner (ask thing 'LOCATION)))
-		 (ask self 'SAY (list "I take" (ask thing 'NAME)
-				      "from" (ask owner 'NAME)))
-		 (if (ask owner 'IS-A 'PERSON)
-		     (ask owner 'LOSE thing self)
-		     (ask thing 'CHANGE-LOCATION self))
-		 thing))))
+        (cond ((ask self 'HAVE-THING? thing)  ; already have it
+               (ask self 'SAY (list "I am already carrying"
+                                    (ask thing 'NAME)))
+               #f)
+              ((or (ask thing 'IS-A 'PERSON)
+                   (not (ask thing 'IS-A 'MOBILE-THING)))
+               (ask self 'SAY (list "I try but cannot take"
+                                    (ask thing 'NAME)))
+               #F)
+              (else
+               (let ((owner (ask thing 'LOCATION)))
+                 (ask self 'SAY (list "I take" (ask thing 'NAME)
+                                      "from" (ask owner 'NAME)))
+                 (if (ask owner 'IS-A 'PERSON)
+                     (ask owner 'LOSE thing self)
+                     (ask thing 'CHANGE-LOCATION self))
+                 thing))))
 
       'LOSE
       (lambda (thing lose-to)
-	(ask self 'SAY (list "I lose" (ask thing 'NAME)))
-	(ask self 'HAVE-FIT)
-	(ask thing 'CHANGE-LOCATION lose-to))
+        (ask self 'SAY (list "I lose" (ask thing 'NAME)))
+        (ask self 'HAVE-FIT)
+        (ask thing 'CHANGE-LOCATION lose-to))
 
       'DROP
       (lambda (thing)
@@ -279,37 +279,37 @@
 
       'GO-EXIT
       (lambda (exit)
-	(ask exit 'USE self))
+        (ask exit 'USE self))
 
       'GO
       (lambda (direction) ; symbol -> boolean
-	(let ((exit (ask (ask self 'LOCATION) 'EXIT-TOWARDS direction)))
-	  (if (and exit (ask exit 'IS-A 'EXIT))
-	      (ask self 'GO-EXIT exit)
-	      (begin (ask screen 'TELL-ROOM (ask self 'LOCATION)
-			  (list "No exit in" direction "direction"))
-		     #F))))
+        (let ((exit (ask (ask self 'LOCATION) 'EXIT-TOWARDS direction)))
+          (if (and exit (ask exit 'IS-A 'EXIT))
+              (ask self 'GO-EXIT exit)
+              (begin (ask screen 'TELL-ROOM (ask self 'LOCATION)
+                          (list "No exit in" direction "direction"))
+                     #F))))
       'SUFFER
       (lambda (hits perp)
-	(ask self 'SAY (list "Ouch!" hits "hits is more than I want!"))
-	(set! health (- health hits))
-	(if (<= health 0) (ask self 'DIE perp))
-	health)
+        (ask self 'SAY (list "Ouch!" hits "hits is more than I want!"))
+        (set! health (- health hits))
+        (if (<= health 0) (ask self 'DIE perp))
+        health)
 
       'DIE          ; depends on global variable "death-exit"
       (lambda (perp)
-	(for-each (lambda (item) (ask self 'LOSE item (ask self 'LOCATION)))
-		  (ask self 'THINGS))
-	(ask screen 'TELL-WORLD
-	     '("An earth-shattering, soul-piercing scream is heard..."))
-	(ask self 'DESTROY))
+        (for-each (lambda (item) (ask self 'LOSE item (ask self 'LOCATION)))
+                  (ask self 'THINGS))
+        (ask screen 'TELL-WORLD
+             '("An earth-shattering, soul-piercing scream is heard..."))
+        (ask self 'DESTROY))
 
       'ENTER-ROOM
       (lambda ()
-	(let ((others (ask self 'PEOPLE-AROUND)))
-	  (if (not (null? others))
-	      (ask self 'SAY (cons "Hi" (names-of others)))))
-	#T))
+        (let ((others (ask self 'PEOPLE-AROUND)))
+          (if (not (null? others))
+              (ask self 'SAY (cons "Hi" (names-of others)))))
+        #T))
      mobile-thing-part container-part)))
 
 ;;--------------------
@@ -328,40 +328,40 @@
      (make-methods
       'INSTALL
       (lambda ()
-	(ask person-part 'INSTALL)
-	(ask clock 'ADD-CALLBACK
-	     (create-clock-callback 'move-and-take-stuff self
-				    'MOVE-AND-TAKE-STUFF)))
+        (ask person-part 'INSTALL)
+        (ask clock 'ADD-CALLBACK
+             (create-clock-callback 'move-and-take-stuff self
+                                    'MOVE-AND-TAKE-STUFF)))
       'MOVE-AND-TAKE-STUFF
       (lambda ()
-	;; first move
-	(let loop ((moves (random-number activity)))
-	  (if (= moves 0)
-	      'done-moving
-	      (begin
-		(ask self 'MOVE-SOMEWHERE)
-		(loop (- moves 1)))))
-	;; then take stuff
-	(if (= (random miserly) 0)
-	    (ask self 'TAKE-SOMETHING))
-	'done-for-this-tick)
+        ;; first move
+        (let loop ((moves (random-number activity)))
+          (if (= moves 0)
+              'done-moving
+              (begin
+                (ask self 'MOVE-SOMEWHERE)
+                (loop (- moves 1)))))
+        ;; then take stuff
+        (if (= (random miserly) 0)
+            (ask self 'TAKE-SOMETHING))
+        'done-for-this-tick)
       'DIE
       (lambda (perp)
-	(ask clock 'REMOVE-CALLBACK self 'move-and-take-stuff)
-	(ask self 'SAY '("SHREEEEK!  I, uh, suddenly feel very faint..."))
-	(ask person-part 'DIE perp))
+        (ask clock 'REMOVE-CALLBACK self 'move-and-take-stuff)
+        (ask self 'SAY '("SHREEEEK!  I, uh, suddenly feel very faint..."))
+        (ask person-part 'DIE perp))
       'MOVE-SOMEWHERE
       (lambda ()
-	(let ((exit (random-exit (ask self 'LOCATION))))
-	  (if (not (null? exit)) (ask self 'GO-EXIT exit))))
+        (let ((exit (random-exit (ask self 'LOCATION))))
+          (if (not (null? exit)) (ask self 'GO-EXIT exit))))
       'TAKE-SOMETHING
       (lambda ()
-	(let* ((stuff-in-room (ask self 'STUFF-AROUND))
-	       (other-peoples-stuff (ask self 'PEEK-AROUND))
-	       (pick-from (append stuff-in-room other-peoples-stuff)))
-	  (if (not (null? pick-from))
-	      (ask self 'TAKE (pick-random pick-from))
-	      #F))))
+        (let* ((stuff-in-room (ask self 'STUFF-AROUND))
+               (other-peoples-stuff (ask self 'PEEK-AROUND))
+               (pick-from (append stuff-in-room other-peoples-stuff)))
+          (if (not (null? pick-from))
+              (ask self 'TAKE (pick-random pick-from))
+              #F))))
      person-part)))
 
 ;;
@@ -485,40 +485,40 @@
      (make-methods
       'LOOK-AROUND          ; report on world around you
       (lambda ()
-	(let* ((place (ask self 'LOCATION))
-	       (exits (ask place 'EXITS))
-	       (other-people (ask self 'PEOPLE-AROUND))
-	       (my-stuff (ask self 'THINGS))
-	       (stuff (ask self 'STUFF-AROUND)))
-	  (ask screen 'TELL-WORLD (list "You are in" (ask place 'NAME)))
-	  (ask screen 'TELL-WORLD
-	       (if (null? my-stuff)
-		   '("You are not holding anything.")
-		   (append '("You are holding:") (names-of my-stuff))))
-	  (ask screen 'TELL-WORLD
-	       (if (null? stuff)
-		   '("There is no stuff in the room.")
-		   (append '("You see stuff in the room:") (names-of stuff))))
-	  (ask screen 'TELL-WORLD
-	       (if (null? other-people)
-		   '("There are no other people around you.")
-		   (append '("You see other people:") (names-of other-people))))
-	  (ask screen 'TELL-WORLD
-	       (if (not (null? exits))
-		   (append '("The exits are in directions:") (names-of exits))
-		   ;; heaven is only place with no exits
-		   '("There are no exits... you are dead and gone to heaven!")))
-	  'OK))
+        (let* ((place (ask self 'LOCATION))
+               (exits (ask place 'EXITS))
+               (other-people (ask self 'PEOPLE-AROUND))
+               (my-stuff (ask self 'THINGS))
+               (stuff (ask self 'STUFF-AROUND)))
+          (ask screen 'TELL-WORLD (list "You are in" (ask place 'NAME)))
+          (ask screen 'TELL-WORLD
+               (if (null? my-stuff)
+                   '("You are not holding anything.")
+                   (append '("You are holding:") (names-of my-stuff))))
+          (ask screen 'TELL-WORLD
+               (if (null? stuff)
+                   '("There is no stuff in the room.")
+                   (append '("You see stuff in the room:") (names-of stuff))))
+          (ask screen 'TELL-WORLD
+               (if (null? other-people)
+                   '("There are no other people around you.")
+                   (append '("You see other people:") (names-of other-people))))
+          (ask screen 'TELL-WORLD
+               (if (not (null? exits))
+                   (append '("The exits are in directions:") (names-of exits))
+                   ;; heaven is only place with no exits
+                   '("There are no exits... you are dead and gone to heaven!")))
+          'OK))
 
       'GO
       (lambda (direction)  ; Shadows person's GO
-	(let ((success? (ask person-part 'GO direction)))
-	  (if success? (ask clock 'TICK))
-	  success?))
+        (let ((success? (ask person-part 'GO direction)))
+          (if success? (ask clock 'TICK))
+          success?))
 
       'DIE
       (lambda (perp)
-	(ask self 'SAY (list "I am slain!"))
-	(ask person-part 'DIE perp)))
+        (ask self 'SAY (list "I am slain!"))
+        (ask person-part 'DIE perp)))
 
      person-part)))
