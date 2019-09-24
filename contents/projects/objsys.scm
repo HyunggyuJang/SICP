@@ -151,7 +151,7 @@
    (make-methods
     'IS-A
     (lambda (type)
-      (if (memq type (ask self 'TYPE)) #t #f)))))
+      (if (memq type (ask self 'TYPE)))))))
 
 ;;------------------------------------------------------------
 ;; Object Interface

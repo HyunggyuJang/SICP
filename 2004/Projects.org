@@ -2454,7 +2454,7 @@ Player 3 Score:  3.1868131868131866
 
 If we inspect the resulting histories from =play-loop=, we can convince ourself
 that our implementation is highly likely correct.
-* Project 3 -- Crawling adn Indexing the World Wide Web
+* Project 3 -- Crawling and Indexing the World Wide Web
 This project explores some issues that arise in constructing a "spider" or a
 "web agent" that crawls over documents in the World Wide Web. For purposes of
 this project, the Web is an extremely large collection of documents. Each
@@ -4350,6 +4350,247 @@ So the actual n doesn't changed as many nodes changed.
 It concludes our linear search method has less computation factor than optimized
 one if we do not consider the scale effect (asymptotic analysis). So with
 current dispose, we can not tell it actually run faster than the previous one.
+* Project 4 -- The Object-Oriented Adventure Game
+We should begin working on the assignment once we finished previous projects and
+learned relevant materials in the text. It is to our advantage to get work done
+early, rather than waiting until the night before it is due (in this case our
+own due not the one made by someone like professor). We should also read over
+and think through each part of the assignment (as well as nay project code)
+before we sit down at the computer. It is generally much more efficient to test,
+debug, and run a program that we have though about beforehand, rather than doing
+the planning "online." Diving into program development without a clear idea of
+what we plan to do generally causes assignments to take much longer than necessary.
+
+*Word to the wise:* This project is difficult. The trick lies in knowing which
+ code to write, and for that we must understand the project code, which is
+ considerable. We'll need to understand the general ideas of object-oriented
+ programming and the implementation provided of an object-oriented programming
+ system (in =objsys.scm=). Then we'll need to understand the particular classes
+ (in =objtypes.scm=) and the world (in =setup.scm=) that they've constructed for
+ us. In truth, this assignment in much more an exercise in reading and
+ understanding a software system than in writing programs, because reading
+ significant amounts of code is an important skill that we must master. The
+ warmup exercises will require us to do considerable digesting of code before we
+ can start on them. And we are *strongly urged* to study the code before we try
+ the programming exercises themselves. Starting to program without understanding
+ the code is a good way to get lost, and will virtually guarantee that we will
+ spend more time on this assignment than necessary.
+
+ In this project we will develop a powerful strategy for building simulations of
+ possible worlds. The strategy will enable us to make modular simulations with
+ enough flexibility to allow us to expand and elaborate the simulation as our
+ conception of the world expands and becomes more detailed.
+
+ One way to organize our thoughts about a possible world is to divide it up into
+ discrete objects, where each object will have a behavior by itself, and it will
+ interact with other objects in some lawful way. If it is useful to decompose a
+ problem in this way then we can construct a computational world, analogous to
+ the "real" world, with a computational object for each real object.
+
+ Each of our computational objects has some independent local state, and some
+ rules (or code), that determine its behavior. One computational object may
+ influence another by sending it messages and invoking methods in the other. The
+ program associated with an object describes how the object reacts to messages
+ and how its state changes as a consequence.
+
+ You may have heard of this idea in the guise of "Object-Oriented Programming
+ systems" (OOPs!). Languages such as C++ and Java are organized around OOP.
+ While OOP has received a lot of attention in recent years, it is only one of
+ several powerful programming styles. What we will try to understand here is the
+ essence of the idea, rather than the incidental details of their expression in
+ particular languages.
+
+** An Object System
+Consider the problem of simulating the activity of a few interacting agents
+wandering around different places in a simple world. Real people are very
+complicated; we do not know enough to simulate their behavior in any detail. But
+for some purposes (for example, to make an adventure game) we may simplify and
+abstract this behavior. In particular, we can use objects to capture common
+state parameters and behaviors of things, and can then use the message-passing
+paradigm to control interaction between objects in a simulation.
+
+Let's start with the fundamental stuff first. We can think of our object
+oriented paradigm as consisting of classes and instances. A class can be thought
+of as the "template" for how we want a particular kind of object to behave. The
+way we define the class of an object is with a basic "make handler" procedure;
+this procedure is used with a "create instance" procedure which builds for us a
+particular instance. As we will see, when we examine the code, each class is
+defined by a procedure that when invoked will create some internal state
+(including instances of other class objects) and a message passing procedure
+(created by a "make handler") that returns methods in response to messages.
+
+Our object instances are thus procedures which accept messages. An object will
+give us a method if we send it a message; we can then invoke that method
+(possibly with some arguments) to cause some action, state update, or other
+computation to occur.
+
+The main pieces we will use in our code to capture these ideas are detailed as
+follows:
+- Instance of an object :: each individual object has its own identity. The
+     instance knows its type, and has a message handler associated with it. One
+     can "ask" an object to do something, which will cause the object to use the
+     message handler to look for a method to handle the request and then invoke
+     the method on the arguments.
+- "Making" an object message handler :: each instance needs a new message
+     handler to inherit the state information and methods of the specified
+     class. The message handler is not a full "object instance" in our system;
+     the message handler needs to be part of an instance object (or part of
+     another message handler that is part of an instance object). All procedures
+     that define classes should take a self pointer (a pointer to the enclosing
+     instance) as the first argument.
+- "Creating" an object :: the act of creation does three things: it makes a new
+     instance of the object; it makes and sets the message handler for that
+     instance; and finally it INSTALLS that new object into the world.
+- "Installing" and object :: this is a method in the object, by which the object
+     can initialize itself and insert itself into the world, by connecting
+     itself up with other related objects in the world.
+
+
+Let's look at these different elements in a bit more detail.
+
+** Classes and Instances
+Here is the template for a class definition in our object system. This is quite
+similar to the one introduced in the lecture (which was not available to us but
+2004's version), but its interface have been cleaned up a little bit to make
+things easier to read:
+
+#+BEGIN_SRC scheme
+(define (<type> self arg1 arg2 ... argn)
+  (let ((<super1>-part (<super1> self args))
+        (<super2>-part (<super1> self args))
+        <other superclasses>
+        <other local state>)
+    (make-handler
+     <type>
+     (make-methods
+      <message-name-1> <method-1>
+      <message-name-2> <method-2>
+      <other messages and methods>
+      )
+     <super1>-part <super2>-part ...)))
+#+END_SRC
+
+That form is a little mystifying (we have put some terms delimited by =<angle
+bracket>= to indicate that these would be replaced by specific instances), so
+let's look at an example. In our simulation, almost everything is going to have
+a name, thus let's create a =named-object= class:
+
+#+BEGIN_SRC scheme
+(define (named-object self name)
+  (let ((root-part (root-object self)))
+    (make-handler
+     'named-object                      ;name of the class
+     (make-methods
+      'NAME (lambda () name)
+      'INSTALL (lambda () 'INSTALLED)
+      'DESTROY (lambda () 'DESTROYED))
+     root-part)))
+#+END_SRC
+
+So we can see that this class procedure defines a template for a class. It
+include some state variables (both parameters required as part of the procedure
+application, as well as any internal state variables we want to create); and it
+creates a message handler for controlling instances of the objects. That is
+performed by invoking =make-handler=, which takes as input the type of the
+object, a set of message-method pairs, and any inherited superclasses. Note that
+the message-method pairs are a combination of a symbol and a procedure that
+will do something. Each such class procedure will be used to create instances
+(see below).
+
+We have designed some conventions, which will be useful in following the code.
+We use the type of the object as the name of the procedure that defines a class
+(e.g. =named-object= in the above example). Note that this is also the first
+argument passed to the =make-handler= procedure.
+
+The actual code for creating the handler is given by:
+#+BEGIN_SRC scheme
+(define (make-handler typename methods . super-parts)
+  (cond ((not (symbol? typename))    ;check for possible programmer errors
+         (error "bad typename" typename))
+        ((not (method-list? methods))
+         (error "bad method list" methods))
+        ((and (not (null? super-parts))
+              (null? (filter handler? super-parts)))
+         (error "bad part list" super-parts))
+        (else
+         (named-lambda (handler message)
+           (case message
+             ((TYPE)
+              (lambda () (type-extend typename super-parts)))
+             ((METHODS)
+              (lambda ()
+                (append (method-names methods)
+                        (append-map (lambda (x) (ask x 'METHODS))
+                                    super-parts))))
+             (else
+              (let ((entry (method-lookup message methods)))
+                (if entry
+                    (cadr entry)
+                    (find-method-from-handler-list
+                     message
+                     super-parts)))))))))
+#+END_SRC
+
+If we look through this code (we don't need to understand all of it!) we can see
+that this procedure first checks for some error cases, and then in the general
+case creates a procedure that takes as argument a =message= and then checks that
+symbol against a set of cases (we may want to look up =named-lambda= in the
+Scheme manual to see what it does). If it is the special case of =TYPE=, then it
+returns a list of the types of objects inherited by this class. If it is special
+case of =METHODS=, it returns a list of method names of this class, followed by
+the method names inherited from associated superclasses. Otherwise it tries to
+look up the =message= in the set inherited from the superclasses.
+
+Note that =make-methods= will build a list of (name, procedure) pairs suitable
+as input to =make-handler=.
+
+#+BEGIN_SRC scheme
+(define (make-methods . args)
+  (define (helper lst result)
+    (cond ((null? lst) result)
+
+          ;; error catching
+          ((null? (cdr lst))
+           (error "unmatched method (name,proc) pair"))
+          ((not (symbol? (car lst)))
+           (if (procedure? (car lst))
+               (pp (car lst)))
+           (error "invalid method name" (car lst)))
+          ((not (procedure? (cadr lst)))
+           (error "invalid method procedure" (cadr lst)))
+
+          (else
+           (helper (cddr lst) (cons (list (car lst) (cadr lst)) result)))))
+  (cons 'methods (reverse (helper args '()))))
+#+END_SRC
+
+This set of code is a slightly modified version of what was presented in lecture
+(again it is not available to us), but with the same overall behavior. Every
+/foo/ procedure defining a class of type /foo/ takes =self= as the first
+argument. This indicates of which instance the class handler is a part.
+
+Returning to our definition of =named-object= we see that the second argument to
+=named-object= is =name=, which is part of the state of the =named-object=.
+
+The =let= statement which binds =root-part= to the result of making a
+=root-object=, together with the =type-extend= usage inside the =type= method of
+=make-handler=, and the use of the =super-parts= at the end of the definition,
+all together tell us that =named-object= s are a /subclass/ of =root-object=.
+
+#+BEGIN_SRC scheme
+(define (root-object self)
+  (make-handler
+   'root
+   (make-methods
+    'IS-A
+    (lambda (type)
+      (if (memq type (ask self 'TYPE)))))))
+#+END_SRC
+
+The root object provides a basis for providing common behaviors to all classes.
+Specifically, it provides a convenient method (=IS-A=) to see if a type
+descriptor is in the =TYPE= list. We will by convention use this class as the
+root for all other classes.
 * Footnotes
 
 [fn:4] It is due to the existence of the cycle within the graph.

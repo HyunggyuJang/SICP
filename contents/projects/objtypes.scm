@@ -53,14 +53,14 @@
      (make-methods
       'THINGS      (lambda () things)
       'HAVE-THING? (lambda (thing)
-                     (memq thing things))
-      'ADD-THING   (lambda (thing)
-                     (if (not (ask self 'HAVE-THING? thing))
-                         (set! things (cons thing things)))
-                     'DONE)
-      'DEL-THING   (lambda (thing)
-                     (set! things (delq thing things))
-                     'DONE))
+                     (if (memq thing things) #t #f))
+      'ADD-THING (lambda (thing)
+                   (if (not (ask self 'HAVE-THING? thing))
+                       (set! things (cons thing things)))
+                   'DONE)
+      'DEL-THING (lambda (thing)
+                   (set! things (delq thing things))
+                   'DONE))
      root-part)))
 
 
@@ -108,9 +108,9 @@
       'LOCATION  (lambda () location) ; This shadows message to thing-part!
       'CHANGE-LOCATION
       (lambda (new-location)
-	(ask location 'DEL-THING self)
-	(ask new-location 'ADD-THING self)
-	(set! location new-location))
+        (ask location 'DEL-THING self)
+        (ask new-location 'ADD-THING self)
+        (set! location new-location))
       'ENTER-ROOM    (lambda () #t)
       'LEAVE-ROOM    (lambda () #t)
       'CREATION-SITE (lambda () (ask thing-part 'location)))
@@ -273,9 +273,9 @@
 
       'DROP
       (lambda (thing)
-	(ask self 'SAY (list "I drop" (ask thing 'NAME)
-			     "at" (ask (ask self 'LOCATION) 'NAME)))
-	(ask thing 'CHANGE-LOCATION (ask self 'LOCATION)))
+        (ask self 'SAY (list "I drop" (ask thing 'NAME)
+                             "at" (ask (ask self 'LOCATION) 'NAME)))
+        (ask thing 'CHANGE-LOCATION (ask self 'LOCATION)))
 
       'GO-EXIT
       (lambda (exit)
@@ -427,7 +427,7 @@
       (lambda ()
 	(if (= (random hunger) 0)
 	    (let ((people (ask self 'PEOPLE-AROUND)))
-	      (if people
+	      (if (not (null? people))
 		  (let ((victim (pick-random people)))
 		    (ask self 'EMIT
 			 (list (ask self 'NAME) "takes a bite out of"
