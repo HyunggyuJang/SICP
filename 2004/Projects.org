@@ -5446,7 +5446,494 @@ exit *..* place : "has-a"
 #+caption: Class diagram
 #+RESULTS:
 [[file:../image/classdiagram.png]]
+*** Warmup Exercise 3
+Look at the contents of the file =setup.scm=. What places are defined? How are
+they interconnected? Draw a map. We must be able to show the places and the
+exits that allow one to go from one place to a neighboring place.
 
+I've done this task using my personal digital paper; since couldn't find some program
+that is easy enough to use and appropriate for this task, let myself satisfy
+with the handwritten result.
+*** Warmup Exercise 4
+Aside from we, the avatar, what other characters roams this world? What sorts of
+things are around? How is it determined which room each person and thing starts
+out in?
+
+**** Answer
+We can answer by inspecting the contents of =setup= procedure in =setup.scm=:
+- Other characters:
+  - Students (=autonomous-person=), distributed randomly by =populate-players=
+    over =rooms=:
+    - Ben Bitdiddle, Alyssa Hacker, Course 6 frosh, Lambda Man
+  - Monitors (=hall-monitor=):
+    - Dr. Evil, Mr. Bigglesworth
+  - Trolls (=troll=):
+    - Grendel, Registrar
+- Static things (=thing=):
+  - blackboard at 10-250
+  - lovely trees at great-court
+  - tons of code at baker
+  - problem set at 10-250
+  - recitation problem at 10-250
+  - sicp at stata center
+  - engineering book at barker-library
+  - diploma at graduation stage
+- Spells (=spell=), each room assigned one of the following spells randomly by
+  =populate-spells= over =rooms=:
+  - boil spell
+  - slug spell
+*** Warmup Exercise 5
+Create an environment diagram corresponding the evaluation of =(define my-foo
+(create-thing 'foo some-location))=. *Warning:* this environment diagram can get
+out of hand, and we required to use this exercise to get a sense of how the
+system works. So, we supposed to do not worry about the value bound to
+=some-location=, just draw it as a blob. Similarly, don't worry about showing
+the object bound to =maker=. For the bindings associated with =methods=, just
+leave the actual value blank. Once we have drawn our environment model, draw
+boxes around the structures that correspond to each of the super-parts of the
+object created.
+
+I've done this with my digital paper.
+*** Warmup Exercise 6
+To warm up, load the three files =objsys.scm=, =objtypes.scm= and =setup.scm=
+and start the simulation by typing =(set up '<our name>)= (where we replace
+=<our name>= with an actual name, of course!). Walk the avatar to a room that
+has an unowned object. Have the avatar =take= this object, only to =drop= it
+somewhere else. Show a transcript of this session.
+
+#+BEGIN_SRC scheme
+(setup 'jang)
+
+;Value: ready
+
+(ask me 'look-around)
+
+You are in building-13
+You are not holding anything.
+You see stuff in the room: slug-spell
+There are no other people around you.
+The exits are in directions: north south
+;Value: ok
+
+(ask screen 'deity-mode #f)
+
+;Value: #t
+
+(ask me 'take (thing-named 'slug-spell))
+
+At building-13 jang says -- I take slug-spell from building-13
+;Value: (instance #[compound-procedure 38 handler])
+
+(ask me 'go 'south)
+
+jang moves from building-13 to lobby-10
+--- the-clock Tick 0 ---
+At lobby-10 course-6-frosh says -- Hi jang
+At lobby-10 lambda-man says -- Hi course-6-frosh jang
+At lobby-10 grendel says -- Hi lambda-man course-6-frosh jang
+;Value: #t
+
+(ask me 'look-around)
+
+You are in lobby-10
+You are holding: slug-spell
+You see stuff in the room: boil-spell
+You see other people: grendel lambda-man course-6-frosh
+The exits are in directions: south north west down up
+;Value: ok
+
+(ask me 'drop (thing-named 'slug-spell))
+
+At lobby-10 jang says -- I drop slug-spell at lobby-10
+;Value: (instance #[compound-procedure 39 handler])
+
+(ask me 'look-around)
+
+You are in lobby-10
+You are not holding anything.
+You see stuff in the room: slug-spell boil-spell
+You see other people: grendel lambda-man course-6-frosh
+The exits are in directions: south north west down up
+;Value: ok
+#+END_SRC
+** Computer Exercises
+*** Some general hints for success:
+- When you need to test a new object that you have created, you can just
+  "create" it in front of you after you run setup. For example. to test a wand
+  (see below), you can use
+  #+BEGIN_SRC scheme
+(begin (setup 'my-name)
+       (create-wand 'my-wand (ask me 'location))
+       (ask me 'take (thing-named 'my-wand))
+       (ask (thing-named 'my-wand) 'wave))
+  #+END_SRC
+  You should not need to change the setup code to do simple tests.
+- Don't forget to re-run setup after you change the code for one of the classes!
+  That is, re-evaluating the class' procedure definition does not change the
+  instances of the class that already exist in the world.
+- Never use =thing-named= in object code, only for testing; this is a corollary
+  to never using "me" except in testing.
+- Outside of the code for create-world, variables such as =lobby-10= are not
+  bound to a value. This means you can't teleport there, or create objects
+  there, or ask it questions without filtering over the variable =all-rooms=.
+*** Hairy Cdr and the Chamber of Stata
+Recently, the Wizard's Institute of Technocracy (WIT) revealed itself as an
+additional department at MIT. It came full-fledged with a large mysterious
+building topped by twin towers. Preliminary exploration of this building
+revealed a very confusing interior (kind of maze-like) and an utter lack of
+square corners. Deep within the center of the building is the reputed Chamber of
+Stata; the source for magic on the eastern seaboard. To the non-muggles, the
+building is chock-full of mystical energy, and students have flocked to the new
+department. We follow the adventures of Hairy Cdr, a young student at WIT who
+narrowly escaped destruction at the hands of a notoriously evil wizard Lord
+Vandimort.
+*** Computer Exercise 1: An adventure of =self=-discovery
+We are provided a powerful tool for exploring the structure of the object system
+in the form of the procedure =show=. For example, after doing a =(setup
+'yourname)=, we can examine the avatar instance with:
+
+#+BEGIN_SRC scheme
+(show me)
+INSTANCE (instance #[compound-procedure 74 handler])
+ TYPE: (avatar person mobile-thing thing named-object root container)
+ HANDLER: #[compound-procedure 74 handler]
+ TYPE: avatar
+(methods (look-around #[compound-procedure 77])
+         (go #[compound-procedure 76])
+         (die #[compound-procedure 75]))
+  Parent frame: #[environment 78]
+  person-part:  #[compound-procedure 79 handler]
+    Parent frame: global-environment
+    self:         (instance #[compound-procedure 74 handler])
+    name:         your-name
+    birthplace:   (instance #[compound-procedure 80 handler])
+;Value: instance
+#+END_SRC
+
+Your numbers may differ, as they are assigned based on when the procedures are
+created, but the form should be the same. The printout includes the type and
+state of the object, including the handlers for the parents of the object. From
+here, we can continue to explore the world by looking at any of the procedures
+displayed. For example, to look at the birthplace (which was =(instance
+#[compound-procedure 80 handler])=):
+
+#+BEGIN_SRC scheme
+(show #[compound-procedure 80 handler])
+ HANDLER: #[compound-procedure 80 handler]
+ TYPE: place
+(methods (exits #[compound-procedure 83])
+         (exit-towards #[compound-procedure 82])
+         (add-exit #[compound-procedure 81]))
+  Parent frame:   #[environment 84]
+  named-part:     #[compound-procedure 85 handler]
+  container-part: #[compound-procedure 86 handler]
+  exits:          ((instance #[compound-procedure 88 handler])
+                 (instance #[compound-procedure 87 handler]))
+    Parent frame: global-environment
+    self:         (instance #[compound-procedure 80 handler])
+    name:         legal-seafood
+;Value: handler
+#+END_SRC
+
+In this manner, we can explore the any object in the system. We can use =#@80=
+as a shortcut for =#[compound-procedure 80 handler]=.
+
+**** Questions
+- Turn in a copy of the show procedure output corresponding to the thing-part of
+  the avatar object. You'll need to go up the inheritance tree a little ways to
+  find it.
+
+  We trace the inheritance tree using the previous figure we drew in [[Warmup Exercise 2][Warmup
+  Exercise 2]]:
+  - =person-part= (=#@79=) \to =mobile-part= (=#@95=) \to =thing-part= (=#@103=)
+    #+BEGIN_SRC scheme
+  (show #@79)
+   HANDLER: #[compound-procedure 79 handler]
+   TYPE: person
+  (methods (strength #[compound-procedure 93])
+           (health #[compound-procedure 92])
+           (say #[compound-procedure 91])
+           (have-fit #[compound-procedure 90])
+           (people-around #[compound-procedure 89])
+           ...)
+    Parent frame:      #[environment 94]
+    mobile-thing-part: #[compound-procedure 95 handler]
+    container-part:    #[compound-procedure 96 handler]
+    health:            3
+    strength:          1
+      Parent frame: global-environment
+      self:         (instance #[compound-procedure 74 handler])
+      name:         your-name
+      birthplace:   (instance #[compound-procedure 80 handler])
+  ;Value: handler
+
+  (show #@95)
+   HANDLER: #[compound-procedure 95 handler]
+   TYPE: mobile-thing
+  (methods (location #[compound-procedure 101])
+           (change-location #[compound-procedure 100])
+           (enter-room #[compound-procedure 99])
+           (leave-room #[compound-procedure 98])
+           (creation-site #[compound-procedure 97]))
+    Parent frame: #[environment 102]
+    thing-part:   #[compound-procedure 103 handler]
+      Parent frame: global-environment
+      self:         (instance #[compound-procedure 74 handler])
+      name:         your-name
+      location:     (instance #[compound-procedure 80 handler])
+  ;Value: handler
+
+  (show #@103)
+   HANDLER: #[compound-procedure 103 handler]
+   TYPE: thing
+  (methods (install #[compound-procedure 107])
+           (location #[compound-procedure 106])
+           (destroy #[compound-procedure 105])
+           (emit #[compound-procedure 104]))
+    Parent frame: #[environment 108]
+    named-part:   #[compound-procedure 109 handler]
+      Parent frame: global-environment
+      self:         (instance #[compound-procedure 74 handler])
+      name:         your-name
+      location:     (instance #[compound-procedure 80 handler])
+  ;Value: handler
+    #+END_SRC
+- Turn in a copy of the show procedure output corresponding to the
+  container-part of the place in which the avatar resides.
+
+  To do this, we
+  1. find out the location where our avatar resides;
+     #+BEGIN_SRC scheme
+(show (ask me 'location))
+INSTANCE (instance #[compound-procedure 80 handler])
+ TYPE: (place container root named-object)
+ HANDLER: #[compound-procedure 80 handler]
+ TYPE: place
+(methods (exits #[compound-procedure 83])
+         (exit-towards #[compound-procedure 82])
+         (add-exit #[compound-procedure 81]))
+  Parent frame:   #[environment 84]
+  named-part:     #[compound-procedure 85 handler]
+  container-part: #[compound-procedure 86 handler]
+  exits:          ((instance #[compound-procedure 88 handler])
+                 (instance #[compound-procedure 87 handler]))
+    Parent frame: global-environment
+    self:         (instance #[compound-procedure 80 handler])
+    name:         legal-seafood
+;Value: instance
+     #+END_SRC
+
+  2. using =show= procedure trace along the =container-part=.
+     #+BEGIN_SRC scheme
+(show #@86)
+ HANDLER: #[compound-procedure 86 handler]
+ TYPE: container
+(methods (things #[compound-procedure 113])
+         (have-thing? #[compound-procedure 112])
+         (add-thing #[compound-procedure 111])
+         (del-thing #[compound-procedure 110]))
+  Parent frame: #[environment 114]
+  root-part:    #[compound-procedure 115 handler]
+  things:       ((instance #[compound-procedure 74 handler])
+               (instance #[compound-procedure 117 handler])
+               (instance #[compound-procedure 116 handler]))
+    Parent frame: global-environment
+    self:         (instance #[compound-procedure 80 handler])
+;Value: handler
+     #+END_SRC
+- After your avatar has moved from its birthplace, use the show procedures to
+  demonstrate what you discovered in warmup exercise 6 about the values of the
+  location variables in =thing= and =mobile-thing=.
+  #+BEGIN_SRC scheme
+(ask me 'look-around)
+
+You are in legal-seafood
+You are not holding anything.
+You see stuff in the room: slug-spell
+You see other people: alyssa-hacker
+The exits are in directions: east south
+;Value: ok
+
+(ask me 'go 'east)
+
+your-name moves from legal-seafood to great-court
+--- the-clock Tick 0 ---
+At great-court course-6-frosh says -- Hi your-name
+;Value: #t
+
+(ask me 'location)
+
+;Value: (instance #[compound-procedure 118 handler])
+
+(ask (ask me 'location) 'name)
+
+;Value: great-court
+
+(ask (ask #@95 'location) 'name)
+
+;Value: great-court
+
+(ask (ask #@103 'location) 'name)
+
+;Value: legal-seafood
+  #+END_SRC
+
+  From these experiment, we can deduce that the location registered in
+  =thing-part= doesn't change once it created with; whereas =mobile-part='s
+  change whenever the instance move around.
+
+  Let we apply what we discovered to warmup exercise 6: The taken thing --
+  =slug-spell= in our case -- is instance of =mobile-part= (we can substitute
+  instance of subclass of one as instance of one; it is one of the contract
+  inheritance relationship in OOP) changes its location from its creation site
+  =building-13= to the avatar and finally to =lobby-10= where =me= drop that
+  stuff. More specifically, as =mobile-part='s =loaction= method overrides
+  =thing-part='s, if we ask the instance its location, if the class of instance
+  does not override the =location= method further, it return the method of
+  =mobile-part= -- in other words, it shadows super-part's method.
+- Finally, investigate all the superclass handlers in the avatar object. Does
+  the value of the =self= variable ever change? If it does change, what other
+  thing(s) does it point to? If it doesn't, what does it always point to?
+
+  We can simply answer to this question from what we've learned from lecture (or
+  =objsys.scm=) that all the parts of instance point to that instance using
+  =self= parameter; it was the contract to the structure of OOP. But we can
+  inspect this fact not depending on the contract but by observing the results
+  of experiments. Here, we use the latter approach as the question want that.
+
+  With help of the hierarchical structure of our classes, we can deduce the
+  superclasses of the avatar as follows: person, mobile-thing, thing,
+  named-object, root, container.
+
+  Or by using the =type= method of =avatar=,
+  #+BEGIN_SRC scheme
+(ask me 'type)
+
+;Value: (avatar person mobile-thing thing named-object root container)
+  #+END_SRC
+
+  Let we inspect all of the value of =self= in above instance part of classes:
+  #+BEGIN_SRC scheme
+;; avatar
+(show me)
+INSTANCE (instance #[compound-procedure 74 handler])
+ TYPE: (avatar person mobile-thing thing named-object root container)
+ HANDLER: #[compound-procedure 74 handler]
+ TYPE: avatar
+(methods (look-around #[compound-procedure 77])
+         (go #[compound-procedure 76])
+         (die #[compound-procedure 75]))
+  Parent frame: #[environment 78]
+  person-part:  #[compound-procedure 79 handler]
+    Parent frame: global-environment
+    self:         (instance #[compound-procedure 74 handler])
+    name:         your-name
+    birthplace:   (instance #[compound-procedure 80 handler])
+;Value: instance
+
+;; person
+(show #@79)
+ HANDLER: #[compound-procedure 79 handler]
+ TYPE: person
+(methods (strength #[compound-procedure 93])
+         (health #[compound-procedure 92])
+         (say #[compound-procedure 91])
+         (have-fit #[compound-procedure 90])
+         (people-around #[compound-procedure 89])
+         ...)
+  Parent frame:      #[environment 94]
+  mobile-thing-part: #[compound-procedure 95 handler]
+  container-part:    #[compound-procedure 96 handler]
+  health:            3
+  strength:          1
+    Parent frame: global-environment
+    self:         (instance #[compound-procedure 74 handler])
+    name:         your-name
+    birthplace:   (instance #[compound-procedure 80 handler])
+;Value: handler
+
+;; mobile-thing
+(show #@95)
+ HANDLER: #[compound-procedure 95 handler]
+ TYPE: mobile-thing
+(methods (location #[compound-procedure 101])
+         (change-location #[compound-procedure 100])
+         (enter-room #[compound-procedure 99])
+         (leave-room #[compound-procedure 98])
+         (creation-site #[compound-procedure 97]))
+  Parent frame: #[environment 102]
+  thing-part:   #[compound-procedure 103 handler]
+    Parent frame: global-environment
+    self:         (instance #[compound-procedure 74 handler])
+    name:         your-name
+    location:     (instance #[compound-procedure 118 handler])
+;Value: handler
+
+;; thing
+(show #@103)
+ HANDLER: #[compound-procedure 103 handler]
+ TYPE: thing
+(methods (install #[compound-procedure 107])
+         (location #[compound-procedure 106])
+         (destroy #[compound-procedure 105])
+         (emit #[compound-procedure 104]))
+  Parent frame: #[environment 108]
+  named-part:   #[compound-procedure 109 handler]
+    Parent frame: global-environment
+    self:         (instance #[compound-procedure 74 handler])
+    name:         your-name
+    location:     (instance #[compound-procedure 80 handler])
+;Value: handler
+
+;; named-object
+(show #@109)
+ HANDLER: #[compound-procedure 109 handler]
+ TYPE: named-object
+(methods (name #[compound-procedure 127])
+         (install #[compound-procedure 126])
+         (destroy #[compound-procedure 125]))
+  Parent frame: #[environment 128]
+  root-part:    #[compound-procedure 129 handler]
+    Parent frame: global-environment
+    self:         (instance #[compound-procedure 74 handler])
+    name:         your-name
+;Value: handler
+
+;; root
+(show #@129)
+ HANDLER: #[compound-procedure 129 handler]
+ TYPE: root
+(methods (is-a #[compound-procedure 130]))
+  Parent frame: global-environment
+  self:         (instance #[compound-procedure 74 handler])
+;Value: handler
+
+;; container
+(show #@96)
+ HANDLER: #[compound-procedure 96 handler]
+ TYPE: container
+(methods (things #[compound-procedure 122])
+         (have-thing? #[compound-procedure 121])
+         (add-thing #[compound-procedure 120])
+         (del-thing #[compound-procedure 119]))
+  Parent frame: #[environment 123]
+  root-part:    #[compound-procedure 124 handler]
+  things:       ()
+    Parent frame: global-environment
+    self:         (instance #[compound-procedure 74 handler])
+;Value: handler
+
+;; root
+(show #@124)
+ HANDLER: #[compound-procedure 124 handler]
+ TYPE: root
+(methods (is-a #[compound-procedure 131]))
+  Parent frame: global-environment
+  self:         (instance #[compound-procedure 74 handler])
+;Value: handler
+  #+END_SRC
+
+  As expected all the super-parts of =me= point =me= as the value of =self= variable.
 * Footnotes
 
 [fn:5] We can ask only the objects -- instances -- to request the method;
