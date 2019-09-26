@@ -5281,7 +5281,7 @@ will find such a diagram helpful (maybe indispensable) in doing the programming 
 I've done this manually; here we attempt to do the task by using the program
 called plantUML.
 
-#+BEGIN_SRC plantuml :file ../image/classdiagram.png
+#+BEGIN_SRC plantuml :file ../image/classdiagram.png :exports results
 class root-object {
     self
     {method} IS-A
