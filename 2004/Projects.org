@@ -2531,7 +2531,7 @@ if you start from some node and manage to return to that same node after
 traversing one or more edges. So for example, the nodes W, X and Y form a cycle,
 as does the node V by itself.
 
-#+BEGIN_SRC dot :file ../image/fig1.png 
+#+BEGIN_SRC dot :file ../image/fig1.png :exports results
 digraph {
 X -> { V Y };
 V -> V;
@@ -2551,7 +2551,7 @@ A second example of a directed graph is shown in Figure 2. This particular
 directed graph happens to be a tree: each node is pointed to by only one other
 node and thus there is no sharing of nodes, and there are no cycles (or loops).
 
-#+BEGIN_SRC dot :file ../image/fig2.png
+#+BEGIN_SRC dot :file ../image/fig2.png :exports results
 digraph {
 A -> { B I M };
 B -> { C D E H };
@@ -3172,7 +3172,7 @@ test-cycle
 #+END_SRC
 
 The structure of =test-cycle= can be structured as following figure:
-#+BEGIN_SRC dot :file ../image/fig3.png
+#+BEGIN_SRC dot :file ../image/fig3.png :exports results
 digraph {
 A -> { B C };
 B -> C;
@@ -3401,7 +3401,7 @@ Write this procedure and show it working on appropriate test cases.
 
 Here is the implementation. The idea behind below code is for each of word from
 contents apply =add-to-index!=:
-#+BEGIN_SRC dot :file ../image/fig4.png
+#+BEGIN_SRC dot :file ../image/fig4.png :exports results
 digraph {
         subgraph cluster {
         label="Contents of url"
@@ -5934,6 +5934,1243 @@ INSTANCE (instance #[compound-procedure 74 handler])
   #+END_SRC
 
   As expected all the super-parts of =me= point =me= as the value of =self= variable.
+*** Computer Exercise 2: I know I had one of those things somewhere...
+For many of the things that follow, it is going to be handy to be able to tell
+if a person has in his/her possession either a specific type of thing, or a
+specific instance of a thing. For example, we might want to know if a person has
+any objects of type =spell=:
+#+BEGIN_SRC scheme
+(ask me 'HAS-A 'spell)
+
+;Value: ((instance #[compound-procedure 134 handler]))
+#+END_SRC
+
+That is, we can ask if some person (me in this case) has any objects of a
+particular type. This should look through the set of =THINGS= held by the person
+and return a list of those objects, or the empty list if the person does not
+possess any objects of this type.
+
+We can code above specification directly by
+#+BEGIN_SRC dot :file ../image/proj4_1.png :exports results
+digraph {
+        subgraph cluster {
+        label="self's things"
+        thing;
+        }
+        thing -> "(eq? type (ask _ 'type))";
+        "(eq? type (ask _ 'type))" -> result;
+        }
+#+END_SRC
+
+#+caption: Visualizing the specification
+#+RESULTS:
+[[file:../image/proj4_1.png]]
+
+#+BEGIN_SRC scheme
+,*** in person class
+      'HAS-A
+      (lambda (type)
+        (filter (lambda (thing) (eq? type (car (ask thing 'TYPE)))) (ask self 'THINGS)))
+#+END_SRC
+
+Or using the =find-all= procedure:
+#+BEGIN_SRC scheme
+,*** in person class
+      'HAS-A
+      (lambda (type)
+        (find-all self type))
+#+END_SRC
+
+The second behavior we want is similar, but now we are looking for an instance
+of an object with a particular name:
+
+#+BEGIN_SRC scheme
+(ask me 'HAS-A-THING-NAMED 'slug-spell)
+
+;Value: ((instance #[compound-procedure 134 handler]))
+#+END_SRC
+
+Modify your definition of =person= to add these two new methods. Demonstrate
+them working on some test cases.
+
+Analogous to previous method, we can implement given specification as
+#+BEGIN_SRC scheme
+,*** in person class
+      'HAS-A-THING-NAMED
+      (lambda (name)
+        (filter (lambda (thing) (eq? name (ask thing 'NAME))) (ask self 'THINGS)))
+#+END_SRC
+
+Here is the sequence of tests:
+#+BEGIN_SRC scheme
+(ask me 'look-around)
+
+You are in edgerton-hall
+You are not holding anything.
+You see stuff in the room: slug-spell
+There are no other people around you.
+The exits are in directions: north up south
+;Value: ok
+
+(ask me 'take (thing-named 'slug-spell))
+
+At edgerton-hall jang says -- I take slug-spell from edgerton-hall
+;Value: (instance #[compound-procedure 134 handler])
+
+(ask me 'HAS-A-THING-NAMED 'slug-spell)
+
+;Value: ((instance #[compound-procedure 134 handler]))
+
+(ask me 'HAS-A 'spell)
+
+;Value: ((instance #[compound-procedure 134 handler]))
+#+END_SRC
+*** Computer Exercise 3: Scoping the Joint
+Hairy is a big fan of Star Wars -- he has seen it a zillion times (Hey -- George
+Lucas was a Hogwarts' graduate). As a consequence, a key element in his tool of
+tricks is an ability to sense the locations of people in the world, by "feeling
+the force".
+
+Add a method =FEEL-THE-FORCE= to the =avatar= which displays the name and
+location of everybody. We will find the procedure =all-people= (see the file
+=objsys.scm=) useful. And we may find the procedure =for-each= useful. The
+behavior we want is shown below (note that is sees "me" -- vandimort in this
+case):
+
+#+BEGIN_SRC scheme
+(ask me 'FEEL-THE-FORCE)
+
+mr-bigglesworth is at barker-library
+alyssa-hacker is at barker-library
+grendel is at eecs-ug-office
+vandimort is at |34-301|
+registrar is at great-court
+course-6-frosh is at stata-center
+dr-evil is at bexley
+lambda-man is at bexley
+ben-bitdiddle is at baker
+;Unspecified return value
+#+END_SRC
+
+The code:
+#+BEGIN_SRC scheme
+,*** in the avatar class
+      'FEEL-THE-FORCE
+      (lambda ()
+        (for-each (lambda (p)
+                    (newline)
+                    (display (ask p 'name))
+                    (display " is at ")
+                    (display (ask (ask p 'location) 'name)))
+                  (all-people)))
+#+END_SRC
+
+Actually the example shown above was the test of above procedure.
+*** Computer Exercise 4: Sometimes Being Vague is in Vogue
+Another key component of Hairy Cdr's success is his Ring of Obfuscation. This
+brass ring engraved with the shape of beaver prevents the person carrying it
+from being seen! Implement a new type of mobile-thing, a ring-of-obfuscation. A
+ring-of-obfuscation is an instance of an object that does not accept any new
+types of messages, being the simplest extension of a mobile-object. Then change
+=person= so that when they look for the =PEOPLE-AROUND=, people who are carrying
+rings-of-obfuscation are not returned. Note that the "feel the force" ability
+should be fooled by such rings, so you may want to alter your solution to
+Exercise 3 to reflect this.
+
+**** Answer
+The ring-of-obfuscation is just mobile-thing but with different type if we
+summary above specification:
+#+BEGIN_SRC scheme
+(define (ring-of-obfuscation self location)
+  (let ((mobile-part (mobile-thing self 'ring-of-obfuscation location)))
+    (make-handler
+     'ring-of-obfuscation
+     (make-methods)
+     mobile-part)))
+#+END_SRC
+
+Then for the first part of the requirement -- =PEOPLE-AROUND= method:
+#+BEGIN_SRC dot :file ../image/proj4_2.png :exports results
+digraph {
+        subgraph cluster {
+        label="People around in the room"
+        person;
+        }
+        person -> "except self";
+        "except self"-> "(null? (ask _ 'HAS-A 'ring-of-obfuscation))";
+        }
+#+END_SRC
+
+#+RESULTS:
+[[file:../image/proj4_2.png]]
+
+Then the code, which implement above specification:
+#+BEGIN_SRC scheme
+,*** in person class
+      'PEOPLE-AROUND                    ; other people in room...
+      (lambda ()
+        ;; Exercise 4
+        (filter (lambda (p)
+                  (null? (ask p 'HAS-A 'ring-of-obfuscation)))
+
+                (delq self (find-all (ask self 'LOCATION) 'PERSON))))
+#+END_SRC
+
+And for the avatar:
+#+BEGIN_SRC scheme
+,*** in avatar class
+      'FEEL-THE-FORCE
+      (lambda ()
+        (for-each (lambda (p)
+                    (newline)
+                    (display (ask p 'name))
+                    (display " is at ")
+                    (display (ask (ask p 'location) 'name)))
+                  (filter (lambda (p) (null? (ask p 'HAS-A 'ring-of-obfuscation)))
+                          (all-people))))
+#+END_SRC
+
+For the population of this ring, we decided to make this ring to be unique one:
+#+BEGIN_SRC scheme
+(define (populate-ring-of-obfuscation rooms)
+  (create-ring-of-obfuscation (pick-random rooms)))
+#+END_SRC
+
+Then add appropriate code to the =setup=:
+#+BEGIN_SRC scheme
+,*** in setup
+    (populate-spells rooms)
+
+    (populate-players rooms)
+
+    (populate-ring-of-obfuscation rooms)
+#+END_SRC
+
+And then test:
+#+BEGIN_SRC scheme
+(setup 'vandimort)
+
+;Value: ready
+
+(create-ring-of-obfuscation me)
+
+;Value: (instance #[compound-procedure 146 handler])
+
+(ask me 'look-around)
+
+You are in |10-250|
+You are holding: ring-of-obfuscation
+You see stuff in the room: boil-spell recitation-problem problem-set blackboard
+There are no other people around you.
+The exits are in directions: up down
+;Value: ok
+
+(ask me 'FEEL-THE-FORCE)
+
+registrar is at barker-library
+course-6-frosh is at barker-library
+dr-evil is at |6001-lab|
+ben-bitdiddle is at building-13
+grendel is at stata-center
+lambda-man is at baker
+alyssa-hacker is at legal-seafood
+mr-bigglesworth is at graduation-stage
+;Unspecified return value
+
+(ask me 'go 'down)
+
+vandimort moves from |10-250| to lobby-10
+--- the-clock Tick 0 ---
+At lobby-10 ben-bitdiddle says -- I take boil-spell from lobby-10
+At lobby-10 course-6-frosh says -- Hi ben-bitdiddle
+;Value: #t
+
+(ask me 'look-around)
+
+You are in lobby-10
+You are holding: ring-of-obfuscation
+You see stuff in the room: ring-of-obfuscation
+You see other people: course-6-frosh ben-bitdiddle
+The exits are in directions: south north west down up
+;Value: ok
+#+END_SRC
+*** Computer Exercise 5: Wand to cause some trouble?
+A spell is a type of mobile-thing which can be =USE= d to effect some magical
+work. However, the only way to use a spell is to wave a wand around. Implement a
+new type of object, a wand. Since a wand should be something that can be
+transported from place to place, we should think about the class of objects from
+which it should inherit. Wands have no interesting properties of their own,
+other than a name and a location. A wand should automatically figure out its
+caster by looking at its location, and not work unless a person is carrying it.
+A wand needs to support two methods:
+- =ZAP= :: takes a target to be zapped as its argument. It should pick a random
+     spell from the caster's =THINGS=, print out a message (using the caster's
+     =EMIT= method) about how the caster is waving the wand and saying the
+     spell's =INCANT=, then ask the spell to =USE= with the caster and the
+     target. If the caster isn't carrying any spells, it should print out a
+     message about how the caster is waving the wand, but nothing is happening.
+
+     Here is the flowchart of above description:
+     #+BEGIN_SRC plantuml :file ../image/proj4_3.png :exports results
+(*) --> "Take argument: target"
+if "'HAS-A 'spell" then
+    -->[not null] "pick-random"
+    --> "(ask self 'EMIT ...)"
+    --> "(ask _ 'USE self target)"
+else
+    -->[null] "(ask self 'EMIT ...)"
+endif
+     #+END_SRC
+
+     #+RESULTS:
+     [[file:../image/proj4_3.png]]
+
+     And the code that implements given task:
+     #+BEGIN_SRC scheme
+,*** in wand class
+      'ZAP
+      (lambda (target)
+        (let ((caster (ask self 'location)))
+          (if (ask caster 'is-a 'person) ;works only if the caster is person
+              (let ((spells (ask self 'HAS-A 'spell))
+                    (wave (list (ask caster 'name)
+                                "waves"
+                                (ask self 'name)
+                                "towards"
+                                (ask target 'name))))
+                (if (not (null? spells))
+                    (let* ((spell (pick-random spells))
+                           (incant (list "incanting"
+                                         (ask spell 'INCANT))))
+                      (ask caster 'EMIT
+                           (append wave
+                                   incant))
+                      (ask spell 'USE caster target))
+                    (ask caster 'EMIT
+                         (append wave
+                                 (list "but nothing happend"))))))))
+     #+END_SRC
+- =WAVE= :: takes no arguments. It picks a random target from the set of things
+     at the caster's location, picks a random spell from the caster's =THINGS=,
+     prints out a message (using the caster's =EMIT=) about how the caster is
+     waving the wand and saying the spell's =INCANT=, then asks the spell to
+     =USE= with the caster and the target. We should do this by employing the
+     =ZAP= method. We should decide whether we want this to apply only to
+     people, or to any type of thing. We should probably also ensure that we
+     don't accidentally cast a spell on ourself.
+
+     For the first decision, we choose to the latter one -- any type of thing
+     (actually which is required by the following exercise); for the second, we
+     can exploit the strategy of =PEOPLE-AROUND= method of =person= -- =delq= self.
+
+     Here is the code that do the right things:
+     #+BEGIN_SRC scheme
+,*** in wand class
+      'WAVE
+      (lambda ()
+        (let* ((caster (ask self 'location))
+               (target (pick-random
+                        (delq caster
+                              (ask (ask caster 'location)
+                                   'things)))))
+          (if target
+              (ask self 'ZAP target)
+              (ask caster 'EMIT
+                   (list (ask caster 'name)
+                         "waved but there is nothing in the room")))))
+     #+END_SRC
+
+
+Here is the complete code:
+#+BEGIN_SRC scheme
+(define (wand self name location)
+  (let ((mobile-part (mobile-thing self name location)))
+    (make-handler
+     'wand
+     (make-methods
+      'ZAP
+      (lambda (target)
+        (let ((caster (ask self 'location)))
+          (if (ask caster 'is-a 'person) ;works only if the caster is person
+              (let ((spells (ask caster 'HAS-A 'spell))
+                    (wave (list (ask caster 'name)
+                                "waves"
+                                (ask self 'name)
+                                "towards"
+                                (ask target 'name))))
+                (if (not (null? spells))
+                    (let* ((spell (pick-random spells))
+                           (incant (list "incanting"
+                                         (ask spell 'INCANT))))
+                      (ask caster 'EMIT
+                           (append wave
+                                   incant))
+                      (ask spell 'USE caster target))
+                    (ask caster 'EMIT
+                         (append wave
+                                 (list "but nothing happend"))))))))
+      'WAVE
+      (lambda ()
+        (let ((caster (ask self 'location)))
+          (if (ask caster 'is-a 'person)
+              (let  ((target (pick-random
+                              (delq caster
+                                    (ask (ask caster 'location)
+                                         'things)))))
+                (if target
+                    (ask self 'ZAP target)
+                    (ask caster 'EMIT
+                         (list (ask caster 'name)
+                               "waved"
+                               (ask self 'name)
+                               "but there is nothing in the room")))))))
+      )
+     mobile-part)))
+(define (create-wand name location)
+  (create-instance wand name location))
+#+END_SRC
+
+Here is the test:
+#+BEGIN_SRC scheme
+;; first path
+(ask (thing-named 'absolute-wand) 'wave)
+
+At |34-301| vandimort waves absolute-wand towards lambda-man incanting habooic katarnum
+At |34-301| lambda-man grows boils on their nose
+
+(ask me 'look-around)
+
+You are in eecs-ug-office
+You are holding: boil-spell absolute-wand
+There is no stuff in the room.
+There are no other people around you.
+The exits are in directions: east
+;Value: ok
+
+;; third path
+(ask me 'look-around)
+
+You are in eecs-hq
+You are holding: slug-spell absolute-wand boil-spell
+There is no stuff in the room.
+There are no other people around you.
+The exits are in directions: up west down
+;Value: ok
+
+(ask (car (ask me 'HAS-A 'wand)) 'wave)
+
+At eecs-hq vandimort waved absolute-wand but there is nothing in the room
+;Value: message-displayed
+
+;; second path
+(ask me 'look-around)
+
+You are in stata-center
+You are not holding anything.
+There is no stuff in the room.
+There are no other people around you.
+The exits are in directions: down up south north west
+;Value: ok
+
+(create-wand 'my-wand me)
+
+;Value: (instance #[compound-procedure 182 handler])
+
+(ask (thing-named 'my-wand) 'wave)
+
+At stata-center vandimort waves my-wand towards lambda-man but nothing happend
+;Value: message-displayed
+
+(create-wand 'test-wand (ask me 'location))
+
+;Value: (instance #[compound-procedure 183 handler])
+
+;; caster is not a person.
+(ask (thing-named 'test-wand) 'wave)
+
+;Unspecified return value
+#+END_SRC
+
+Our test is path-complete.
+*** Computer Exercise 6: Spell out the options
+Examine the =(instantiate-spells)= code in =setup.scm=. This should help we
+understand the kinds of properties that spells possess.
+
+Note that the two spells provided to us seem to implicitly assume that the
+target is a person (unless other things have noses and mouths!) yet the code we
+wrote in the previous exercise could easily have a =WAVE= action apply to a
+non-person object or thing.
+**** Modify the code in =setup.scm= so that the two spells provided only work on
+targets that are people.
+
+Here is the change:
+#+BEGIN_SRC scheme
+,*** in instantiate-spells
+    (create-spell
+     'boil-spell
+     chamber
+     "habooic katarnum"
+     (lambda (caster target)
+       (if (ask target 'is-a 'person)
+           (ask target 'EMIT (list (ask target 'NAME) "grows boils on their nose")))))
+    (create-spell
+     'slug-spell
+     chamber
+     "dagnabbit ekaterin"
+     (lambda (caster target)
+       (cond ((ask target 'is-a 'person)
+              (ask target 'EMIT (list "A slug comes out of" (ask target 'NAME) "'s mouth."))
+              (create-mobile-thing 'slug (ask target 'LOCATION))))))
+#+END_SRC
+
+Here is the test:
+#+BEGIN_SRC scheme
+(ask me 'look-around)
+
+You are in building-13
+You are holding: boil-spell vandi-wand
+You see stuff in the room: boil-spell
+There are no other people around you.
+The exits are in directions: north south
+;Value: ok
+
+(ask #@38 'wave)
+
+At building-13 vandimort waves vandi-wand towards boil-spell incanting habooic katarnum
+;Unspecified return value
+...
+
+(ask me 'look-around)
+
+You are in eecs-hq
+You are holding: boil-spell vandi-wand
+There is no stuff in the room.
+You see other people: lambda-man
+The exits are in directions: up west down
+;Value: ok
+
+(ask #@38 'wave)
+
+At eecs-hq vandimort waves vandi-wand towards lambda-man incanting habooic katarnum
+At eecs-hq lambda-man grows boils on their nose
+;Value: message-displayed
+#+END_SRC
+
+**** Now, create a new spell, called =WIND-OF-DOOM=. This spell if applied to a
+person should cause, at random, up to 2 units of suffering. If applied to any
+other object, it should destroy the target.
+
+That is, the question statement want we to dispatch on type in OOP!
+
+Here is the code:
+#+BEGIN_SRC scheme
+,*** in the instantiate-spells
+    (create-spell
+     'WIND-OF-DOOM
+     chamber
+     "atstrock do da wanda"
+     (lambda (caster target)
+       (cond ((ask target 'is-a 'person)
+              (ask target 'EMIT (list "Wind of doom swoon" (ask target 'NAME)))
+              (ask target 'SUFFER (random-number 2) caster))
+             (else
+              (ask target 'EMIT (list "Wind of doom swoon" (ask target 'NAME)))
+              (ask target 'DESTROY)))))
+#+END_SRC
+
+And test:
+#+BEGIN_SRC scheme
+(clone-spell (car (ask chamber-of-stata 'things)) me)
+
+;Value: (instance #[compound-procedure 46 handler])
+
+(ask (car (ask me 'has-a 'wand)) 'wave)
+
+At |6001-lab| jang waves jangs-wand towards lambda-man incanting atstrock do da wanda
+At |6001-lab| Wind of doom swoon lambda-man
+At |6001-lab| lambda-man says -- Ouch! 2 hits is more than I want!
+;Value: 1
+#+END_SRC
+
+**** Finally, create some completely new spell of your design and add it to the world.
+Here, we attempt to make two kind of spells that possess completely opposite
+characters.
+
+- Patronus spell :: kills (destroys) the given target. It is going to be used to
+     implementing Dementor class, which we are going to use in Exercise 11.
+     #+BEGIN_SRC scheme
+,*** in instantiate-spell
+    (create-spell
+     'PATRONUS
+     "Expecto Patronum"
+     (lambda (caster target)
+       (cond ((ask target 'is-a 'person)
+              (ask target 'EMIT (list "patronus got" (ask target 'NAME)))
+              (ask target 'DIE caster))
+             (else
+              (ask target 'EMIT (list "patronus got" (ask target 'NAME)))
+              (ask target 'DESTROY)))))
+     #+END_SRC
+- Episkey spell :: heals minor injuries. To implement this spell, we need to
+     modify =person= class to support healing action as follows:
+     #+BEGIN_SRC scheme
+,*** in person class
+      'RECOVER
+      (lambda (healing benefactor)
+        (ask self 'SAY (list "Wao!" healing "is what I exactly wanted! Thanks"
+                             (ask benefactor 'name)))
+        (set! health (+ health healing))
+        health)
+     #+END_SRC
+
+     Then the spell:
+     #+BEGIN_SRC scheme
+,*** in instantiate-spell
+    (create-spell
+     'EPISKEY
+     "Episkey"
+     (lambda (caster target)
+       (cond ((ask target 'is-a 'person)
+              (ask target 'EMIT (list "episkey covered" (ask target 'NAME)))
+              (ask target 'RECOVER (random-number 2) caster))
+             )))
+     #+END_SRC
+
+
+Let's test those spells:
+#+BEGIN_SRC scheme
+(ask (car (ask me 'has-a 'wand)) 'wave)
+
+At great-court jang waves jangs-wand towards ben-bitdiddle incanting Expecto Patronum
+At great-court patronus got ben-bitdiddle
+At great-court ben-bitdiddle says -- SHREEEEK!  I, uh, suddenly feel very faint...
+An earth-shattering, soul-piercing scream is heard...
+;Value: done
+
+(ask (car (ask me 'has-a 'wand)) 'wave)
+
+At building-13 jang waves jangs-wand towards lambda-man incanting Episkey
+At building-13 episkey covered lambda-man
+At building-13 lambda-man says -- Wao! 1 is what I exactly wanted! Thanks jang
+
+(ask me 'look-around)
+
+You are in building-13
+You are holding: ring-of-obfuscation patronus episkey jangs-wand
+You see stuff in the room: slug-spell
+You see other people: lambda-man
+The exits are in directions: north south
+;Value: ok
+#+END_SRC
+*** Computer Exercise 7: ZAPpity do dah!
+The halls of Stata are filled with enterprising WIT students who try out their
+spells on anybody and everybody. Implement a new type of class, a wit-student,
+which acts like an autonomous-person, but also attempts to ZAP people each tick
+of the clock. Every tick, the student should try to find a wand in its things,
+then find another person in the room, and if both are found, =ZAP= the wand at
+the person. If the student has a wand, but there are no people present, then the
+student should =WAVE= the wand at a random target. You may wish to look at the
+=INSTALL= code for autonomous-person to see how to add clock callbacks. Remember
+that the students should stop zapping or waving their wands when they're dead.
+
+In order to assist in the wand-zapping, each student should begin their life
+carrying a wand. This wand should end up in the usual =THINGS= list so that it
+can be stolen, dropped, etc.
+
+Alter =setup.scm= to populate the world with students instead of
+autonomous-persons. Turn in your code for =wit-student= and show examples of the
+working.
+**** Answer
+Let we visualize what the above describe:
+#+BEGIN_SRC plantuml :exports results :file ../image/proj4_4.png
+(*) --> "wit-student's callback method"
+if "(ask self 'has-a 'wand)" then
+    -->[not null] "(pick-random _)"
+
+    if "(ask self 'people-around)" then
+        -->[not null] "(pick-random __)"
+        --> "(ask wand 'zap person)"
+    else
+        -->[null] "(ask wand 'wave)"
+    endif
+endif
+#+END_SRC
+
+#+RESULTS:
+[[file:../image/proj4_4.png]]
+
+Then the resulting class:
+#+BEGIN_SRC scheme
+(define (create-wit-student name birthplace speed miserly)
+  (create-instance wit-student name birthplace speed miserly))
+
+(define (wit-student self name birthplace speed miserly)
+  (let ((auto-part (autonomous-person self name birthplace speed miserly)))
+    (make-handler
+     'wit-student
+     (make-methods
+      'INSTALL
+      (lambda ()
+        (ask auto-part 'INSTALL)
+        ;; register callback method
+        (ask clock 'ADD-CALLBACK
+             (create-clock-callback 'zappity-do-dah self
+                                    'ZAPPITY-DO-DAH))
+        ;; born with one's own wand
+        (create-wand (symbol-append name '-wand) self)
+        'done)
+      'ZAPPITY-DO-DAH
+      (lambda ()
+        (let ((wands (ask self 'has-a 'wand)))
+          (if (not (null? wands))       ;has wand?
+              (let ((people (ask self 'PEOPLE-AROUND))
+                    (wand (pick-random wands))) ;pick wand randomly
+                (if (not (null? people))
+                    (let ((person (pick-random people)))
+                      (ask wand 'ZAP person))
+                    (ask wand 'WAVE)))
+              )))                       ;do not have wand -- ignore the method call
+      'DIE
+      (lambda (perp)
+        (ask clock 'REMOVE-CALLBACK self 'zappity-do-dah)
+        (ask auto-part 'DIE perp)))
+     auto-part)))
+#+END_SRC
+
+And change the =setup.scm=:
+#+BEGIN_SRC scheme
+,*** in populate-players
+...
+  (let* students map lambda (name)
+                          create-wit-student name
+...
+                          )
+...
+#+END_SRC
+
+Let's test this:
+#+BEGIN_SRC scheme
+(run-clock 3)
+
+--- the-clock Tick 0 ---
+ben-bitdiddle moves from bexley to student-center
+At student-center ben-bitdiddle says -- I take episkey from student-center
+At student-center ben-bitdiddle waved ben-bitdiddle-wand but there is nothing in the room
+alyssa-hacker moves from bexley to baker
+At baker alyssa-hacker says -- Hi grendel
+At baker alyssa-hacker says -- I take patronus from baker
+At baker alyssa-hacker waves alyssa-hacker-wand towards grendel incanting Expecto Patronum
+At baker patronus got grendel
+At baker grendel says -- SHREEEEK!  I, uh, suddenly feel very faint...
+An earth-shattering, soul-piercing scream is heard...
+course-6-frosh moves from great-court to legal-seafood
+course-6-frosh moves from legal-seafood to edgerton-hall
+At edgerton-hall course-6-frosh says -- I take ring-of-obfuscation from edgerton-hall
+At edgerton-hall course-6-frosh waves course-6-frosh-wand towards boil-spell but nothing happend
+lambda-man moves from barker-library to |10-250|
+lambda-man moves from |10-250| to barker-library
+At barker-library lambda-man waves lambda-man-wand towards engineering-book but nothing happend
+...
+#+END_SRC
+
+
+#  LocalWords:  dah
+*** Computer Exercise 8: I profess, these students are incorrigible!
+In addition to students, WIT employs a number of professors whose job is to
+teach students spells! Implement a wit-professor that acts like a wit-student,
+except each tick of the clock it also looks around for a student to whom he or
+she can teach a spell. Teaching a spell to a student involves cloning a spell
+out of the Chamber of Stata and into the student's inventory.
+
+**** Answer
+To implement given task, we need to decide whether we teach a spell from
+wit-professor to wit-professer not only to wit-student. In real world, we don't
+"teach" professor at all; so let that apply to our world also. To do such a
+thing, first, we need to modify the wit-student class and other as follows
+#+BEGIN_SRC plantuml :exports results :file ../image/proj4_5.png
+class wit-person {
+    name
+    birthplace
+    speed
+    miserly
+    __
+    INSTALL
+    ZAPPITY-DO-DAH
+    DIE
+}
+
+class wit-student {
+    name
+    birthplace
+    speed
+    miserly
+}
+
+class wit-professor {
+    name
+    birthplace
+    speed
+    miserly
+    __
+    INSTALL
+    TEACH
+    DIE
+}
+
+"wit-person" <|-- "wit-student"
+"wit-person" <|-- "wit-professor"
+#+END_SRC
+
+#+RESULTS:
+[[file:../image/proj4_5.png]]
+
+Then the code:
+#+BEGIN_SRC scheme
+(define (create-wit-professor name birthplace speed miserly)
+  (create-instance wit-professor name birthplace speed miserly))
+(define (wit-professor name birthplace speed miserly)
+  (let ((wit-part (wit-person name birthplace speed miserly)))
+    (make-handler
+     'wit-professor
+     (make-methods
+      'INSTALL
+      (lambda ()
+        (ask wit-part 'INSTALL)
+        ;; register callback method
+        (ask clock 'ADD-CALLBACK
+             (create-clock-callback 'teach self
+                                    'TEACH)))
+      'TEACH
+      (lambda ()
+        (let ((students (find-all (ask self 'location) 'wit-student)))
+          (if (not (null? students))
+              (let ((student (pick-random students))
+                    (spell (pick-random (ask chamber-of-stata 'THINGS))))
+                (ask self 'say
+                     (list "Hey,"
+                           (ask student 'name)
+                           "come here,"
+                           "you are so lucky."
+                           "I'll teach you"
+                           (ask spell 'name)))
+                (ask student 'EMIT
+                     (list (ask student 'name)
+                           "learned"
+                           (ask spell 'name)
+                           "from"
+                           "prof."
+                           (ask self 'name)))
+                (clone-spell spell student)))))
+
+      'DIE
+      (lambda (perp)
+        (ask clock 'REMOVE-CALLBACK self 'teach)
+        (ask auto-part 'DIE perp))
+      ))))
+#+END_SRC
+
+Test:
+#+BEGIN_SRC scheme
+(run-clock 1)
+
+--- the-clock Tick 0 ---
+...
+At |6001-lab| susan-hockfield says -- Hey, alyssa-hacker come here, you are so lucky. I'll teach you slug-spell
+At |6001-lab| alyssa-hacker learned slug-spell from prof. susan-hockfield
+...
+;Value: done
+#+END_SRC
+*** Computer Exercise 9: Oh yeah, well take that!
+To make things a fair fight, we want to add something that can counteract
+spells. So create a new type of object, called a counterspell. A counterspell
+should have the property that if a character attempts to cast a specific spell
+on a target, and the target possesses the appropriate counterspell, then the
+spell itself does not take effect. Thus, in addition to creating counter spells,
+you will want to modify your spells to obey this new behavior.
+
+**** Answer
+To do this, let we decide to make all the spells have its counterspell; =spell=
+class should support this general scheme making counterspell as its state
+variable; or we could implement such effect using the analogy with
+=ring-of-obfuscation=:
+
+- =counterspell= class:
+  #+BEGIN_SRC scheme
+(define (create-counterspell name location)
+  (create-instance counterspell name location))
+(define (counterspell self name location)
+  (let ((mobile-part (mobile-thing self name location)))
+    (make-handler
+     'counterspell
+     (make-methods)
+     mobile-part)))
+  #+END_SRC
+- change to support such feature within =spell=:
+  #+BEGIN_SRC scheme
+,*** in the spell class
+      'USE
+      (lambda (caster target)
+        (if (not (null? (filter (lambda (c) (eq? (ask self 'name)
+                                                 (ask c 'name)))
+                                (ask target 'has-a 'counterspell))))
+            ;; target has a counterspell of this spell
+            (let ((counterincant
+                   (list (ask target 'name)
+                         "incants"
+                         (list->string (reverse (string->list (ask self 'incant)))))))
+              (ask target 'emit counterincant))
+            ;; target does not have counterspell to this
+            (action caster target)))
+  #+END_SRC
+  Here we chose the user of counterspell to incant "counter-incant", which is
+  the reverse of =incant= of targeting spell.
+- populate counterspell within =populate-spells=:
+  #+BEGIN_SRC scheme
+(define (populate-spells rooms)
+  (for-each (lambda (room)
+              (let ((spell
+                     (pick-random (ask chamber-of-stata 'THINGS))))
+                (clone-spell spell room)
+                ;; instantiate counterspells of each
+                (create-counterspell (ask spell 'name) room)))
+            rooms))
+  #+END_SRC
+
+
+And the test:
+#+BEGIN_SRC scheme
+(run-clock 1)
+
+--- the-clock Tick 0 ---
+ben-bitdiddle moves from |34-301| to stata-center
+...
+course-6-frosh moves from lobby-10 to grendels-den
+At grendels-den course-6-frosh says -- I take episkey from grendels-den
+At grendels-den course-6-frosh waves course-6-frosh-wand towards episkey incanting Episkey
+;No method for has-a in episkey
+;To continue, call RESTART with an option number:
+; (RESTART 1) => Return to read-eval-print level 1.
+#+END_SRC
+
+Failed! It is due to the fact that we haven't checked the =target= has a =HAS-A=
+method; we can fix the bug as follows:
+#+BEGIN_SRC scheme
+,*** in spell class
+      'USE
+      (lambda (caster target)
+        if and (ask target 'is-a 'person)
+                 not null? filter (lambda (c) (eq? (ask self 'name)
+                                                      (ask c 'name)))
+...
+                 )
+#+END_SRC
+
+Then re-test:
+#+BEGIN_SRC scheme
+(run-clock 1)
+...
+At |34-301| lambda-man waves lambda-man-wand towards alyssa-hacker incanting habooic katarnum
+At |34-301| alyssa-hacker incants munratak cioobah
+...
+#+END_SRC
+*** Computer Exercise 10: See this scar in the shape of a Lambda?
+Lastly, it's time to implement Hairy Cdr himself. Hairy is a WIT student, but
+more importantly, he's the "chosen one". Thus he cannot die until the series is
+finished, which at the current rate will be long after you graduate (but at the
+current time, it ended!). Any time Hairy is about to die, his scar flares
+brightly and the person attempting to kill him dies instead (like Lord
+Vandimort). More specifically, when a =chosen-one= is asked to =SUFFER= enough
+to kill them, it should print out an appropriate message and then kill the
+perpetrator, leaving the =chosen-one= unharmed.
+
+Note that we are asking you to have a chosen one override the =SUFFER= method,
+rather than the =DIE= method. Why? What could go wrong if a chosen one were to
+implement this behavior using the =DIE= method instead?
+
+If we chose the latter way, Hairy's health could be less or equals to zero and
+at the same time he doesn't die, which is apparently contradict in real world!
+
+**** Answer
+So the class diagram should look like
+#+BEGIN_SRC plantuml :exports results :file ../image/proj4_6.png
+class wit-student {
+    name
+    birthplace
+    speed
+    miserly
+    __
+}
+
+class chosen-one {
+    name
+    birthplace
+    speed
+    miserly
+    __
+    SUFFER
+    DIE
+}
+"wit-student" <|-- "chosen-one"
+#+END_SRC
+
+#+RESULTS:
+[[file:../image/proj4_6.png]]
+
+We should override =SUFFER= method of =person= to
+1. check the resulting health of self;
+2. if it is less than or equals to zero, kill the perpetrator.
+3. else call the super-part's =SUFFER= and =DIE=.
+
+
+Here is the result:
+#+BEGIN_SRC scheme
+(define (create-chosen-one name birthplace speed miserly)
+  (create-instance chosen-one name birthplace speed miserly))
+(define (chosen-one self name birthplace speed miserly)
+  (define (scar-of-lambda perp)
+    (ask self 'EMIT
+         (list "The scar of the shape of a Lambda at the forehead of"
+               (ask self 'name)
+               "flares brightly"))
+    (ask perp 'DIE self))
+  (let ((student-part (wit-student self name birthplace speed miserly)))
+    (make-handler
+     'chosen-one
+     (make-methods
+      'SUFFER
+      (lambda (hits perp)
+        (let ((after-health (- (ask self 'health) hits)))
+          (if (<= after-health 0)
+              (scar-of-lambda perp)
+              (ask student-part 'SUFFER hits perp))))
+      'DIE
+      (lambda (perp)
+        (if (> (ask self 'health) 0)
+            (scar-of-lambda perp)
+            (ask student-part 'DIE perp)))
+      )
+     student-part)))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+(setup 'jang)
+
+;Value: ready
+
+(create-chosen-one 'Hairy-Cdr (ask me 'location) 3 3)
+
+;Value: (instance #[compound-procedure 61 handler])
+
+(ask #@61 'SUFFER 5 me)
+
+At eecs-ug-office The scar of the shape of a Lambda at the forehead of hairy-cdr flares brightly
+At eecs-ug-office jang says -- I am slain!
+An earth-shattering, soul-piercing scream is heard...
+;Value: done
+
+(ask #@61 'SUFFER 2 me)
+
+At eecs-ug-office hairy-cdr says -- Ouch! 2 hits is more than I want!
+;Value: 1
+#+END_SRC
+*** Computer Exercise 11: Our turn
+
+Now that we have had an opportunity to play with their "world" of characters,
+places, and things, they want us to extend this world in some substantial way.
+The last part of this project gives us an opportunity to do this. As we haven't
+had much freedom to design our own code up until now, this exercise gives us the
+opportunity to demonstrate our knowledge of design principles.
+*NOTE: this exercise is worth significantly more points than the others; give it
+the time it deserves!*
+
+This is our opportunity to have fun with the game! There's only one hard
+requirement: we must add at least one new class to the system. Other than that,
+we are free to take the simulation in any direction that interests and excites
+us. We don't have to stick with the Hairy Cdr theme if we don't want to. Here
+are a few ideas that they've come up with for extensions, but we certainly
+aren't limited to these:
+
+- Dementors :: They're like trolls, but immune to suffering. They can only be
+     killed with the patronus spell.
+- Moving Exits :: Exits that change their destination over time.
+- Brooms :: If the person is carrying a broom they can use "flying" exits to
+     move around campus quickly.
+- House Points :: Each student belongs to a house. Doing certain activities adds
+     points, doing others subtracts points.
+- Spell Points :: Every person has an amount of spell points. Casting spells
+     uses up spell points, which return slowly over time Every person has an
+     amount of spell points. Casting spells uses up spell points, which return
+     slowly over time.
+
+
+Remember to select an extension that we have an expectation of finishing. If
+we're going to attempt something ambitious, remember to have a fallback plan
+that meets the objectives for the exercise!
+
+**** Stage One: Plan
+
+Here, we want to plan out the design for some extensions to our world. We
+required to write a brief description of our plan.
+
+We want to design some new elements to our world. The first thing we want to do
+is design a new class of objects to incorporate into the world. To do this, we
+should plan each of the following elements:
+
+- Object class :: First, define the new class we are going to build. What kind
+     of object is it? What are the general behaviors that we want the class to
+     capture?
+- Class hierarchy :: How does our new class relate to the class hierarchy of the
+     existing world? Is it a subclass of an existing class? Is it a superclass
+     of one or more existing classes?
+- Class state information :: What internal state information does each instance
+     of the class need to know?
+- Class methods :: What are the methods of the new class? What methods will it
+     inherit from other classes? What methods will shadow methods of other classes?
+- Demonstration plan :: How will we demonstrate the behavior of instances of our
+     new class within the existing simulation world?
+
+
+Let we demonstrate above elements implementing =Dementor= class.
+- Object class:
+  As described above, it is troll-like object; that is, it eat people at every
+  tick but it is immune to suffer.
+- Class hierarchy:
+  As it is troll-like object, it is reasonable to let this be the subclass of
+  troll overriding =SUFFER= method.
+- Class state information:
+  It only override the =SUFFER= method of =troll=, it should have same state
+  information as =troll=: name, birthplace, speed, hunger.
+- Class method:
+  As we noted above, the only method we are going to implement is =SUFFER=
+  method (actually we override that method of =person=).
+
+  By the dialogue so far, we can visualize our class diagram:
+  #+BEGIN_SRC plantuml :exports results :file ../image/proj4_7.png
+class troll {
+    name
+    birthplace
+    speed
+    hunger
+    __
+    INSTALL
+    EAT-PEOPLE
+    DIE
+}
+
+class dementor {
+    name
+    birthplace
+    speed
+    hunger
+    __
+    SUFFER
+}
+
+troll <|-- dementor
+  #+END_SRC
+
+  #+RESULTS:
+  [[file:../image/proj4_7.png]]
+- Demonstration plan:
+  We going to populate dementors, which is analogous to trolls; but only way to
+  kill dementors is using the method that make the target die directly --
+  without using suffering. The only method that can do this is using patronus
+  spell for now as we required.
+
+  The above description is somewhat abstract; we are going to simulate what we
+  want by using test cases:
+  #+BEGIN_SRC scheme
+(define dementor (create-dementor 'dementor (ask me 'location) 3 3))
+
+(ask dementor 'suffer 5 me)
+
+At eecs-ug-office dementor says -- ?
+
+(create-wand 'wand me)
+(clone-spell (car (filter (lambda (spell) (eq? (ask spell 'name) 'patronus))
+                          (ask chamber-of-stata 'things)))
+             me)
+(ask (car (ask me 'has-a 'wand)) 'zap dementor)
+...
+An earth-shattering, soul-piercing scream is heard...
+  #+END_SRC
+
+**** Stage Two: Implementation
+Attempt to follow our plan. Remember to test our code in a number of ways to
+ensure that it does what we intended it to do.
+
+- Class of dementor:
+  #+BEGIN_SRC scheme
+(define (create-dementor name birthplace speed hunger)
+  (create-instance dementor name birthplace speed hunger))
+
+(define (dementor self name birthplace speed hunger)
+  (let ((troll-part (troll self name birthplace speed hunger)))
+    (make-handler
+     'dementor
+     (make-methods
+      'SUFFER                           ;override method!
+      (lambda (hits perp)
+        (ask self 'say (list "?")))
+      )
+     troll-part)))
+  #+END_SRC
+- Support to the world:
+  #+BEGIN_SRC scheme
+,*** within populate-players
+(dementors (map (lambda (name)
+                        (create-dementor name
+                                      (pick-random rooms)
+                                      (random-number 3)
+                                      (random-number 3)))
+                      '(dementor1 dementor2)))
+  #+END_SRC
+- Then test:
+  #+BEGIN_SRC scheme
+(setup 'jang)
+
+;Value: ready
+
+(run-clock 3)
+
+--- the-clock Tick 0 ---
+...
+--- the-clock Tick 1 ---
+...
+--- the-clock Tick 2 ---
+...
+At lobby-10 susan-hockfield waves susan-hockfield-wand towards dementor2 incanting atstrock do da wanda
+At lobby-10 Wind of doom swoon dementor2
+At lobby-10 dementor2 says -- ?
+...
+;Value: done
+
+(create-wand 'my-wand me)
+
+;Value: (instance #[compound-procedure 39 handler])
+
+(clone-spell (car (filter (lambda (spell) (eq? (ask spell 'name) 'patronus))
+                          (ask chamber-of-stata 'things)))
+             me)
+
+;Value: (instance #[compound-procedure 41 handler])
+
+(define dementor (car (filter (lambda (p) (ask p 'is-a 'dementor)) (all-people))))
+
+;Value: dementor
+
+(ask (car (ask me 'has-a 'wand)) 'zap dementor)
+
+At eecs-hq jang waves my-wand towards dementor2 incanting Expecto Patronum
+At lobby-10 patronus got dementor2
+At lobby-10 dementor2 says -- SHREEEEK!  I, uh, suddenly feel very faint...
+An earth-shattering, soul-piercing scream is heard...
+;Value: done
+  #+END_SRC
+
+
+Done!
 * Footnotes
 
 [fn:5] We can ask only the objects -- instances -- to request the method;

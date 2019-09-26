@@ -230,24 +230,28 @@
         (ask self 'SAY '("Yaaaah! I am upset!"))
         'I-feel-better-now)
 
-      'PEOPLE-AROUND        ; other people in room...
+      'PEOPLE-AROUND                    ; other people in room...
       (lambda ()
-        (delq self (find-all (ask self 'LOCATION) 'PERSON)))
+        ;; Exercise 4
+        (filter (lambda (p)
+                  (null? (ask p 'HAS-A 'ring-of-obfuscation)))
 
-      'STUFF-AROUND         ; stuff (non people) in room...
+                (delq self (find-all (ask self 'LOCATION) 'PERSON))))
+
+      'STUFF-AROUND                     ; stuff (non people) in room...
       (lambda ()
         (let* ((in-room (ask (ask self 'LOCATION) 'THINGS))
                (stuff (filter (lambda (x) (not (ask x 'IS-A 'PERSON))) in-room)))
           stuff))
 
-      'PEEK-AROUND          ; other people's stuff...
+      'PEEK-AROUND                      ; other people's stuff...
       (lambda ()
         (let ((people (ask self 'PEOPLE-AROUND)))
           (fold-right append '() (map (lambda (p) (ask p 'THINGS)) people))))
 
       'TAKE
       (lambda (thing)
-        (cond ((ask self 'HAVE-THING? thing)  ; already have it
+        (cond ((ask self 'HAVE-THING? thing) ; already have it
                (ask self 'SAY (list "I am already carrying"
                                     (ask thing 'NAME)))
                #f)
@@ -255,7 +259,7 @@
                    (not (ask thing 'IS-A 'MOBILE-THING)))
                (ask self 'SAY (list "I try but cannot take"
                                     (ask thing 'NAME)))
-               #F)
+               #f)
               (else
                (let ((owner (ask thing 'LOCATION)))
                  (ask self 'SAY (list "I take" (ask thing 'NAME)
@@ -282,13 +286,13 @@
         (ask exit 'USE self))
 
       'GO
-      (lambda (direction) ; symbol -> boolean
+      (lambda (direction)               ; symbol -> boolean
         (let ((exit (ask (ask self 'LOCATION) 'EXIT-TOWARDS direction)))
           (if (and exit (ask exit 'IS-A 'EXIT))
               (ask self 'GO-EXIT exit)
               (begin (ask screen 'TELL-ROOM (ask self 'LOCATION)
                           (list "No exit in" direction "direction"))
-                     #F))))
+                     #f))))
       'SUFFER
       (lambda (hits perp)
         (ask self 'SAY (list "Ouch!" hits "hits is more than I want!"))
@@ -296,7 +300,14 @@
         (if (<= health 0) (ask self 'DIE perp))
         health)
 
-      'DIE          ; depends on global variable "death-exit"
+      'RECOVER
+      (lambda (healing benefactor)
+        (ask self 'SAY (list "Wao!" healing "is what I exactly wanted! Thanks"
+                             (ask benefactor 'name)))
+        (set! health (+ health healing))
+        health)
+
+      'DIE                             ; depends on global variable "death-exit"
       (lambda (perp)
         (for-each (lambda (item) (ask self 'LOSE item (ask self 'LOCATION)))
                   (ask self 'THINGS))
@@ -309,7 +320,17 @@
         (let ((others (ask self 'PEOPLE-AROUND)))
           (if (not (null? others))
               (ask self 'SAY (cons "Hi" (names-of others)))))
-        #T))
+        #t)
+
+      ;; Exercise 2
+      'HAS-A
+      (lambda (type)
+        (find-all self type))
+
+      'HAS-A-THING-NAMED
+      (lambda (name)
+        (filter (lambda (thing) (eq? name (ask thing 'NAME))) (ask self 'THINGS)))
+      )
      mobile-thing-part container-part)))
 
 ;;--------------------
@@ -365,6 +386,133 @@
      person-part)))
 
 ;;
+;; wit-person
+;;
+(define (create-wit-person name birthplace speed miserly)
+  (create-instance wit-person name birthplace speed miserly))
+(define (wit-person self name birthplace speed miserly)
+  (let ((auto-part (autonomous-person self name birthplace speed miserly)))
+    (make-handler
+     'wit-person
+     (make-methods
+      'INSTALL
+      (lambda ()
+        (ask auto-part 'INSTALL)
+        ;; register callback method
+        (ask clock 'ADD-CALLBACK
+             (create-clock-callback 'zappity-do-dah self
+                                    'ZAPPITY-DO-DAH))
+        ;; born with one's own wand
+        (create-wand (symbol-append name '-wand) self)
+        'done)
+      'ZAPPITY-DO-DAH
+      (lambda ()
+        (let ((wands (ask self 'has-a 'wand)))
+          (if (not (null? wands))       ;has wand?
+              (let ((people (ask self 'PEOPLE-AROUND))
+                    (wand (pick-random wands))) ;pick wand randomly
+                (if (not (null? people))
+                    (let ((person (pick-random people)))
+                      (ask wand 'ZAP person))
+                    (ask wand 'WAVE)))
+              )))                       ;do not have wand -- ignore the method call
+      'DIE
+      (lambda (perp)
+        (ask clock 'REMOVE-CALLBACK self 'zappity-do-dah)
+        (ask auto-part 'DIE perp)))
+     auto-part)))
+
+;;
+;; wit-student
+;;
+
+(define (create-wit-student name birthplace speed miserly)
+  (create-instance wit-student name birthplace speed miserly))
+(define (wit-student self name birthplace speed miserly)
+  (let ((wit-part (wit-person self name birthplace speed miserly)))
+    (make-handler
+     'wit-student
+     (make-methods)
+     wit-part)))
+
+;;
+;; wit-professor
+;;
+
+(define (create-wit-professor name birthplace speed miserly)
+  (create-instance wit-professor name birthplace speed miserly))
+(define (wit-professor self name birthplace speed miserly)
+  (let ((wit-part (wit-person self name birthplace speed miserly)))
+    (make-handler
+     'wit-professor
+     (make-methods
+      'INSTALL
+      (lambda ()
+        (ask wit-part 'INSTALL)
+        ;; register callback method
+        (ask clock 'ADD-CALLBACK
+             (create-clock-callback 'teach self
+                                    'TEACH)))
+      'TEACH
+      (lambda ()
+        (let ((students (find-all (ask self 'location) 'wit-student)))
+          (if (not (null? students))
+              (let ((student (pick-random students))
+                    (spell (pick-random (ask chamber-of-stata 'THINGS))))
+                (ask self 'say
+                     (list "Hey,"
+                           (ask student 'name)
+                           "come here,"
+                           "you are so lucky."
+                           "I'll teach you"
+                           (ask spell 'name)))
+                (ask student 'EMIT
+                     (list (ask student 'name)
+                           "learned"
+                           (ask spell 'name)
+                           "from"
+                           "prof."
+                           (ask self 'name)))
+                (clone-spell spell student)))))
+      'DIE
+      (lambda (perp)
+        (ask clock 'REMOVE-CALLBACK self 'teach)
+        (ask wit-part 'DIE perp))
+      )
+     wit-part)))
+
+;;
+;; chosen-one
+;;
+
+(define (create-chosen-one name birthplace speed miserly)
+  (create-instance chosen-one name birthplace speed miserly))
+(define (chosen-one self name birthplace speed miserly)
+  (define (scar-of-lambda perp)
+    (ask self 'EMIT
+         (list "The scar of the shape of a Lambda at the forehead of"
+               (ask self 'name)
+               "flares brightly"))
+    (ask perp 'DIE self))
+  (let ((student-part (wit-student self name birthplace speed miserly)))
+    (make-handler
+     'chosen-one
+     (make-methods
+      'SUFFER
+      (lambda (hits perp)
+        (let ((after-health (- (ask self 'health) hits)))
+          (if (<= after-health 0)
+              (scar-of-lambda perp)
+              (ask student-part 'SUFFER hits perp))))
+      'DIE
+      (lambda (perp)
+        (if (> (ask self 'health) 0)
+            (scar-of-lambda perp)
+            (ask student-part 'DIE perp)))
+      )
+     student-part)))
+
+;;
 ;; hall-monitor
 ;;
 (define (create-hall-monitor name birthplace speed irritability)
@@ -385,7 +533,7 @@
       (lambda ()
 	(if (= (random irritability) 0)
 	    (let ((people (ask self 'PEOPLE-AROUND)))
-	      (if people
+	      (if (not (null? people))
 		  (begin
 		    (ask self 'SAY '("What are you doing still up?"
 				     "Everyone back to their rooms!"))
@@ -398,7 +546,7 @@
 			      people)
 		    'grumped)
 		  (ask self 'SAY '("Grrr... When I catch those students..."))))
-	    (if (ask self 'PEOPLE-AROUND)
+	    (if (not (null? (ask self 'PEOPLE-AROUND)))
 		(ask self 'SAY '("I'll let you off this once...")))))
       'DIE
       (lambda (perp)
@@ -444,6 +592,24 @@
      auto-part)))
 
 ;;
+;; dementor
+;;
+
+(define (create-dementor name birthplace speed hunger)
+  (create-instance dementor name birthplace speed hunger))
+
+(define (dementor self name birthplace speed hunger)
+  (let ((troll-part (troll self name birthplace speed hunger)))
+    (make-handler
+     'dementor
+     (make-methods
+      'SUFFER                           ;override method!
+      (lambda (hits perp)
+        (ask self 'say (list "?")))
+      )
+     troll-part)))
+
+;;
 ;; spell
 ;;
 (define (create-spell name location incant action)
@@ -460,7 +626,18 @@
       (lambda () action)
       'USE
       (lambda (caster target)
-	(action caster target)))
+        (if (and (ask target 'is-a 'person)
+                 (not (null? (filter (lambda (c) (eq? (ask self 'name)
+                                                      (ask c 'name)))
+                                     (ask target 'has-a 'counterspell)))))
+            ;; target has a counterspell of this spell
+            (let ((counterincant
+                   (list (ask target 'name)
+                         "incants"
+                         (list->string (reverse (string->list incant))))))
+              (ask target 'emit counterincant))
+            ;; target does not have counterspell to this
+            (action caster target))))
      mobile-part)))
 
 (define (clone-spell spell newloc)
@@ -483,7 +660,7 @@
     (make-handler
      'avatar
      (make-methods
-      'LOOK-AROUND          ; report on world around you
+      'LOOK-AROUND                      ; report on world around you
       (lambda ()
         (let* ((place (ask self 'LOCATION))
                (exits (ask place 'EXITS))
@@ -511,7 +688,7 @@
           'OK))
 
       'GO
-      (lambda (direction)  ; Shadows person's GO
+      (lambda (direction)               ; Shadows person's GO
         (let ((success? (ask person-part 'GO direction)))
           (if success? (ask clock 'TICK))
           success?))
@@ -519,6 +696,86 @@
       'DIE
       (lambda (perp)
         (ask self 'SAY (list "I am slain!"))
-        (ask person-part 'DIE perp)))
+        (ask person-part 'DIE perp))
+      'FEEL-THE-FORCE
+      (lambda ()
+        (for-each (lambda (p)
+                    (newline)
+                    (display (ask p 'name))
+                    (display " is at ")
+                    (display (ask (ask p 'location) 'name)))
+                  (filter (lambda (p) (null? (ask p 'HAS-A 'ring-of-obfuscation)))
+                          (all-people)))))
 
      person-part)))
+
+;; Computer Exercise 4
+(define (ring-of-obfuscation self location)
+  (let ((mobile-part (mobile-thing self 'ring-of-obfuscation location)))
+    (make-handler
+     'ring-of-obfuscation
+     (make-methods)
+     mobile-part)))
+
+(define (create-ring-of-obfuscation location)
+  (create-instance ring-of-obfuscation location))
+
+;; Computer Exercise 5
+(define (wand self name location)
+  (let ((mobile-part (mobile-thing self name location)))
+    (make-handler
+     'wand
+     (make-methods
+      'ZAP
+      (lambda (target)
+        (let ((caster (ask self 'location)))
+          (if (ask caster 'is-a 'person) ;works only if the caster is person
+              (let ((spells (ask caster 'HAS-A 'spell))
+                    (wave (list (ask caster 'name)
+                                "waves"
+                                (ask self 'name)
+                                "towards"
+                                (ask target 'name))))
+                (if (not (null? spells))
+                    (let* ((spell (pick-random spells))
+                           (incant (list "incanting"
+                                         (ask spell 'INCANT))))
+                      (ask caster 'EMIT
+                           (append wave
+                                   incant))
+                      (ask spell 'USE caster target))
+                    (ask caster 'EMIT
+                         (append wave
+                                 (list "but nothing happend"))))))))
+      'WAVE
+      (lambda ()
+        (let ((caster (ask self 'location)))
+          (if (ask caster 'is-a 'person)
+              (let ((target (pick-random
+                             (delq caster
+                                   (ask (ask caster 'location)
+                                        'things)))))
+                (if target
+                    (ask self 'ZAP target)
+                    (ask caster 'EMIT
+                         (list (ask caster 'name)
+                               "waved"
+                               (ask self 'name)
+                               "but there is nothing in the room")))))))
+      )
+     mobile-part)))
+(define (create-wand name location)
+  (create-instance wand name location))
+
+;; Computer Exercise 9
+(define (create-counterspell name location)
+  (create-instance counterspell name location))
+(define (counterspell self name location)
+  (let ((mobile-part (mobile-thing self name location)))
+    (make-handler
+     'counterspell
+     (make-methods)
+     mobile-part)))
+
+(define (create-ring-of-obfuscation location)
+  (create-instance ring-of-obfuscation location))
