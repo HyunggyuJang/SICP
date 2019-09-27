@@ -2802,3 +2802,273 @@ We reason as follows:
 10. Conclusion: If we use list instead of queue, new the order in which actions
     to be executed start to get mattered; also in the view point of modeling, it
     doesn't reflect well what behavior the real world takes.
+** Lecture 5B: Computational Objects
+In [[youtube:yedzRWhi-9E?list=PLE18841CABEA24090][this lecture]], we are going to learn how we use computational object -- the
+object of message passing paradigm -- to model the real world object; that is,
+mapping the objects from the real world to our computational world as well as
+all the relations between the objects. In lecture, it brings digital circuit
+simulation as example of instantiation of outlined scheme.
+
+The steps of the conversion, from model of real world to our computational
+model, can be summarized as follows:
+1. Capture the behavior of real world object that we want to map to our minds.
+   It requires more subtle steps for itself; the main concept of that steps is
+   to abstract the behavior as formally as possible.
+
+   In the digital circuit example, the primitive function boxes would be that --
+   inverter, and-gate, or-gate in addition to wire.
+2. Then formalize captured behavior using the state and mutation languages (more
+   specifically using the wishful thinking!).
+
+   In the example of lecture, each the cloudy wire object has to have signal
+   "state" with action procedures list "state" which stores things to inform
+   when it has changed its own signal value.
+3. Turn the language of state and mutation to the language of environment model.
+   Environment model can deal with the evaluation involving mutation and
+   assignment as well as the other expressions, we can safely map all the stuff
+   of the wishful thinking involving computational object as instantiation of
+   environment model.
+
+   In the example of digital circuit, wire is the environment which possess
+   signal and action procedures as variable in its first frame; the references
+   between the objects resolved as bindings in frame.
+4. Convert the environment model to code which produce such environments. We
+   have learned the instance of environment model that given code produces; if
+   we approach backwards, we can get what we want as there is one to one mapping
+   between the environment diagram and that code.
+
+   In the example of the digital circuit, there are more than what we outlined
+   here: as we are going to code digital circuit "simulation", we need to code
+   the fragments to achieve simulation feature such as delay of propagation and
+   so on. The agenda data structure is one of the auxiliary parts we mentioned
+   above.
+
+
+For the latter part of the example, it involves another key concept: Designing
+ADT -- in lecture, the agenda structure. To design and implement ADT,
+1. By wishful thinking, come up with behaviors that we want to have.
+2. Formalize the captured behavior as ADT.
+3. Modeling that behavior using our environment model (or box and pointer
+   diagram if it can be done that way).
+4. Convert that into code as there is direct mapping between code and model as
+   we specified above.
+
+
+The only difference between this and above modeling of real world object is
+that for designing ADT, there is no need to exist in the real world what we want
+to capture; if we can imagine what we want, we can capture that in computational
+object.
+** Propagation of Constraints
+Here we implement the constraint-based programming -- non-directional
+computations. There are some mechanisms works in this way in the real world --
+mechanics of material and so on. This constraint-based programming also known as
+logical programming combined with pattern matching. In that paradigm, all the
+constraints works as /fact/. Using such /facts/, deduce unknown things if
+appropriate amounts of fact provided.
+
+To implement such programming style, we apply what we learned in [[Lecture 5B: Computational Objects][Lecture 5B:
+Computational Objects]]:
+*** Capture the behavior of real world scheme. We could start this using the
+mechanical example we described; but to begin, the simpler example we use,
+the easier to capture the common behavior of those scheme, which leads
+capturing the abstracted concept of those behavior.
+
+So here, we use the conversion of temperature between of Fahrenheit and of
+Celsius. The relationship can be formalize as
+\[9C = 5(F - 32)\]
+
+*** Then we have to capture that as frame of components of ADT or a programming
+language. Here as we develop the programming style, we need to fit our
+components into
+  - primitive elements:
+    As we develop constraint-based programming our primitive elements would be
+    /primitive constraints/ -- primitive adder, multiplier, and constant
+    constraint
+  - means of combination:
+    Analogous to the digital circuit simulation, we combine constraints
+    connecting by connectors. Connectors work similarly with wires.
+  - means of abstraction:
+    As we embedding this language into Scheme, it inherit the abstraction means
+    of Scheme, namely lambda expression with the define.
+
+Here we denote the result of connecting several constraints as /network/. As
+example, the network of the conversion of temperatures given as
+[[file:image/3_28.gif][Figure 3.28]].
+To deduce the cloudy objects in our computational world in terms of state and
+references, we need to extract more information from the informal behavior of
+simple examples. Let we inspect the above figure a little more specifically.
+The conversion constraint network consists of primitive adder, multiplier,
+and constant constraints. For that, please see the relevant discussion in the
+text book.
+
+The important concept is not the description of the behavior but how they
+deduced that description. Our task is to trace back that process to apply our
+own application in later. They nicely captured the common behavior of two
+examples -- mechanic law of material and conversion of temperatures -- into
+networks of primitive elements -- constant, multiplier, and adder boxes. Then
+as they simulation in their mind, they filled the details of the
+requirement. All of these made by wishful thinking: They believe that the
+real world system, such as mechanical system, can be mapped into our
+computational world even though we only know rough behavior of real world
+behavior.
+
+With all the specification in the text book, we can deduce the cloudy objects
+as connector should have state variable that holds the value of connector and
+constraint list of all constraints to which the connector linked; in
+addition, it should have informant as its state variable to achieve the
+requirement. For the primitive constraint boxes, it should have references to
+terminals to poll and set; it should possess identity to signature informant
+part of the connector. It forms the cloudy objects.
+
+*** To deduce the concrete environment diagram, here we use test usages to make
+things more concretely.
+
+So far, we developed the skeletons of our language, here we will develop more
+concrete contents by specifying how we want to use the constraint system. The
+temperature constraint network converted to
+#+BEGIN_SRC scheme
+(define C (make-connector))
+(define F (make-connector))
+(celsius-fahrenheiit-converter C F)
+#+END_SRC
+
+The real works defined as
+#+BEGIN_SRC scheme
+(define (celsius-farenheit-converter c f)
+  (let ((u (make-connector))
+        (v (make-connector))
+        (w (make-connector))
+        (x (make-connector))
+        (y (make-connector)))
+    (multiplier c w u)
+    (multiplier v x u)
+    (adder v y f)
+    (constant 9 w)
+    (constant 5 x)
+    (constant 32 y)
+    'ok))
+#+END_SRC
+
+As we did in digital circuit simulation, to see what is going on, we probe on
+the connector that we want to know the value when it changed. It should work
+as follows
+#+BEGIN_SRC scheme
+(probe "Celsius temp" C)
+(probe "Fahrenheit temp" F)
+
+(set-value! C 25 'user)
+Probe : Celsius temp = 25
+Probe : Fahrenheit temp = 77
+done
+#+END_SRC
+
+If we try to set =F= to a new value, say 212 it should behave as
+#+BEGIN_SRC scheme
+(set-value! F 212 'user)
+Error! Contradiction (77 212)
+#+END_SRC
+
+That is, the connector complains that it has sensed a contradiction: Its
+value is 77, and someone is trying to set it to 212. If we really want to
+reuse the network with new values, we should tell =C= to forget its old value
+before setting to new value:
+#+BEGIN_SRC scheme
+(forget-value! C 'user)
+Probe: Celsius temp = ?
+Probe: Fahrenheit temp = ?
+done
+#+END_SRC
+
+=C= finds that the =user=, who set its value originally, is now retracting
+that value, so =C= agrees to lose its value, as shown by the probe, and
+informs the rest of the network of this fact. This information eventually
+propagates to =F=, which now finds that it has no reason for continuing to
+believe that its own value is 77. Thus, =F= also gives up its value, as shown
+by the probe.
+
+Now that =F= has no value, we can safely set it to 212:
+#+BEGIN_SRC scheme
+(set-value! F 212 'user)
+Probe: Fahrenheit temp = 212
+Probe: Celsius temp = 100
+done
+#+END_SRC
+
+**** Implementing the constraint system
+So far, we converted the behavior of simple examples into that of our
+computational world. Now we turn our topic into implementing the primitive
+constraints using the code made by converting the environment model into the
+code of connector. Note that we haven't got the resulting code of connector,
+that is, we just "assume" we have one.
+
+Here is the specifications for the operations on connectors:
+- =(has-value? <connector>)=
+  tells whether the connector has a value.
+- =(get-value <connector>)=
+  returns the connector's current value.
+- =(set-value! <connector> <new-value> <informant>)=
+  indicates that the informant is requesting the connector to set its value to
+  the new value.
+- =(forget-value! <connector> <retractor>)=
+  tells the connector that the retractor is requesting it to forget its value.
+- =(connect <connector> <new-constraint>)=
+  tells the connector to participate in the new constraint.
+
+
+The connectors communicate with the constraints by means of the procedures
+=inform-about-value=, which tells the given constraint that the connector has a
+value, and =inform-about-no-value=, which tells the constraint that the
+connector has lost its value.
+
+Note that by using the wishful thinking we could break down the massive
+structure into smaller ones as we did in the [[org:../MEGAsync/MIT%20Challenge/6.001/Chapter2.org][Exercise 2.92]]. From this process,
+we can learn how to expand our previous designing skill embracing mutation. The
+only difference is that in previous we used to substitution model in conversion
+from behavior to code, here we use environment model instead.
+
+Back to our discourse, =adder= constructs an adder constraint among summand
+connectors =a1= and =a2= and a =sum= connector. To implement this object, let we
+think of the environment diagram each instance of this constraint produce. It is
+similar of the primitive function boxes of digital circuit but this constraint
+has to have identity. That means it should be the procedure with the local state
+-- object in message passing style. It results following code:
+#+BEGIN_SRC scheme
+(define (adder a1 a2 sum)
+  (define (process-new-value)
+    (cond ((and (has-value? a1) (has-value? a2))
+           (set-value! sum
+                       (+ (get-value a1) (get-value a2))
+                       me))
+          ((and (has-value? a1) (has-value? sum))
+           (set-value! a2
+                       (- (get-value sum) (get-value a1))
+                       me))
+          ((and (has-value? a2) (has-value? sum))
+           (set-value! a1
+                       (- (get-value sum) (get-value a2))
+                       me))))
+  (define (process-forget-value)
+    (forget-value! sum me)
+    (forget-value! a1 me)
+    (forget-value! a2 me)
+    (process-new-value))
+  (define (me request)
+    (cond ((eq? request 'I-have-a-value)
+           (process-new-value))
+          ((eq? request 'I-lost-my-value)
+           (process-forget-value))
+          (else
+           (error "Unknown request -- ADDER" request))))
+  (connect a1 me)
+  (connect a2 me)
+  (connect sum me)
+  me)
+#+END_SRC
+
+The following "syntax interfaces" are used in conjunction with the dispatch:
+#+BEGIN_SRC scheme
+(define (inform-about-value constraint)
+  (constraint 'I-have-a-value))
+(define (inform-about-no-value constraint)
+  (constraint 'I-lost-my-value))
+#+END_SRC
