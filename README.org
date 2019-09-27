@@ -2868,17 +2868,17 @@ appropriate amounts of fact provided.
 
 To implement such programming style, we apply what we learned in [[Lecture 5B: Computational Objects][Lecture 5B:
 Computational Objects]]:
-*** Capture the behavior of real world scheme. We could start this using the
-mechanical example we described; but to begin, the simpler example we use,
-the easier to capture the common behavior of those scheme, which leads
-capturing the abstracted concept of those behavior.
+*** Capture the behavior of real world scheme.
+We could start this using the mechanical example we described; but to begin, the
+simpler example we use, the easier to capture the common behavior of those
+scheme, which leads capturing the abstracted concept of those behavior.
 
 So here, we use the conversion of temperature between of Fahrenheit and of
 Celsius. The relationship can be formalize as
 \[9C = 5(F - 32)\]
 
-*** Then we have to capture that as frame of components of ADT or a programming
-language. Here as we develop the programming style, we need to fit our
+*** Then we have to capture that as frame of components of ADT or a programming language.
+Here as we develop the programming style, we need to fit our
 components into
   - primitive elements:
     As we develop constraint-based programming our primitive elements would be
@@ -2892,14 +2892,13 @@ components into
     of Scheme, namely lambda expression with the define.
 
 Here we denote the result of connecting several constraints as /network/. As
-example, the network of the conversion of temperatures given as
-[[file:image/3_28.gif][Figure 3.28]].
-To deduce the cloudy objects in our computational world in terms of state and
+example, the network of the conversion of temperatures given as [[file:image/3_28.gif][Figure 3.28]]. To
+deduce the cloudy objects in our computational world in terms of state and
 references, we need to extract more information from the informal behavior of
-simple examples. Let we inspect the above figure a little more specifically.
-The conversion constraint network consists of primitive adder, multiplier,
-and constant constraints. For that, please see the relevant discussion in the
-text book.
+simple examples. Let we inspect the above figure a little more specifically. The
+conversion constraint network consists of primitive adder, multiplier, and
+constant constraints. For that, please see the relevant discussion in the text
+book.
 
 The important concept is not the description of the behavior but how they
 deduced that description. Our task is to trace back that process to apply our
@@ -2920,8 +2919,8 @@ requirement. For the primitive constraint boxes, it should have references to
 terminals to poll and set; it should possess identity to signature informant
 part of the connector. It forms the cloudy objects.
 
-*** To deduce the concrete environment diagram, here we use test usages to make
-things more concretely.
+*** To deduce the concrete environment diagram,
+here we use test usages to make things more concretely.
 
 So far, we developed the skeletons of our language, here we will develop more
 concrete contents by specifying how we want to use the constraint system. The
@@ -2994,12 +2993,33 @@ Probe: Celsius temp = 100
 done
 #+END_SRC
 
-**** Implementing the constraint system
-So far, we converted the behavior of simple examples into that of our
+*** Unfortunately, what we deduced from the lecture 5B was wrong!
+You should notice something wrong is happening around the previous section or
+process. What we tried to deduce is not just the environment diagram.
+Environment diagram is not dynamic -- it is static as its nature; but what we
+tried to capture is dynamic thing -- it evolves as time passes.
+
+We can only convert the general pattern of the moment of object not the whole
+behavior of particular object, that is the evolution of process, as we capture
+the computation pattern using the substitution model.
+
+To design the behavior of objects we need to consult our old method, wishful
+thinking in terms of ADT or the core features that a powerful language should
+have with the method of designing algorithm.
+
+In fact it is not the unfortunate thing, as we have practiced enough to design
+our own ADT (and algorithm) again and again so far. The only difference is that
+now we have to consider the moment of evolution and capture that moment using
+environment model; in the substitution model, we does not considered the moment
+of evolution as there is no time in it. To summarize our abstract process of
+designing what we want is unchanged but the tools have changed.
+
+*** Implementing the constraint system
+So far, we converted the behavior of sample objects into that of our
 computational world. Now we turn our topic into implementing the primitive
-constraints using the code made by converting the environment model into the
-code of connector. Note that we haven't got the resulting code of connector,
-that is, we just "assume" we have one.
+constraints using the ADT of connector by wishful thinking as we did again and
+again, that is we haven't got the resulting code of connector, that is, we
+just "assume" we have one.
 
 Here is the specifications for the operations on connectors:
 - =(has-value? <connector>)=
@@ -3021,17 +3041,24 @@ value, and =inform-about-no-value=, which tells the constraint that the
 connector has lost its value.
 
 Note that by using the wishful thinking we could break down the massive
-structure into smaller ones as we did in the [[org:../MEGAsync/MIT%20Challenge/6.001/Chapter2.org][Exercise 2.92]]. From this process,
+structure into smaller ones as we did in the [[org:../MEGAsync/MIT Challenge/6.001/Chapter2.org][Exercise 2.92]]. From this process,
 we can learn how to expand our previous designing skill embracing mutation. The
 only difference is that in previous we used to substitution model in conversion
-from behavior to code, here we use environment model instead.
+from common computation to code, here we use environment model to convert the
+picture of object at some moment to code.
 
 Back to our discourse, =adder= constructs an adder constraint among summand
-connectors =a1= and =a2= and a =sum= connector. To implement this object, let we
-think of the environment diagram each instance of this constraint produce. It is
-similar of the primitive function boxes of digital circuit but this constraint
-has to have identity. That means it should be the procedure with the local state
--- object in message passing style. It results following code:
+connectors =a1= and =a2= and a =sum= connector. To implement this object, we
+think each part composing the whole object separately:
+- To capture the state mutation, and references relations using the environment model,
+- to capture the evolutions using procedure as we did before in the functional programming.
+
+The behavior of our newly defined primitive constraints are similar of the
+primitive function boxes of digital circuit but this constraint has to have
+identity. That means it should be the procedure with the local state -- object
+in message passing style.
+
+Using those observations we can produce code that do the right things:
 #+BEGIN_SRC scheme
 (define (adder a1 a2 sum)
   (define (process-new-value)
@@ -3072,3 +3099,166 @@ The following "syntax interfaces" are used in conjunction with the dispatch:
 (define (inform-about-no-value constraint)
   (constraint 'I-lost-my-value))
 #+END_SRC
+
+The adder's local procedure =processs-new-value= is called when the adder is
+informed that one of its connectors has a value. It evolves as what the behavior
+does. The only non-trivial process is the =process-forget-value= it works if the
+adder is told that one of its connectors has lost a value, it requests that all
+of its connectors now lose their value as desired but now it runs
+=process-new-value=. In =adder=, we could not grasp the essence why it needs to
+be done like that but it becomes somewhat more apparently when we consider the
+=multiplier= constraint:
+#+BEGIN_SRC scheme
+(define (multiplier m1 m2 product)
+  (define (process-new-value)
+    (cond ((or (and (has-value? m1) (= (get-value m1) 0))
+               (and (has-value? m2) (= (get-value m2) 0)))
+           (set-value! product 0 me))
+          ((and (has-value? m1) (has-value? m2))
+           (set-value! product
+                       (* (get-value m1) (get-value m2))
+                       me))
+          ((and (has-value? product) (has-value? m1))
+           (set-value m2
+                      (/ (get-value product) (get-value m1))
+                      me))
+          ((and (has-value? product) (has-value? m2))
+           (set-value m1
+                      (/ (get-value product) (get-value m2))
+                      me))))
+  (define (process-forget-value)
+    (forget-value! product me)
+    (forget-value! m1 me)
+    (forget-value! m2 me)
+    (process-new-value))
+  (define (me request)
+    (cond ((eq? request 'I-have-a-value)
+           (process-new-value))
+          ((eq? request 'I-lost-my-value)
+           (process-forget-value))
+          (else
+           (error "Unknown request -- MULTIPLIER" request))))
+  (connect m1 me)
+  (connect m2 me)
+  (connect product me)
+  me)
+#+END_SRC
+
+Think about the situation where =m1= equals to 0 and also =m2= equals to 0
+changed to =m2= got changed its value to not 0; =sum= still have to hold 0 as
+one of the multiplicand is 0. This is why we need to run =process-new-value= at
+the end of =process-forget-value=. So, for the =adder= case, we think this
+additional complexity is for consistency through whole system.
+
+For the other primitives, please refer the contents of text book.
+*** Representing connector
+As we outlined above, connector is represented in our computational world as a
+procedural object with local state variables =value=, the current value of the
+connector; =informant=, the object that set the connector's value; and
+=constraints=, a list of the constraints in which the connector participates.
+
+#+BEGIN_SRC scheme
+(define (make-connector)
+  (let ((value false) (informant false) (constraints '()))
+    (define (set-my-value newval setter)
+      (cond ((not (has-value? me))
+             (set! value newval)
+             (set! informant setter)
+             (for-each-except setter
+                              inform-about-value
+                              constraints))
+            ((not (= value newval))
+             (error "Contradiction" (list value newval)))
+            (else 'ignored)))
+    (define (forget-my-value retractor)
+      (if (eq? retractor informant)
+          (begin (set! informant false)
+                 (for-each-except retractor
+                                  inform-about-no-value
+                                  constraints))
+          'ignored))
+    (define (connect new-constraint)
+      (if (not (memq new-constraint constraints))
+          (set! constraints
+            (cons new-constraint constraints)))
+      (if (has-value? me)
+          (inform-about-value new-constraint))
+      'done)
+    (define (me request)
+      (case request
+        ((has-value?) (if informant true false))
+        ((value) value)
+        ((set-value!) set-my-value)
+        ((forget) forget-my-value)
+        ((connect) connect)
+        (else (error "Unknown operation -- CONNECTOR"
+                     request))))
+    me))
+
+(define (for-each-except exception procedure list)
+  (let loop ((items list))
+    (cond ((null? items)
+           'done)
+          ((eq? (car items) exception) (loop (cdr items)))
+          (else (procedure (car items))
+                (loop (cdr items))))))
+#+END_SRC
+
+Then syntax interfaces:
+#+BEGIN_SRC scheme
+(define (has-value? connector)
+  (connector 'has-value?))
+(define (get-value connector)
+  (connector 'value))
+(define (set-value! connector new-value informant)
+  ((connector 'set-value!) new-value informant))
+(define (connect connector new-constraint)
+  ((connector 'connect) new-constraint))
+#+END_SRC
+*** Exercise 3.33
+We can easily implement requested that is analogous to temperature conversion
+system:
+
+#+BEGIN_SRC scheme
+(define (averager a b c)
+  (let ((x (make-connector))
+        (y (make-connector)))
+    (adder a b x)
+    (multiplier c y x)
+    (constant 2 y)
+    'ok))
+#+END_SRC
+
+Test:
+#+BEGIN_SRC scheme
+1 (user) => (define a (make-connector))
+
+;Value: a
+
+1 (user) => (define b (make-connector))
+
+;Value: b
+
+1 (user) => (define c (make-connector))
+
+;Value: c
+
+1 (user) => (averager a b c)
+
+;Value: ok
+
+1 (user) => (probe 'average c)
+
+;Value: #[compound-procedure 43 me]
+
+1 (user) => (set-value! a 2 'user)
+
+;Value: done
+
+1 (user) => (set-value! b 3 'user)
+
+Probe: average = 5/2
+;Value: done
+#+END_SRC
+*** Exercise 3.34
+Louis Reasoner
