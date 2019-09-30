@@ -1639,3 +1639,148 @@
 
 ;; Probe: c = 100
 ;; ;Value: #[compound-procedure 43 me]
+
+;; Exercise 3.47
+;;; a.
+(define (make-semaphore n)
+  (define (make-mutex-chain n)
+    (if (zero? n)
+        '()
+        (cons (make-mutex)
+              (make-mutex-chain (-1+ n)))))
+  (let ((mutexes (make-cycle (make-mutex-chain n))))
+    (define (the-semaphore request)
+      (case request
+        ((acquire)
+         (let loop ((current-cycle mutexes))
+           (let ((mutex (car current-cycle)))
+             (if (mutex 'acquire)
+                 (loop (cdr current-cycle))
+                 mutex))))
+        (else (error "Unknown request -- MAKE-SEMAPHORE" request))))
+    the-semaphore))
+
+;; modifed mutex -- to fit in the semaphore
+(define (make-mutex)
+  (let ((cell (list false)))
+    (define (the-mutex m)
+      (case m
+        ((acquire) (test-and-set! cell))
+        ((release) (clear! cell))))
+    the-mutex))
+(define (clear! cell)
+  (set-car! cell false))
+(define (test-and-set! cell)
+  (without-interrupts
+   (lambda ()
+     (if (car cell)
+         true
+         (begin (set-car! cell true)
+                false)))))
+
+;; the use case
+(define (make-serializer-with n)
+  (let ((the-semaphore (make-semaphore n)))
+    (lambda (p)
+      (define (serialized-p . args)
+        (let ((the-mutex (the-semaphore 'acquire)))
+          (let ((val (apply p args)))
+            (the-mutex 'release)
+            val)))
+      serialized-p)))
+(define (make-serializer)
+  (let ((mutex (make-mutex)))
+    (lambda (p)
+      (define (serialized-p . args)
+        (if (mutex 'acquire)
+            (mutex 'acquire))           ;retry
+        (let ((val (apply p args)))
+          (mutex 'release)
+          val))
+      serialized-p)))
+
+(define (make-semaphore2 n)
+  (let ((cell (list 0)))
+    (define (test-and-set!)
+      (without-interrupts
+       (lambda ()
+         (if (< (car cell) n)
+             (begin (set-car! cell (1+ (car cell)))
+                    false)
+             true))))
+    (define (clear!)
+      (without-interrupts
+       (lambda ()
+         (set-car! cell (-1+ (car cell))))))
+    (define (the-semaphore request)
+      (case request
+        ((acquire)
+         (test-and-set!))
+        ((release)
+         (clear!))
+        (else
+         (error "Unknown reuqest -- MAKE-SEMAPHORE2" request))))
+    the-semaphore))
+
+(define (make-serializer-with2 n)
+  (let ((the-semaphore (make-semaphore2 n)))
+    (lambda (p)
+      (define (serialized-p . args)
+        (if (the-semaphore 'acquire)
+            (the-semaphore 'acquire))
+        (let ((val (apply p args)))
+          (the-semaphore 'release)
+          val))
+      serialized-p)))
+
+(define make-account-and-serializer
+  (let ((id 0))
+    (lambda (balance)
+      (let ((id (begin (set! id (1+ id))
+                       id)))
+        (define (withdraw amount)
+          (if (>= balance amount)
+              (begin (set! balance (- balance amount))
+                     balance)
+              "Insufficient funds"))
+        (define (deposit amount)
+          (set! balance (+ balance amount))
+          balance)
+        (let ((balance-serializer (make-serializer)))
+          (define (dispatch m)
+            (case m
+              ((withdraw) withdraw)
+              ((deposit) deposit)
+              ((balance) balance)
+              ((serializer) balance-serializer)
+              ((id) id)
+              (else (error "Unknown request -- MAKE-ACCOUNT" m))))
+          dispatch)))))
+
+;; test for id feature
+;; (define a (make-account-and-serializer 100))
+;; (define b (make-account-and-serializer 100))
+;; (a 'id)
+;; ;Value: 1
+
+;; (b 'id)
+;; ;Value: 2
+
+(define (serialized-exchange account1 account2)
+  (let ((id1 (account1 'id))
+        (id2 (account2 'id))
+        (serializer1 (account1 'serializer))
+        (serializer2 (account2 'serializer)))
+    (if (< id1 id2)
+        ((serializer1 (serializer2 exchange))
+         account1
+         account2)
+        ((serializer2 (serializer1 exchange))
+         account2
+         account1))))
+
+(define (exchange account1 account2)
+  (let ((difference (- (account1 'balance)
+                       (account2 'balance))))
+    ((account1 'withdraw) difference)
+    ((account2 'deposit) difference)))

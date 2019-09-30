@@ -3612,3 +3612,211 @@ or possess the balance -- difference.
 
 For the last request, I've drawn diagram in the digital paper.
 *** Exercise 3.44
+As we noted in [[Exercise 3.42][exercise 3.42]], the anomalous behavior can be introduced only by
+consequent access to value & mutating that variable. In the previous exchange
+procedure, we accessed each account to calculate the difference of those
+balances then mutated each account appropriately. That is, the anomaly involved each
+account as shared variable. Whereas in our situation, we do not access the
+values to mutate the account; in other word our mutation does not depend on the
+shared variable. So our execution sequence does not satisfy the condition of
+anomalous behavior.
+*** Exercise 3.45
+Ben Bitdiddle's introduces not halting process -- due to the so called
+"deadlock": Our serialized exchange process locks the serializer until it
+terminates all of the statement of its body; however the withdrawal (or deposit)
+process also require the permission of the same serializer otherwise it can not
+proceed, which would be free after that withdrawal (or deposit) process
+terminate. This situation end up with interlocked process, does not terminate at all.
+*** Exercise 3.46
+I've drawn required in my digital paper.
+*** Exercise 3.47
+**** a.
+To implement the semaphore using the mutex, here we modify the definition of
+mutex not to make the caller of =acquire= method of that to busy wait.
+#+BEGIN_SRC scheme
+;; modifed mutex -- to fit in the semaphore
+(define (make-mutex)
+  (let ((cell (list false)))
+    (define (the-mutex m)
+      (case m
+        ((acquire) (test-and-set! cell))
+        ((release) (clear! cell))))
+    the-mutex))
+(define (clear! cell)
+  (set-car! cell false))
+(define (test-and-set! cell)
+  (without-interrupts
+   (lambda ()
+     (if (car cell)
+         true
+         (begin (set-car! cell true)
+                false)))))
+#+END_SRC
+
+Then the previous =make-serializer= can be implemented as
+#+BEGIN_SRC scheme
+(define (make-serializer)
+  (let ((mutex (make-mutex)))
+    (lambda (p)
+      (define (serialized-p . args)
+        (if (mutex 'acquire)
+            (mutex 'acquire))           ;retry
+        (let ((val (apply p args)))
+          (mutex 'release)
+          val))
+      serialized-p)))
+#+END_SRC
+
+Armed with this modified mutex, we can implement semaphore:
+#+BEGIN_SRC scheme
+(define (make-semaphore n)
+  (define (make-mutex-chain n)
+    (if (zero? n)
+        '()
+        (cons (make-mutex)
+              (make-mutex-chain (-1+ n)))))
+  (let ((mutexes (make-cycle (make-mutex-chain n))))
+    (define (the-semaphore request)
+      (case request
+        ((acquire)
+         (let loop ((current-cycle mutexes))
+           (let ((mutex (car current-cycle)))
+             (if (mutex 'acquire)
+                 (loop (cdr current-cycle))
+                 mutex))))
+        (else (error "Unknown request -- MAKE-SEMAPHORE" request))))
+    the-semaphore))
+#+END_SRC
+
+Then the serializer with n concurrent procedure:
+#+BEGIN_SRC scheme
+(define (make-semaphore n)
+  (define (make-mutex-chain n)
+    (if (zero? n)
+        '()
+        (cons (make-mutex)
+              (make-mutex-chain (-1+ n)))))
+  (let ((mutexes (make-cycle (make-mutex-chain n))))
+    (define (the-semaphore request)
+      (case request
+        ((acquire)
+         (let loop ((current-cycle mutexes))
+           (let ((mutex (car current-cycle)))
+             (if (mutex 'acquire)
+                 (loop (cdr current-cycle))
+                 mutex))))
+        (else (error "Unknown request -- MAKE-SEMAPHORE" request))))
+    the-semaphore))
+#+END_SRC
+**** b.
+ With atomic =test-and-set!= it becomes more concise -- the semaphore only need
+ to keep track the number of current concurrent procedures:
+ #+BEGIN_SRC scheme
+(define (make-semaphore2 n)
+  (let ((cell (list 0)))
+    (define (test-and-set!)
+      (without-interrupts
+       (lambda ()
+         (if (< (car cell) n)
+             (begin (set-car! cell (1+ (car cell)))
+                    false)
+             true))))
+    (define (clear!)
+      (without-interrupts
+       (lambda ()
+         (set-car! cell (-1+ (car cell))))))
+    (define (the-semaphore request)
+      (case request
+        ((acquire)
+         (test-and-set!))
+        ((release)
+         (clear!))
+        (else
+         (error "Unknown reuqest -- MAKE-SEMAPHORE2" request))))
+    the-semaphore))
+
+(define (make-serializer-with2 n)
+  (let ((the-semaphore (make-semaphore2 n)))
+    (lambda (p)
+      (define (serialized-p . args)
+        (if (the-semaphore 'acquire)
+            (the-semaphore 'acquire))
+        (let ((val (apply p args)))
+          (the-semaphore 'release)
+          val))
+      serialized-p)))
+ #+END_SRC
+*** Exercise 3.48
+As noted in the text, deadlock occur in the situation where each process needs
+to get permission of every permission from specified serializer set to execute,
+but each permission doesn't have to be acquired in specific order. Thus several
+process can get some number of permissions concurrently, which leads interlocked
+processes.
+
+The given deadlock-avoidance method constrain each process needs to get
+permission in specific order; that means the interlocked situation can not occur
+at all since to occur such situation, one should break the ordering constraint.
+
+To implement this idea, first we need to modify =make-account-and-serializer= to
+issue identification number to each account:
+#+BEGIN_SRC scheme
+(define make-account-and-serializer
+  (let ((id 0))
+    (lambda (balance)
+      (let ((id (begin (set! id (1+ id))
+                       id)))
+        (define (withdraw amount)
+          (if (>= balance amount)
+              (begin (set! balance (- balance amount))
+                     balance)
+              "Insufficient funds"))
+        (define (deposit amount)
+          (set! balance (+ balance amount))
+          balance)
+        (let ((balance-serializer (make-serializer)))
+          (define (dispatch m)
+            (case m
+              ((withdraw) withdraw)
+              ((deposit) deposit)
+              ((balance) balance)
+              ((serializer) balance-serializer)
+              ((id) id)
+              (else (error "Unknown request -- MAKE-ACCOUNT" m))))
+          dispatch)))))
+#+END_SRC
+
+Then test the id feature:
+#+BEGIN_SRC scheme
+(define a (make-account-and-serializer 100))
+(define b (make-account-and-serializer 100))
+(a 'id)
+;Value: 1
+
+(b 'id)
+;Value: 2
+#+END_SRC
+
+#+BEGIN_SRC scheme
+(define (serialized-exchange account1 account2)
+  (let ((id1 (account1 'id))
+        (id2 (account2 'id))
+        (serializer1 (account1 'serializer))
+        (serializer2 (account2 'serializer)))
+    (if (< id1 id2)
+        ((serializer1 (serializer2 exchange))
+         account1
+         account2)
+        ((serializer2 (serializer1 exchange))
+         account2
+         account1))))
+#+END_SRC
+*** Exercise 3.49
+Such scenario should satisfy the selection of the other account depends on the
+value of the shared resource of first account and also it should mutate the
+depending resource in that process.
+
+We can think of the joint account situation a bit screwed from what discussed in
+the text book -- jointing accounts results to making each account reference the
+other account in their state variable. Then now think of the situation where we
+want to exchange the account's balance of ones with the joint account's. It
+cannot be avoided by outlined procedure in [[Exercise 3.48][exercise 3.48]].
