@@ -1784,3 +1784,206 @@
                        (account2 'balance))))
     ((account1 'withdraw) difference)
     ((account2 'deposit) difference)))
+
+;; Exercise 3.50
+;; (A,...,A -> B), List<Stream<A>> -> Stream<B>
+(define (stream-map proc . argstreams)
+  (if (empty-stream? (car argstreams))
+      the-empty-stream
+      (cons-stream
+       (apply proc (map stream-car argstreams))
+       (apply stream-map
+              (cons proc (map stream-cdr argstreams))))))
+
+;; Exercise 3.51
+(define (stream-enumerate-interval low high)
+  (if (> low high)
+      the-empty-stream
+      (cons-stream
+       low
+       (stream-enumerate-interval (+ low 1) high))))
+
+(define (display-line x)
+  (newline)
+  (display x))
+
+(define (show x)
+  (display-line x)
+  x)
+
+;; (define x (stream-map show (stream-enumerate-interval 0 10)))
+;; (stream-ref x 5)
+;; (stream-ref x 7)
+
+;; Exercise 3.52
+(define (display-stream s)
+  (stream-for-each display-line s))
+
+;; (define sum 0)
+;; (define (accum x)
+;;   (set! sum (+ x sum))
+;;   sum)
+;; (define seq (stream-map accum (stream-enumerate-interval 1 20)))
+;; (define y (stream-filter even? seq))
+;; (define z (stream-filter (lambda (x) (= (remainder x 5) 0))
+;;                          seq))
+;; (stream-ref y 7)
+;; (display-stream z)
+
+;; Exercise 3.54
+(define (integers-starting-from n)
+  (cons-stream n (integers-starting-from (+ n 1))))
+(define integers (integers-starting-from 1))
+(define (mul-streams s1 s2)
+  (stream-map * s1 s2))
+
+(define factorials (cons-stream 1 (mul-streams (integers-starting-from 2)
+                                               factorials)))
+
+;; Exercise 3.55
+(define (add-streams . streams)
+  (apply stream-map (cons + streams)))
+
+(define (partial-sums s)
+  (define partials
+    (cons-stream (stream-car s)
+                 (add-streams (stream-cdr s) partials)))
+  partials)
+
+;; test for partial-sums
+;; (define test-partial-sums (partial-sums integers))
+
+;; Exercise 3.56
+(define (scale-stream stream factor)
+  (stream-map (lambda (e) (* factor e))
+              stream))
+
+(define (merge s1 s2)
+  (cond ((stream-null? s1) s2)
+        ((stream-null? s2) s1)
+        (else
+         (let ((s1car (stream-car s1))
+               (s2car (stream-car s2)))
+           (cond ((< s1car s2car)
+                  (cons-stream s1car (merge (stream-cdr s1) s2)))
+                 ((> s1car s2car)
+                  (cons-stream s2car (merge s1 (stream-cdr s2))))
+                 (else
+                  (cons-stream s1car
+                               (merge (stream-cdr s1)
+                                      (stream-cdr s2)))))))))
+(define S (cons-stream 1
+                       (merge (scale-stream s 2)
+                              (merge (scale-stream s 3)
+                                     (scale-stream s 5)))))
+
+;; Exercise 3.58
+(define (expand num den radix)
+  (cons-stream
+   (quotient (* num radix) den)
+   (expand (remainder (* num radix) den) den radix)))
+
+;; Exercise 3.59
+;;; a.
+(define ones
+  (cons-stream 1
+               ones))
+(define (integrate-series s)
+  (stream-map (lambda (s i) (/ s i)) s integers))
+
+;; test for integrate-series
+;; (define test-integrate-series
+;;   (integrate-series ones))
+;; test-integrate-series
+
+;; ;Value: {1 1/2 1/3 1/4 1/5 1/6 1/7 1/8 1/9 1/10 1/11 ...}
+
+;;; b.
+(define exp-series
+  (cons-stream 1 (integrate-series exp-series)))
+
+(define cosine-series
+  (cons-stream 1 (integrate-series (stream-map - sine-series))))
+
+(define sine-series
+  (cons-stream 0 (integrate-series cosine-series)))
+
+;; Exercise 3.60
+(define add-series add-streams)
+
+(define (mul-series s1 s2)
+  (let ((a0s1 (scale-stream s1 (stream-car s2))))
+    (cons-stream
+     (stream-car a0s1)
+     (add-series (stream-cdr a0s1)
+                 (mul-series s1 (stream-cdr s2))))))
+;; test for sine, cosine series with mul-series
+(define (square-series s)
+  (mul-series s s))
+;; (define test-trigonometric-stream
+;;   (add-series (square-series sine-series)
+;;               (square-series cosine-series)))
+;; test-trigonometric-stream
+;; ;Value: {1 0 0 0 0 0 ...}
+
+
+;; Exercise 3.61
+(define (invert-unit-series s)
+  (define X (cons-stream
+             (stream-car s)
+             (mul-series
+              (stream-cdr s)
+              (stream-map - X))))
+  X)
+;;; test for invert-unit-series
+;; (define test-invert-series
+;;   (invert-unit-series test-integrate-series))
+;; test-invert-series
+
+;; ;Value: {1 -1/2 -1/12 -1/24 -19/720 -3/160 -863/60480 -275/24192 -33953/3628800 -8183/1036800 -3250433/479001600 ...}
+
+;; Exercise 3.62
+(define (div-series ns ds)
+  (let ((d0 (stream-car ds)))
+    (cond ((zero? d0)
+           (error "Zero division -- DIV-SERIES" ds))
+          (else
+           (let ((ns/d0 (stream-map (lambda (n) (/ n d0)) ns))
+                 (ds/d0 (stream-map (lambda (d) (/ d d0)) ds)))
+             (mul-series
+              ns/d0
+              (invert-unit-series ds/d0)))))))
+;;; test div-series
+;; (define test-div-series
+;;   (div-series sine-series sine-series))
+;; ;Zero division -- DIV-SERIES {0 1 0 -1/6 0 ...}
+;; (define test-div-series
+;;   (div-series cosine-series cosine-series))
+
+;; test-div-series
+
+;; ;Value: {1 0 0 0 0 0 0 0 0 0 0 ...}
+
+;; tangent-series
+(define tangent-series
+  (div-series sine-series cosine-series))
+;; tangent-series
+
+;; ;Value: {0 1 0 1/3 0 2/15 0 17/315 0 62/2835 0 ...}
+
+;; Exercise 3.64
+(define (stream-limit s tolerance)
+  (let ((x (stream-car s))
+        (y (stream-car (stream-cdr s))))
+    (if (< (abs (- x y) tolerance))
+        y
+        (stream-limit (stream-cdr s) tolerance))))
+
+;; Exercise 3.65
+(define (euler-transform s)
+  (let ((s0 (stream-ref s 0))           ;S_{n-1}
+        (s1 (stream-ref s 1))           ;S_{n}
+        (s2 (stream-ref s 2)))          ;S_{n+1}
+    (cons-stream (- s2 (/ (square (- s2 s1))
+                          (+ s0 (* -2 s1) s2)))
+                 (euler-transform (stream-cdr s)))))

@@ -3820,3 +3820,398 @@ the text book -- jointing accounts results to making each account reference the
 other account in their state variable. Then now think of the situation where we
 want to exchange the account's balance of ones with the joint account's. It
 cannot be avoided by outlined procedure in [[Exercise 3.48][exercise 3.48]].
+*** Concurrency, time, and communication
+Let we conclude this section quoting the last paragraph of the text's this
+section:
+
+#+BEGIN_QUOTE
+The basic phenomenon here is that synchronizing different processes,
+establishing shared state, or imposing an order on events requires communication
+among the processes. In essence, any notion of time in concurrency control must
+be intimately tied to communication. It is intriguing that a similar connection
+between time and communication also arises in the Theory of Relativity, where
+the speed of light (the fastest signal that can be used to synchronize events)
+is a fundamental constant relating time and space. The complexities we encounter
+in dealing with time and state in our computational models may in fact mirror a
+fundamental complexity of the physical universe.
+#+END_QUOTE
+* Streams
+Here we approach the modeling of real world in different angle: We try to
+capture time as sequence of instants; that is analogous to the physical
+interpretation of world as 4 dimension -- time axis with 3D space.
+
+With this view point, we can use our sequence processing interface to process
+the streams. In fact, this stream processing is powerful model which enables us
+to deal the state without ever using assignment or mutable data.
+
+On the other hand, the stream framework raises difficulties of its own, and the
+question of which modeling technique leads to more modular and more easily
+maintained systems remains open.
+** Streams Are Delayed Lists
+*** Exercise 3.50
+Use type contract:
+#+BEGIN_SRC scheme
+;; (A,...,A -> B), List<Stream<A>> -> Stream<B>
+(define (stream-map proc . argstreams)
+  (if (empty-stream? (car argstreams))
+      the-empty-stream
+      (cons-stream
+       (apply proc (map stream-car argstreams))
+       (apply stream-map
+              (cons proc (map stream-cdr argstreams))))))
+#+END_SRC
+*** Exercise 3.51
+It should
+#+BEGIN_SRC scheme
+(define x (stream-map show (stream-enumerate-interval 0 10)))
+;display 0
+(stream-ref x 5)
+;display 1, 2, 3, 4, 5
+(stream-ref x 7)
+;display 6, 7
+#+END_SRC
+
+And it did:
+#+BEGIN_SRC scheme
+(define x (stream-map show (stream-enumerate-interval 0 10)))
+
+0
+;Value: x
+
+(stream-ref x 5)
+
+1
+2
+3
+4
+5
+;Value: 5
+
+(stream-ref x 7)
+
+6
+7
+;Value: 7
+#+END_SRC
+*** Exercise 3.52
+Mentally calculated:
+#+BEGIN_SRC scheme
+(define seq (stream-map accum (stream-enumerate-interval 1 20)))
+;sum = 1
+(define y (stream-filter even? seq))
+;sum = 6
+(define z (stream-filter (lambda (x) (= (remainder x 5) 0))
+                         seq))
+;sum = 10
+(stream-ref y 7)
+;136
+;sum = 136
+(display-stream z)
+;10, 15, 45, 55, 105, 120, 190, 210
+;sum = 210
+#+END_SRC
+
+Actual response:
+#+BEGIN_SRC scheme
+(stream-ref y 7)
+
+;Value: 136
+
+(display-stream z)
+
+10
+15
+45
+55
+105
+120
+190
+210
+;Unspecified return value
+#+END_SRC
+
+For the latter question: Yes it'll produce different result, since it now the
+duplicated evaluation aggregate the value of sum by the computation result of
+that additional evaluation.
+** Infinite Streams
+The important aspect of streams that differs from previous processes --
+iterative, recursive -- is that streams unfolds the specified process while the
+others folding the given argument; that is, streams make more complex things as
+it evolves, whereas the others simplifying those.
+
+Observe that procedure dealing with streams usually capture the differential
+equation as we'll learn from 6.01.
+*** Exercise 3.53
+This stream captures the differential equation given by
+\begin{matrix}
+s[n] =& s[n-1] + s[n-1] =& 2s[n-1]\\
+s[0] =& 0
+\end{matrix}
+
+So, by solving the deduced equation, we got $s[n] = 2^{n}$.
+*** Exercise 3.54
+The differential equation we want:
+\begin{matrix}
+f[n] =& f[n-1] \times int[n + 1]\\
+f[0] =& 1
+\end{matrix}
+
+The converted code:
+#+BEGIN_SRC scheme
+(define (mul-streams s1 s2)
+  (stream-map * s1 s2))
+
+(define factorials (cons-stream 1 (mul-streams (integers-starting-from 2)
+                                               factorials)))
+#+END_SRC
+*** Exercise 3.55
+The differential equation we want:
+\begin{matrix}
+f[n] =& f[n-1] + s[n]\\
+f[0] =& s[0]
+\end{matrix}
+
+Then the code:
+#+BEGIN_SRC scheme
+(define (partial-sums s)
+  (define partials
+    (cons-stream (stream-car s)
+                 (add-streams (stream-cdr s) partials)))
+  partials)
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+(define test-partial-sums (partial-sums integers))
+
+(display-stream test-partial-sums)
+
+1
+3
+6
+10
+15
+21
+28
+36
+45
+55
+...
+#+END_SRC
+*** Exercise 3.56
+We need to merge all of =(scale-stream s 2)=, =(scale-stream s 3)=,
+=(scale-stream s 5)=:
+#+BEGIN_SRC scheme
+(define S (cons-stream 1
+                       (merge (scale-stream s 2)
+                              (merge (scale-stream s 3)
+                                     (scale-stream s 5)))))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+(stream-ref s 100)
+
+;Value: 1600
+
+s
+
+;Value: {1 2 3 4 5 6 8 9 10 12 15 16 18 20 24 25 27 30 32 36 ...
+#+END_SRC
+*** Exercise 3.57
+We answers to the questions in order:
+1. The number of additions results to $n-2$ since
+   - base case: 3th =fibs= needs one addition.
+   - inductive case: nth =fibs= needs # of additions of n-1th =fibs= + 1.
+2. The number of the latter would be greater than 2^{n/2 - 1} since
+   - \[T(3) = 1\]
+   - \[T(n) = T(n-1) + T(n-2) + 1\]
+   These equation can be deduced as it does not involve any assignment
+   explicitly & implicitly; so the evaluation does not depends on context, that
+   is to the result of $T(n-2)$ after evaluating $T(n-1)$ same as $T(n-2)$
+   before evaluating $T(n-1)$.
+*** Exercise 3.58
+#+BEGIN_SRC scheme
+(define (expand num den radix)
+  (cons-stream
+   (quotient (* num radix) den)
+   (expand (remainder (* num radix) den) den radix)))
+#+END_SRC
+It produce the sequence representing radix point number expansion of rational
+number $\frac{num}{den}$.
+
+Tests:
+#+BEGIN_SRC scheme
+(define 1over7 (expand 1 7 10))
+
+;Value: |1over7|
+
+1over7
+
+;Value: {1 ...}
+
+(stream-ref 1over7 10)
+
+;Value: 5
+
+1over7
+
+;Value: {1 4 2 8 5 7 1 4 2 8 5 ...}
+
+(define 3over8 (expand 3 8 10))
+
+;Value: |3over8|
+
+(stream-ref 3over8 10)
+
+;Value: 0
+
+3over8
+
+;Value: {3 7 5 0 0 0 0 0 0 0 0 ...}
+#+END_SRC
+*** Exercise 3.59
+**** a.
+The code do the right things:
+#+BEGIN_SRC scheme
+(define (integrate-series s)
+  (stream-map (lambda (s i) (/ s i)) s integers))
+#+END_SRC
+
+And test:
+#+BEGIN_SRC scheme
+(define test-integrate-series
+  (integrate-series ones))
+test-integrate-series
+
+;Value: {1 1/2 1/3 1/4 1/5 1/6 1/7 1/8 1/9 1/10 1/11 ...}
+#+END_SRC
+**** b.
+Here we using following observation:
+#+BEGIN_SRC scheme
+(cons-stream (stream-car series), (integrate-series (deriv series))) = series
+#+END_SRC
+
+So, the answers can be implemented as
+
+#+BEGIN_SRC scheme
+(define cosine-series
+  (cons-stream 1 (integrate-series (stream-map - sine-series))))
+
+(define sine-series
+  (cons-stream 0 (integrate-series cosine-series)))
+#+END_SRC
+*** Exercise 3.60
+Let S_{2} be $\{a_{0}, a_{1}, \ldots\}$ then =(mul-series S1 S2)= should equals
+to $a_{0} S_{1} + x S_{1} \times \{a_{1}, a_{2}, \ldots\}$.
+
+From above observation, we can deduce
+#+BEGIN_SRC scheme
+(mul-series s1 s2)
+= (add-series (scale-stream s1 (stream-car s2))
+                                 (shift (mul-series s1 (stream-cdr s2))))
+= (let ((a0s1 (scale-stream s1 (stream-car s2))))
+    (cons-stream
+     (stream-car a0s1)
+     (add-series (stream-cdr a0s1)
+                 (mul-series s1 (stream-cdr s2)))))
+#+END_SRC
+
+Then the result:
+#+BEGIN_SRC scheme
+(define (mul-series s1 s2)
+  (let ((a0s1 (scale-stream s1 (stream-car s2))))
+    (cons-stream
+     (stream-car a0s1)
+     (add-series (stream-cdr a0s1)
+                 (mul-series s1 (stream-cdr s2))))))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+;; test for sine, cosine series with mul-series
+(define (square-series s)
+  (mul-series s s))
+(define test-trigonometric-stream
+  (add-series (square-series sine-series)
+              (square-series cosine-series)))
+
+test-trigonometric-stream
+
+;Value: {1 0 0 0 0 0 ...}
+#+END_SRC
+*** Exercise 3.61
+The straight forward implementation:
+#+BEGIN_SRC scheme
+(define (invert-unit-series s)
+  (define X (cons-stream
+             (stream-car s)
+             (mul-series
+              (stream-cdr s)
+              (stream-map - X))))
+  X)
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+(define test-invert-series
+  (invert-unit-series test-integrate-series))
+test-invert-series
+
+;Value: {1 -1/2 -1/12 -1/24 -19/720 -3/160 -863/60480 -275/24192 -33953/3628800 -8183/1036800 -3250433/479001600 ...}
+#+END_SRC
+
+The problem is I don't know the result of the test case is right. Let this test
+delegate to next exercise.
+*** Exercise 3.62
+Here we use following observation:
+\begin{align*}
+&\{n_{0}, n_{1}, \ldots\} / \{d_{0}, d_{1}, \ldots\}\\
+=&\frac{\{n_{0}, n_{1}, \ldots\}/d_{0}}{\{1, d_{1}/d_{0}, d_{2}/d_{0}, \ldots\}}
+\end{align*}
+It results into
+#+BEGIN_SRC scheme
+(define (div-series ns ds)
+  (let ((d0 (stream-car ds)))
+    (cond ((zero? d0)
+           (error "Zero division -- DIV-SERIES" ds))
+          (else
+           (let ((ns/d0 (stream-map (lambda (n) (/ n d0)) ns))
+                 (ds/d0 (stream-map (lambda (d) (/ d d0)) ds)))
+             (mul-series
+              ns/d0
+              (invert-unit-series ds/d0)))))))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+(define test-div-series
+  (div-series sine-series sine-series))
+;Zero division -- DIV-SERIES {0 1 0 -1/6 0 ...}
+(define test-div-series
+  (div-series cosine-series cosine-series))
+
+test-div-series
+
+;Value: {1 0 0 0 0 0 0 0 0 0 0 ...}
+
+;; tangent-series
+(define tangent-series
+  (div-series sine-series cosine-series))
+
+tangent-series
+
+;Value: {0 1 0 1/3 0 2/15 0 17/315 0 62/2835 0 ...}
+#+END_SRC
+** Exploiting the Stream Paradigm
+*** Exercise 3.63
+The modified version need to recalculate the subsequent call of =(sqrt-stream
+x)= within the body of =sqrt-stream= whereas the original one just refer the
+precalculated result.
+
+If we just use call-by-name not call-by-need, the two different version of these
+procedure would hardly differ each other since both should recalculate recursive
+call of expression.
+
+I've deduced this result using environment diagram. You should also draw by
+yourself.
