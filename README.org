@@ -2866,8 +2866,8 @@ logical programming combined with pattern matching. In that paradigm, all the
 constraints works as /fact/. Using such /facts/, deduce unknown things if
 appropriate amounts of fact provided.
 
-To implement such programming style, we apply what we learned in [[Lecture 5B: Computational Objects][Lecture 5B:
-Computational Objects]]:
+To implement such programming style, we apply what we learned in [[Lecture 5B:
+Computational Objects][Lecture 5B: Computational Objects]]:
 *** Capture the behavior of real world scheme.
 We could start this using the mechanical example we described; but to begin, the
 simpler example we use, the easier to capture the common behavior of those
@@ -3261,4 +3261,354 @@ Probe: average = 5/2
 ;Value: done
 #+END_SRC
 *** Exercise 3.34
-Louis Reasoner
+We want to implement the =squarer= which is the constraint version of =square=
+procedure. Louis Reasoner builds this constraint using the =multipliter=:
+#+BEGIN_SRC scheme
+(define (squarer a b)
+  (multiplier a a b))
+#+END_SRC
+
+Unfortunately, it does not work as desired: It only works from a to b not the
+other way around:
+#+BEGIN_SRC scheme
+1 (user) => (define a (make-connector))
+
+;Value: a
+
+1 (user) => (define b (make-connector))
+
+;Value: b
+
+1 (user) => (probe 'a a)
+
+;Value: #[compound-procedure 42 me]
+
+1 (user) => (probe 'b b)
+
+;Value: #[compound-procedure 43 me]
+
+1 (user) => (squarer a b)
+
+;Value: #[compound-procedure 44 me]
+
+1 (user) => (set-value! a 4 'user)
+
+Probe: b = 16
+Probe: a = 4
+;Value: done
+
+1 (user) => (forget-value! a 'user)
+
+Probe: b = ?
+Probe: a = ?
+;Value: done
+
+1 (user) => (set-value! b 16 'user)
+
+Probe: b = 16
+;Value: done
+#+END_SRC
+*** Exercise 3.35
+#+BEGIN_SRC scheme
+(define (squarer a b)
+  (define (process-new-value)
+    (cond ((has-value? b)
+           (if (< (get-value b) 0)
+               (error "sqaure less than 0 -- SQUARER" (get-value b))
+               (set-value! a (sqrt b) me)))
+          ((has-value? a)
+           (set-value! b (square a) me))))
+  (define (process-forget-value)
+    (forget-value! a me)
+    (forget-value! b me)
+    (process-new-value))
+  (define (me request)
+    (case request
+      ((I-have-a-value) (process-new-value))
+      ((I-lost-my-value) (process-forget-value))
+      (else
+       (error "Unknown request -- SQUARER" request))))
+  (connect a me)
+  (connect b me)
+  me)
+#+END_SRC
+
+Test:
+#+BEGIN_SRC scheme
+1 (user) => (define a (make-connector))
+
+;Value: a
+
+1 (user) => (define b (make-connector))
+
+;Value: b
+
+1 (user) => (probe 'a a)
+
+;Value: #[compound-procedure 39 me]
+
+1 (user) => (probe 'b b)
+
+;Value: #[compound-procedure 40 me]
+
+1 (user) => (squarer a b)
+
+;Value: #[compound-procedure 41 me]
+
+1 (user) => (set-value! a 4 'user)
+
+Probe: b = 16
+Probe: a = 4
+;Value: done
+
+1 (user) => (forget-value! a 'user)
+
+Probe: b = ?
+Probe: a = ?
+;Value: done
+
+1 (user) => (set-value! b 4 'user)
+
+Probe: a = 2
+Probe: b = 4
+;Value: done
+#+END_SRC
+*** Exercise 3.36
+I've done this with my digital paper.
+*** Exercise 3.37
+Using the expression-oriented style of definition, we can rewrite the
+=celsius-fahrenheit-converter= procedure as follows:
+#+BEGIN_SRC scheme
+(define (celsius-fahrenheit-converter x)
+  (c+ (c* (c/ (cv 9) (cv 5))
+          x)
+      (cv 32)))
+(define C (make-connector))
+(define F (celsius-fahrenheit-converter C))
+#+END_SRC
+
+Here =c+=, =c*=, etc. are the "constraint" versions of the arithmetic
+operations. For example, =c+= takes two connectors as arguments and returns a
+connector that is related to these by an adder constraint:
+#+BEGIN_SRC scheme
+(define (c+ x y)
+  (let ((z (make-connector)))
+    (adder x y z)
+    z))
+#+END_SRC
+
+Then, we can define =c-=, =c*=, =c/=, and =cv= (constant value) analogous to
+=c+=:
+#+BEGIN_SRC scheme
+(define (c- s x)
+  (let ((y (make-connector)))
+    (adder x y s)
+    y))
+
+(define (c* x y)
+  (let ((z (make-connector)))
+    (multiplier x y z)
+    z))
+
+(define (c/ z x)
+  (let ((y (make-connector)))
+    (multiplier x y z)
+    y))
+
+(define (cv num)
+  (let ((x (make-connector)))
+    (constant num x)
+    x))
+#+END_SRC
+
+Test:
+#+BEGIN_SRC scheme
+(define (celsius-fahrenheit-converter x)
+  (c+ (c* (c/ (cv 9) (cv 5))
+          x)
+      (cv 32)))
+(define C (make-connector))
+(define F (celsius-fahrenheit-converter C))
+
+(set-value! f 212 'user)
+
+;Value: done
+
+(probe 'f f)
+
+Probe: f = 212
+;Value: #[compound-procedure 42 me]
+
+(probe 'c c)
+
+Probe: c = 100
+;Value: #[compound-procedure 43 me]
+#+END_SRC
+* Concurrency: Time Is of the Essence
+** The Nature of Time in Concurrent Systems
+*** Exercise 3.38 **** a.
+Note that as Peter \to Paul results in same as Paul \to Peter, There are only
+four of cases that differs each other:
+- M \to P \to P -- $40;
+- Peter \to M \to Paul -- $35;
+- Paul \to M \to Peter -- $50;
+- P \to P \to M -- $45;
+
+
+Here we abbreviated Marry as M, Peter or Paul as P when it doesn't matter
+whether Peter or Paul.
+**** b.
+Note that the timing of the accessing the shared variable & mutating that only
+matters here. For simplicity (and for the discussion), we only consider the
+situation where mutation can not occur at the very same time -- if we allow
+this, then the discussion would be bogged down to bit mutation level. Then our
+concurrent process can be grouped as
+- the three people accessing the same value (at the same timing) of the shared
+  variable (the three people try to mutate the shared variable concurrently);
+- two of them accessing the same value (at the same timing) of the shared
+  variable (two of them try to mutate concurrently);
+- each of them accessing the shared variable without interleaving with others
+  (the *a.* cases).
+
+
+If we draw diagram relating these concurrent process, the first case of outlined
+above equivalent to only one person of them participate to the mutation, the
+second is two of them participate, and the last one participate all of them. As
+consequence the number of different situation here is 3 + 5 + 4 = 12. That is,
+- first case ::
+  - Peter: $110
+  - Paul: $80
+  - Marry: $50
+- second case ::
+  - P \to P: $90
+  - M \to Peter: $60
+  - M \to Paul: $30
+  - Paul \to M: $40
+  - Peter \to M: $55
+- last case (*a.*) ::
+  - M \to P \to P -- +$40+;
+  - Peter \to M \to Paul -- $35;
+  - Paul \to M \to Peter -- +$50+;
+  - P \to P \to M -- $45;
+
+
+Here we stroke out the duplicated result; overall number of different result is 10.
+** Mechanisms for Controlling Concurrency
+There are several strategy to control the concurrency. In the text book, they
+implemented /serializer/, which works as station where issues permission to
+operate. Then each of procedure who can mutate shared variable should be
+registered by the same serializer to prevent the interleaving process. We can
+implement this behavior following the steps of [[Propagation of Constrains][previous section]].
+
+There are several implementation details that we can choose for our own:
+- Serializer should have state variable that stores all the procedures that
+  registered to self? Actually the way of text book's have chosen reverse way --
+  the procedures have to reference the serializer to be controlled.
+- How the serializer permit specific procedure to run? We could have done this
+  using the massage-passing paradigm:
+  #+BEGIN_SRC plantuml :exports results :file ./image/chap3_1.png
+actor User
+participant "serialized-proc1"
+participant serializer
+User --> "serialized-proc1": Use!
+"serialized-proc1" -> serializer: request permission
+serializer -> "serialized-proc1": permit
+"serialized-proc1" --> User: result
+  #+END_SRC
+
+  #+RESULTS:
+  [[file:./image/chap3_1.png]]
+
+  However it is not the way of the book's; they make the serializer
+  "busy-waiting". If we implement this asynchronous way, we can make our
+  serializing scheme more efficient. But, here we only consider what way the
+  book driving for the simplicity.
+*** Exercise 3.39
+Since =s=, now control only one of two execution, not the all of them, and the
+controlled procedure never executed twice that are concurrently; thus the
+serializer does not work in this situation -- make no difference at all from the
+previous unserialized version. Consequently remain all of the previous cases.
+*** Exercise 3.40
+#+BEGIN_SRC scheme
+(define x 10)
+(parallel-execute (lambda () (set! x (* x x)))
+                  (lambda () (set! x (* x x x))))
+#+END_SRC
+We can capture above situation abstractly:
+- access x_{1} \to access x_{2} \to set x_{3} to (* x_{1} x_{2}); let we
+  abbreviate this sequence of events as (x, y, z).
+- access x^{1} \to access x^{2} \to access x^{3} \to set x^{4} to (* x^{1} x^{2}
+  x^{3}); let we abbreviate this sequence of events as (a, b, c, d)
+
+
+We used subscriptions or superscriptions to capture the times to access the
+variable =x=. Then the resulting sequence of execution should be an sequence
+that contains all of the elements of above sequences -- x, y, z, a, b, c, d in
+some order with constraints that elements of each sequence should be preserve
+the relative order. And note that only mutation (assignment) make the context
+different; that is, the number of cases that possibly produce different result
+are the number of ways of organizing (0, 0, 0) with 1 plus (1, 1, 1, 1) with 0
+minus 2 (duplicated cases among those -- (1, 0) and (0, 1)) -- 7 cases:
+- (0, 0, 0, 1): 10^{6}
+- (0, 0, 1, 0): 10^{2}
+- (0, 1, 0, 0): 10^{4}
+- (1, 0, 0, 0): +10^{6}+
+- (1, 1, 1, 0, 1): 10^{3}
+- (1, 1, 0, 1, 1): +10^{4}+
+- (1, 0, 1, 1, 1): 10^{5}
+
+
+We represented the (x, y, z) sequence as (0, 0, 0) similarly (1, 1, 1, 1) for
+(a, b, c, d); so the last element of each sequence represent the assignment
+statement. Also in the combined sequences, we only noted one element of other
+sequence such as (0, 0, 0, 1) -- here 1 represent the assignment of latter
+sequence. -- as only assignment make context different.
+
+If we use the serializer here, the only two case survives -- (0, 1) and (1, 0)
+both results to 10^{6}.
+*** Exercise 3.41
+The Ben Bitdiddle's observation is not correct: As the balance method only
+access to the shared state variable not mutating it, this method calling could
+not make any different context (can not alter the environment) at all; recall
+that the anomalous behavior we concerned here is the interleaving processes
+which do access the shared variable and based on that, mutate that variable.
+*** Exercise 3.42
+To answer this question, we need to inspect the behavior of serializer more
+formally. If we interpret the informal specification described in the text book
+as only one of evaluation can be processed among the set of procedures
+associated with that serializer, then the modification made by Ben Bitdiddle
+results to the same behavior as previous one.
+
+On the other hand, if it means only one of procedure, whose instance gets
+permission from the serializer, allowed to be executed, then it results in the
+instances (processes) of that procedure allowed to be processed concurrently.
+That causes the chaos in the banking system cause it will allow interleaving
+processes.
+
+So it is good convention to define the banking account procedure as original one
+since it does not depend on the interpretation of the specification, which is
+the implementation details.
+*** Exercise 3.43
+As it is evaluated sequentially, all we need to show is that if before
+sequential execution specific condition holds, then after which it still holds.
+And this assertion can be proved as choose arbitrary one of the execution of
+element of sequence; then prove if the a specific condition holds before that
+execution, it still holds after that.
+
+By setting the specific condition as the account balances should be $10, $20,
+and $30 after the sequential execution, we got what we want.
+
+This condition can be violated allowing the interleaving exchange. I've drawn
+the figure describing this situation in the digital paper.
+
+Now we try to prove even this situation, the total balance of accounts are
+conserved. Basically, the structure of our proof is same as outlined above. We
+decompose the goal into about the each exchange execution, and then into the
+individual execution of =withdraw= or =deposit=. About the decomposed goal, we
+have the lemma-like specification in the book, so if we formalize that
+observation, we are done -- completion of proof. To prove the final decomposed
+goal, we need to incorporate the user -- the caller of =exchange= -- to interact
+or possess the balance -- difference.
+
+For the last request, I've drawn diagram in the digital paper.
+*** Exercise 3.44

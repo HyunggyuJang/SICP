@@ -1551,6 +1551,8 @@
   (connector 'value))
 (define (set-value! connector new-value informant)
   ((connector 'set-value!) new-value informant))
+(define (forget-value! connector retractor)
+  ((connector 'forget) retractor))
 (define (connect connector new-constraint)
   ((connector 'connect) new-constraint))
 
@@ -1562,3 +1564,78 @@
     (multiplier c y x)
     (constant 2 y)
     'ok))
+
+;; Exercise 3.34
+;; (define (squarer a b)
+;;   (multiplier a a b))
+
+;; Exercise 3.35
+(define (squarer a b)
+  (define (process-new-value)
+    (cond ((has-value? b)
+           (if (< (get-value b) 0)
+               (error "sqaure less than 0 -- SQUARER" (get-value b))
+               (set-value! a (sqrt (get-value b)) me)))
+          ((has-value? a)
+           (set-value! b (square (get-value a)) me))))
+  (define (process-forget-value)
+    (forget-value! a me)
+    (forget-value! b me)
+    (process-new-value))
+  (define (me request)
+    (case request
+      ((I-have-a-value) (process-new-value))
+      ((I-lost-my-value) (process-forget-value))
+      (else
+       (error "Unknown request -- SQUARER" request))))
+  (connect a me)
+  (connect b me)
+  me)
+
+;; Exercise 3.37
+(define (c+ x y)
+  (let ((z (make-connector)))
+    (adder x y z)
+    z))
+
+(define (c- s x)
+  (let ((y (make-connector)))
+    (adder x y s)
+    y))
+
+(define (c* x y)
+  (let ((z (make-connector)))
+    (multiplier x y z)
+    z))
+
+(define (c/ z x)
+  (let ((y (make-connector)))
+    (multiplier x y z)
+    y))
+
+(define (cv num)
+  (let ((x (make-connector)))
+    (constant num x)
+    x))
+
+;; Test expression-oriented style
+;; (define (celsius-fahrenheit-converter x)
+;;   (c+ (c* (c/ (cv 9) (cv 5))
+;;           x)
+;;       (cv 32)))
+;; (define C (make-connector))
+;; (define F (celsius-fahrenheit-converter C))
+
+;; (set-value! f 212 'user)
+
+;; ;Value: done
+
+;; (probe 'f f)
+
+;; Probe: f = 212
+;; ;Value: #[compound-procedure 42 me]
+
+;; (probe 'c c)
+
+;; Probe: c = 100
+;; ;Value: #[compound-procedure 43 me]
