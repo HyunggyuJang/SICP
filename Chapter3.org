@@ -1,1 +1,4922 @@
-/Users/hyunngyu-jang/MEGAsync/MIT Challenge/6.001/README.org
+#+TITLE: Chapter 3 Modularity, Objects, and State
+* Assignment and Local State
+We now introduce "state" in our programming language at length. By introduction
+this concept, we get to model real world system more naturally and modularly
+combining with message passing programming.
+** Local State Variables
+To introduce the local state variable, we need to special expression that can
+change the state of variable. More specifically, that expression has to update
+value of the state variable. For this, scheme has special syntax called =(set!
+<name> <new-value>)=.
+*** Exercise 3.1
+Using the general scheme that combines local variable with =set!= expression, we
+can easily implement what we asked:
+#+BEGIN_SRC scheme
+(define (make-accumulator sum)
+  (lambda (num)
+    (set! sum (+ sum num))
+    sum))
+#+END_SRC
+*** Exercise 3.2
+Let we first specify what the =make-monitored= should satisfy:
+- It should use the message passing programming to dispatch on input to
+  implement the special symbol input.
+- It should have local variable, say count, to count the number of calls of its
+  procedure argument =f=; it should use =set!= to change the value of its
+  internal state variable.
+
+
+Then we can encode that specification directly:
+#+BEGIN_SRC scheme
+(define (make-monitored f)
+  (let ((count 0))
+    (define (dispatch m)
+      (cond ((eq? m 'how-many-calls?) count)
+            ((eq? m 'reset-count) (set! count 0))
+            (else
+             (set! count (1+ count))
+             (f m))))))
+#+END_SRC
+*** Exercise 3.3
+We can do what we should do by slightly amending the procedure defined in text:
+#+BEGIN_SRC scheme
+(define (make-account balance password)
+  (define (withdraw amount)
+    (if (>= balance amount)
+        (begin (set! balance (- balance amount))
+               balance)
+        "Insufficient funds"))
+  (define (deposit amount)
+    (set! balance (+ balance amount))
+    balance)
+  (define (dispatch pd m)
+    (if (eq? pd password)
+        (cond ((eq? m 'withdraw) withdraw)
+              ((eq? m 'deposit) deposit)
+              (else (error "Unknown request -- MAKE-ACCOUNT"
+                           m)))
+        "Incorrect password")))
+#+END_SRC
+
+Unfortunately this code doesn't pass the test case =((acc 'some-other-password
+'deposit) 50)=, which returns
+#+BEGIN_SRC scheme
+;The object "Incorrect password" is not applicable.
+;To continue, call RESTART with an option number:
+; (RESTART 2) => Specify a procedure to use in its place.
+; (RESTART 1) => Return to read-eval-print level 1.
+#+END_SRC
+not what expected:
+#+BEGIN_SRC scheme
+"Incorrect password"
+#+END_SRC
+
+We can fix this by using type analysis: we should return procedure not the
+primitive data:
+#+BEGIN_SRC scheme
+(define (make-account balance password)
+  (define (withdraw amount)
+    (if (>= balance amount)
+        (begin (set! balance (- balance amount))
+               balance)
+        "Insufficient funds"))
+  (define (deposit amount)
+    (set! balance (+ balance amount))
+    balance)
+  (define (dispatch pd m)
+    (if (eq? pd password)
+        (cond ((eq? m 'withdraw) withdraw)
+              ((eq? m 'deposit) deposit)
+              (else (error "Unknown request -- MAKE-ACCOUNT"
+                           m)))
+        (lambda (x) "Incorrect password")))
+  dispatch)
+#+END_SRC
+
+Then it pass all the test specified in text book.
+*** Exercise 3.4
+This problem can be solved conjunction with the two previous exercises: 3.2 with 3.3.
+
+To implement what we requested, first let we code the test cases, which encodes
+all the specifications it should satisfy:
+#+BEGIN_SRC scheme
+;; Test code
+;;; consequetive call case
+(define acc (make-account 100 'secret-password))
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'some-other-password 'deposit) 50)
+"call-the-cops"
+;;; reset count
+((acc 'secret-password 'withdraw) 40)
+60
+;;; interposed case
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'secret-password 'withdraw) 40)
+20
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+((acc 'some-other-password 'deposit) 50)
+"call-the-cops"
+#+END_SRC
+
+Then modify the code of exercise 3.3:
+#+BEGIN_SRC scheme
+(define (make-account balance password)
+  (define (withdraw amount)
+    (if (>= balance amount)
+        (begin (set! balance (- balance amount))
+               balance)
+        "Insufficient funds"))
+  (define (deposit amount)
+    (set! balance (+ balance amount))
+    balance)
+  (let ((n-incorrect 0))
+    (define (dispatch pd m)
+      (if (eq? pd password)
+          (begin
+            (set! n-incorrect 0)        ;reset the counter
+            (cond ((eq? m 'withdraw) withdraw)
+                  ((eq? m 'deposit) deposit)
+                  (else (error "Unknown request -- MAKE-ACCOUNT"
+                               m))))
+          (lambda (x)
+            (set! n-incorrect (1+ n-incorrect))
+            (if (>= n-incorrect 7)
+                "call-the-cops"
+                "Incorrect password"))))
+    dispatch))
+#+END_SRC
+
+It passes all the test case.
+** The Benefits of Introducing Assignment
+In the text book, it explane the benefits of introducing assignment expression
+in our language taking Monte Carlo test as example. Without using assignment, we
+should handle explicitly the state of each experiment that use random number;
+it results into leaking the guts of state over the most higher level of
+language: Monte Carlo test. No more general Monte Carlo test, only the specific
+instance of that kind.
+*** Exercise 3.5
+We can implement this exercise directly or we can do using what we learned so
+far, data abstraction:
+#+BEGIN_SRC scheme
+;; top level
+(define (estimate-integral P rect trials)
+  (* (rect 'area)
+     (monte-carlo trials
+                  (lambda () (P (random-in-rect rect))))))
+;; dependency
+(define (monte-carlo trials experiment)
+  (define (iter trials-remaining trials-passed)
+    (cond ((= trials-remaining 0)
+           (/ trials-passed trials))
+          ((experiment)
+           (iter (- trials-remaining 1) (+ trials-passed 1)))
+          (else
+           (iter (- trials-remaining 1) trials-passed))))
+  (iter trials 0))
+#+END_SRC
+Here we captured the upper and lower bounds as rectangle; also we exploit that
+structure in generating random point in that rectangle. In this way, our program
+start to self-document what we are trying to do. With this, we can test this
+unit by
+#+BEGIN_SRC scheme
+;;; test estimate-integral
+(define p1 (make-point -1 -1))
+(define p2 (make-point 1 1))
+(define r (make-rect p1 p2))
+(define (P pt) (<= (+ (square (x-coor pt))
+                      (square (y-coor pt)))
+                   1))
+(estimate-integral P r 100)
+;; it should converge to 3.141592...
+#+END_SRC
+It's true that we can not test this code until implement the lower level
+language but it is important to note that we can write the unit test.
+
+Then we can implement the other levels of language:
+#+BEGIN_SRC scheme
+;; middle level
+(define (random-in-rect rect)
+  (let ((points (list (bottom-left rect) (top-right rect))))
+    (make-point (random-in-range
+                 (map exact->inexact (map x-coor points)))
+                (random-in-range
+                 (map exact->inexact (map y-coor points))))))
+;; dependency
+(define (random-in-range low high)
+  (let ((range (- high low)))
+    (+ low (random range))))
+
+;;; test random-in-rect
+(define p1 (make-point 3 4))
+(define p2 (make-point 8 7))
+(define r (make-rect p1 p2))
+(random-in-rect r)
+;; some float point in rect
+#+END_SRC
+
+... and so on
+#+BEGIN_SRC scheme
+;; low-middle level
+(define (make-rect bl tr)
+  (define area
+    (* (- (x-coor (tr) (bl)))
+       (- (y-coor (tr) (bl)))))
+  (define (dispatch m)
+    (cond ((eq? m 'top-right) tr)
+          ((eq? m 'bottom-left) bl)
+          ((eq? m 'area) area)
+          (else (error "Undefined request -- MAKE-RECT" m))))
+  dispatch)
+
+(define (top-right rect) (rect 'top-right))
+(define (bottom-left rect) (rect 'bottom-left))
+
+;;; test rect
+(define p1 (make-point 3 4))
+(define p2 (make-point 8 7))
+(define r (make-rect p1 p2))
+(r 'area)
+;; 15
+(top-right rect)
+;; (8 . 7)
+(bottom-left rect)
+;; (3 . 4)
+(rect 'unknown-message)
+;; Undefined request -- MAKE-RECT unknown-message
+
+;; lowest level
+(define (make-point x y)
+  (cons x y))
+(define (x-coor pt) (car pt))
+(define (y-coor pt) (cdr pt))
+
+;;; test point
+(define a (make-point 5 3))
+(x-coor a)
+;; 5
+(y-coor a)
+;; 3
+#+END_SRC
+
+Then we start the unit tests from the bottom. We failed in the =rect= level:
+#+BEGIN_SRC scheme
+(define r (make-rect p1 p2))
+;The object (3 . 4) is not applicable.
+#+END_SRC
+
+As soon as we inspect the code of =make-rect=, we realize what the problem was.
+We can fix this easily:
+#+BEGIN_SRC scheme
+,*** in make-rect
+  (define area
+    (* (- (x-coor tr) (x-coor bl))
+       (- (y-coor tr) (y-coor bl))))
+#+END_SRC
+
+Run our test again: this time, we got by
+#+BEGIN_SRC scheme
+(top-right rect)
+;Unbound variable: rect
+#+END_SRC
+
+It was due to the test code itself: we defined =r= to be rectangle but we called
+=rect=. Fix and run. Then again we caught by =random-in-rect=:
+#+BEGIN_SRC scheme
+(random-in-rect r)
+;The procedure #[compound-procedure 38 random-in-range] has been called with 1 argument; it requires exactly 2 arguments.
+#+END_SRC
+
+We should have used =apply= in the =random-in-rect= procedure to apply
+=random-in-range= to argument list; after amending, it produce:
+#+BEGIN_SRC scheme
+(random-in-rect r)
+;Value: (5.225704578484133 . 5.665006074331469)
+#+END_SRC
+
+Looks fine.
+
+Then we move up the top level. It produce:
+#+BEGIN_SRC scheme
+(estimate-integral P r 100)
+;Value: 76/25
+#+END_SRC
+If we convert that value to inexact number:
+#+BEGIN_SRC scheme
+(exact->inexact 76/25)
+;Value: 3.04
+#+END_SRC
+
+To produce the floating-point number at first, we need to give the x and y
+coordinates with floating-point number. Let's do more trials:
+#+BEGIN_SRC scheme
+(estimate-integral P r 1000)
+;Value: 2.98
+(estimate-integral P r 10000)
+;Value: 3.158
+(estimate-integral P r 100000)
+;Value: 3.14068
+#+END_SRC
+
+It really slowly converge to 3.141592..., \pi.
+*** Exercise 3.6
+We can design what we requested using the message-passing programming strategy
+as we did in =make-rect=. First let we code the test:
+#+BEGIN_SRC scheme
+;;; test rend
+(rand 'generate)
+<some-random-number>
+((rand 'reset) 5)
+(rand 'generate)
+<specific-random-number>
+(rand 'generate)
+<some-other-random-number>
+((rand 'reset) 5)
+(rand 'generate)
+<specific-random-number>
+#+END_SRC
+
+Then implement:
+#+BEGIN_SRC scheme
+(define rand
+  (let ((x random-init))
+    (define (dispatch m)
+      (cond ((eq? m 'generate)
+             (set! x (rand-update x))
+             x)
+            ((eq? m 'reset)
+             (lambda (new-x)
+               (set! x new-x)))
+            (else
+             error "Unknown request -- RAND" m)))))
+#+END_SRC
+
+As soon as I run the test:
+#+BEGIN_SRC scheme
+(rand 'generate)
+;Unassigned variable: rand
+#+END_SRC
+
+I should have to return =dispatch= as its return value.
+
+Let we run test again:
+#+BEGIN_SRC scheme
+(rand 'generate)
+;Value: 88
+((rand 'reset) 5)
+;Value: 88
+(rand 'generate)
+;Value: 34
+(rand 'generate)
+;Value: 55
+((rand 'reset) 5)
+;Value: 55
+(rand 'generate)
+;Value: 34
+#+END_SRC
+
+It works as expected.
+** The Costs of Introducing Assignment
+Allowing assignment expression in our language, introduce more profound
+complication namely, what is the object and what is the sameness. It is more
+alike philosophical concept. As noted in the text, to identify the sameness we
+experiment by changing one object and observe the other; however in turns, to
+define the "change" of one object we should first define "sameness." As
+consequence, we need /a priori/ notion of sameness to identify whether the
+objects that we are compare with is same.
+*** Exercise 3.7
+Let we first code the test:
+#+BEGIN_SRC scheme
+;;; test make-joint
+(define peter-acc (make-account 100 'open-sesame))
+(define paul-acc (make-joint peter-acc 'open-sesame 'rosebud))
+((paul-acc 'rosebud 'withdraw) 50)
+;; 50
+((peter-acc 'open-sesame 'deposit) 30)
+;; 80
+(define opaque (make-joint paul-acc 'open-sesame 'this-should-not-work?))
+#+END_SRC
+The last line is undefined because our specification does not regulate this
+ambiguity. This looseness leads us to choose the implementation detail from
+several possibilities:
+- Let the last line of the test be valid :: This would imply to joint account,
+     all we need to do is add new password to password list and then make change
+     in =make-account= to check whether the password is correct use password
+     list instead single password.
+- Let the last line of the test be invalid :: This means that only the balance
+     variable should be shared between the joint accounts, which also indicates
+     that
+     #+BEGIN_SRC scheme
+((peter-acc 'rosebug 'deposit) 30)
+     #+END_SRC
+     should not work.
+
+
+Let we explore the two possibilities by implementing both version.
+
+- First version:
+  #+BEGIN_SRC scheme
+(define (make-account1 balance password)
+  (define (withdraw amount)
+    (if (>= balance amount)
+        (begin (set! balance (- balance amount))
+               balance)
+        "Insufficient funds"))
+  (define (deposit amount)
+    (set! balance (+ balance amount))
+    balance)
+  (let ((n-incorrect 0)
+        (pw-list (list password)))
+    (define (dispatch pd m)
+      (if (mem? pd pw-list)
+          (begin
+            (set! n-incorrect 0)        ;reset the counter
+            (cond ((eq? m 'withdraw) withdraw)
+                  ((eq? m 'deposit) deposit)
+                  ((eq? m 'joint) (lambda (new-pw)
+                                    (set! pw-list (cons new-pw pw-list))
+                                    dispatch))
+                  (else (error "Unknown request -- MAKE-ACCOUNT1"
+                               m))))
+          (lambda (x)
+            (set! n-incorrect (1+ n-incorrect))
+            (if (>= n-incorrect 7)
+                "call-the-cops"
+                "Incorrect password"))))
+    dispatch))
+
+(define (make-joint acc old-pw new-pw)
+  ((acc old-pw 'joint) new-pw))
+
+;; general helper function
+(define (mem? el S)
+  (if (null? S) false
+      (or (eq? el (car S))
+          (mem? el (cdr S)))))
+  #+END_SRC
+
+  Then let's test:
+  #+BEGIN_SRC scheme
+(define peter-acc (make-account1 100 'open-sesame))
+
+;Value: peter-acc
+
+(define paul-acc (make-joint peter-acc 'open-sesame 'rosebud))
+
+;Value: paul-acc
+
+((paul-acc 'rosebud 'withdraw) 50)
+
+;Value: 50
+
+((peter-acc 'open-sesame 'deposit) 30)
+
+;Value: 80
+
+(define opaque (make-joint paul-acc 'open-sesame 'this-should-not-work?))
+
+;Value: opaque
+
+((opaque 'this-should-not-work? 'withdraw) 80)
+
+;Value: 0
+  #+END_SRC
+- For the second version, as it is more tricky than the first one, first we
+  should specify what we want. We want that the return account from =make-joint=
+  should not share the password state variable with the account, with which
+  =make-joint= called; yet want to share balance state variable among the
+  two account. To accomplish this, we should have =make-account= with the
+  following properties:
+  1. We make object with unprotected account.
+  2. Given that instance, we can convert that account to protected account with
+     password.
+
+  By restructuring =make-account= like this, we can easily implement the
+  =make-joint=:
+  #+BEGIN_SRC scheme
+(define (make-account balance)
+  (define (withdraw amount)
+    (if (>= balance amount)
+        (begin (set! balance (- balance amount))
+               balance)
+        "Insufficient funds"))
+  (define (deposit amount)
+    (set! balance (+ balance amount))
+    balance)
+  (define (make-protected password)
+    (let ((n-incorrect 0))
+      (define (protected-dispatch pd m)
+        (if (eq? pd password)
+            (begin
+              (set! n-incorrect 0)      ;reset the counter
+              (cond ((eq? m 'withdraw) withdraw)
+                    ((eq? m 'deposit) deposit)
+                    ((eq? m 'joint) (lambda (new-pw)
+                                      ((dispatch 'make-protected) new-pw)))
+                    (else (error "Unknown request -- MAKE-PROTECTED"
+                                 m))))
+            (lambda (x)
+              (set! n-incorrect (1+ n-incorrect))
+              (if (>= n-incorrect 7)
+                  "call-the-cops"
+                  "Incorrect password"))))
+      protected-dispatch))
+  (define (dispatch m)
+    (cond ((eq? m 'withdraw) withdraw)
+          ((eq? m 'deposit) deposit)
+          ((eq? m 'make-protected) make-protected)
+          (else (error "Unknown request -- MAKE-ACCOUNT"
+                       m))))
+  dispatch)
+
+(define (make-account2 balance password)
+  (((make-account balance) 'make-protected) password))
+  #+END_SRC
+
+  And here is the test:
+  #+BEGIN_SRC scheme
+(define peter-acc (make-account2 100 'open-sesame))
+
+;Value: peter-acc
+
+(define paul-acc (make-joint peter-acc 'open-sesame 'rosebud))
+
+;Value: paul-acc
+
+((paul-acc 'rosebud 'withdraw) 50)
+
+;Value: 50
+
+((peter-acc 'open-sesame 'deposit) 30)
+
+;Value: 80
+
+(define opaque (make-joint paul-acc 'open-sesame 'this-should-not-work?))
+
+;Value: opaque
+
+opaque
+
+;Value: "Incorrect password"
+  #+END_SRC
+
+
+From this exercise, we can think procedure as an object in that notion of modern
+programming language. Note that in second version of =make-account=, we used
+procedure =dispatch= to call the parent object or the =self= in the modern
+programming scheme.
+*** Exercise 3.8
+Note that to implement such =f=
+- We should use assignment expression otherwise it doesn't depend on the
+  evaluation order.
+- As the arguments of =+= should be number and the procedure =+= is referential
+  transparent, the specification can be divided as pure imperative part and pure
+  functional part; that is, we can think the evaluation order left to right as
+  imperative part:
+  #+BEGIN_SRC scheme
+evaluate (f 0) => a
+evaluate (f 1) => b
+  #+END_SRC
+  with functional part:
+  #+BEGIN_SRC scheme
+(+ a b) = 0
+  #+END_SRC
+
+
+Here is the sample implementation such =f=:
+#+BEGIN_SRC scheme
+(define f
+  (let ((x 0))
+    (lambda (n)
+      (if (= n 0)
+          x
+          (begin (set! x n) 0)))))
+#+END_SRC
+
+Or more imperative-oriented version:
+#+BEGIN_SRC scheme
+(define f
+  (let ((x 0))
+    (lambda (n)
+      (let ((temp x))
+        (begin (set! x n)
+               temp)))))
+#+END_SRC
+
+Then we can test the interpreter:
+#+BEGIN_SRC scheme
+(+ (f 0) (f 1))
+
+;Value: 1
+
+,*** reevaluate f
+
+(+ (f 1) (f 0))
+
+;Value: 0
+#+END_SRC
+
+So, our interpreter evaluate augend first.
+* Modeling with Mutable Data
+** Mutable List Structure
+*** Exercise 3.16
+#+BEGIN_SRC scheme
+(define (count-pairs x)
+  (if (not (pair? x))
+      0
+      (+ (count-pairs (car x))
+         (count-pairs (cdr x)))))
+
+(define list1 (list 1 2 3))
+(define list2
+  (let ((tList (list 1 2 3)))
+    (let ((tPointer (cdr tList)))
+      (set-car! tPointer (cdr tPointer))
+      tList)))
+(define list3
+  (let ((tList (list 1 2 3)))
+    (let ((tPointer (cdr tList)))
+      (set-car! tPointer (cdr tPointer))
+      (set-car! tList (cdr tList))
+      tList)))
+(define list4
+  (let ((tList (list 1 2 3)))
+    (set-car! tList tList)))
+#+END_SRC
+These list are all made up of exactly three pairs; but =count-pairs= returns
+differently:
+#+BEGIN_SRC scheme
+(count-pairs list1)
+
+;Value: 3
+
+(count-pairs list2)
+
+;Value: 4
+
+(count-pairs list3)
+
+;Value: 7
+
+(count-pairs list4)
+
+;Aborting!: maximum recursion depth exceeded
+#+END_SRC
+*** Exercise 3.17
+Then our version should solve the problem Ben Bitdiddle encountered.
+We can implement either of the paradigm, functional or imperative.
+Functional:
+#+BEGIN_SRC scheme
+(define (count-pairs x)
+  (define (without-loop x visited)
+    (if (or (mem? x visited) (not (pair? x)))
+        0
+        (let ((new-visited (cons x visited)))
+          (+ (without-loop (car x) new-visited)
+             (without-loop (cdr x) new-visited)
+             1))))
+  (without-loop x '()))
+#+END_SRC
+
+Unfortunately, this won't work:
+#+BEGIN_SRC scheme
+(count-pairs1 list1)
+
+;Value: 3
+
+(count-pairs1 list2)
+
+;Value: 4
+
+(count-pairs1 list3)
+
+;Value: 7
+
+(count-pairs1 list4)
+
+;Value: 3
+#+END_SRC
+
+The problem is that in the recursive branch, each of it doesn't share the
+=visited= argument. We can fix it by using local variable with assignment:
+#+BEGIN_SRC scheme
+(define (count-pairs2 x)
+  (define recorded
+    (let ((visited '()))
+      (lambda (x)
+        (if (or (mem? x visited)
+                (not (pair? x)))
+            0
+            (begin (set! visited (cons x visited))
+                   (+ (recorded (car x))
+                      (recorded (cdr x))
+                      1))))))
+  (recorded x))
+#+END_SRC
+As expected, it solved the problem:
+#+BEGIN_SRC scheme
+(count-pairs2 list1)
+
+;Value: 3
+
+(count-pairs2 list2)
+
+;Value: 3
+
+(count-pairs2 list3)
+
+;Value: 3
+
+(count-pairs2 list4)
+
+;Value: 3
+#+END_SRC
+
+Let we revise our functional version. To fix that, we should traverse the tree
+structure like depth first search; we one of the branch should wait until the
+other branch terminate its search. We should access the =visited= argument from
+returned value of one branch to propagate that argument to other branch. By
+returning tuple that contains =visited= with the counter, we can do the right thing:
+#+BEGIN_SRC scheme
+(define (count-pairs1 x)
+  (define (without-loop x visited)
+    (if (or (mem? x visited) (not (pair? x)))
+        (list 0 visited)
+        (let ((result-of-one
+               (without-loop (cdr x) (cons x visited))))
+          (let ((result-of-the-other
+                 (without-loop (car x) (cadr result-of-one))))
+            (list (+ (car result-of-one)
+                     (car result-of-the-other)
+                     1)
+                  (cadr result-of-the-other))))))
+  (car (without-loop x '())))
+#+END_SRC
+#+BEGIN_SRC scheme
+(count-pairs1 list1)
+
+;Value: 3
+
+(count-pairs1 list2)
+
+;Value: 3
+
+(count-pairs1 list3)
+
+;Value: 3
+
+(count-pairs1 list4)
+
+;Value: 3
+#+END_SRC
+
+Implicitly, we used the induction on depth of =x= to construct this algorithm.
+*** Exercise 3.18
+This algorithm should look like that of previous exercise. Let we first code the
+test:
+#+BEGIN_SRC scheme
+(define (make-cycle x)
+  (set-cdr! (last-pair x) x)
+  x)
+
+(define (last-pair x)
+  (if (null? (cdr x))
+      x
+      (last-pair (cdr x))))
+
+(define list5 (make-cycle (list 1 2 3 4)))
+(define list6 (append '(a b c d) list5))
+
+(cycle? list1)
+#f
+(cycle? list2)
+#f
+(cycle? list3)
+#f
+(cycle? list4)
+#f
+(cycle? list5)
+#t
+(cycle? list6)
+#t
+(cycle? list7)
+#t
+#+END_SRC
+
+Here is the code that exploits local state variable:
+#+BEGIN_SRC scheme
+(define (cycle? x)
+  (define iter
+    (let ((visited '()))
+      (lambda (x)
+        (cond ((null? x) false)
+              ((mem? x visited) true)
+              (else
+               (set! visited (cons x visited))
+               (iter (cdr x)))))))
+  (iter x))
+#+END_SRC
+... And test:
+#+BEGIN_SRC scheme
+(cycle? list1)
+
+;Value: #f
+
+(cycle? list2)
+
+;Value: #f
+
+(cycle? list3)
+
+;Value: #f
+
+(cycle? list4)
+
+;Value: #f
+
+(cycle? list5)
+
+;Value: #t
+
+(cycle? list6)
+
+;Value: #t
+
+(cycle? list7)
+
+;Value: #t
+#+END_SRC
+
+As we wrote our test to be as exhaustive as possible, we can be quite confidence
+about our program: We tested the extremum case such as =list7= with normal case
+=list6= and =list5=.
+*** Exercise 3.19
+The keyword is *constant amount of space*; it implies we should code our code
+iterative. And also since we operate on list, we need to fully understand what
+the properties list structure possesses. If we focus on the convention that we
+traverse list structure one way only-- =cdr= ing down, we could come up with the
+"very clever" idea as noted in text book:
+1. Send one person to stride one step further by =cdr= in each iteration where
+2. Send the other one until the place where the first person stand checking
+   whether the each pointer is same as of first person.
+3. If it is, and if the two pointer located differently in examining list, then
+   it is cycled list.
+4. otherwise second person stride one step further.
+5. If the second one reach the first one without trouble then first one stride
+   one step further.
+6. Loop from 2 to 5 until the first one reach nil pointer. If it reaches nil
+   pointer then return false.
+
+
+As this algorithm inherently evolve as iterative process, we got the algorithm
+that we wanted. To implement the check algorithm that whether two pointer is
+same but in different place, we could assign each pointer to number, namely the
+step needed to get reached to that place. However, although it is subtle, this
+strategy doesn't assure this assigned number doesn't grow in space: It would be
+consume more space when the step get huge number. To cope with this situation we
+can exploit the observation that, as our program return as soon as it found the
+first cycle point, the different place but same pointer should have different
+previous place where visited just before the current place.
+
+Here is the code:
+#+BEGIN_SRC scheme
+(define (cycle1? x)
+  (define first-man
+    (let ((prev '()))
+      (lambda (current)
+        (define second-man
+          (let ((prev2 '()))
+            (lambda (current2)
+              (if (eq? current current2)
+                  (eq? prev prev2)
+                  (begin (set! prev2 current2)
+                         (second-man (cdr current2)))))))
+        (cond ((null? current) false)
+              ((not (second-man x)) true)
+              (else
+               (set! prev current)
+               (first-man (cdr current)))))))
+  (first-man x))
+#+END_SRC
+
+And the test:
+#+BEGIN_SRC scheme
+(cycle1? list1)
+
+;Value: #f
+
+(cycle1? list2)
+
+;Value: #f
+
+(cycle1? list3)
+
+;Value: #f
+
+(cycle1? list4)
+
+;Value: #f
+
+(cycle1? list5)
+
+;Value: #t
+
+(cycle1? list6)
+
+;Value: #t
+
+(cycle1? list7)
+
+;Value: #t
+#+END_SRC
+
+Or functional version:
+#+BEGIN_SRC scheme
+(define (cycle2? x)
+  (define (first-man prev current)
+    (define (second-man prev2 current2)
+      (if (eq? current current2)
+          (eq? prev prev2)
+          (second-man current2 (cdr current2))))
+    (cond ((null? current) false)
+          ((not (second-man '() x)) true)
+          (else
+           (first-man current (cdr current)))))
+  (first-man '() x))
+#+END_SRC
+
+We could use less =define= notation:
+#+BEGIN_SRC scheme
+(define (cycle3? x)
+  (let ((first-man
+         (lambda (prev current)
+           (let ((second-man
+                  (lambda (prev2 current2)
+                    (if (eq? current current2)
+                        (eq? prev prev2)
+                        (second-man current2 (cdr current2))))))
+             (cond ((null? current) false)
+                   ((not (second-man '() x)) true)
+                   (else
+                    (first-man current (cdr current))))))))
+    (first-man '() x)))
+#+END_SRC
+
+Unfortunately, this won't work:
+#+BEGIN_SRC scheme
+(cycle3? list7)
+
+;Unbound variable: first-man
+#+END_SRC
+
+To understand why, we can desugar =(let ((<var> <val>)) body)= expression as
+=((lambda (<var>) body) <val>)=: The =lambda= expression in the first =let=
+notation, there is no way to reference =first-man= in the body of =lambda=
+expression of right-hand side; we need define to abstract this.
+*** Lecture 5A: Assignment, State, and Side-effects
+I've got quite intrigued by that if we can replace all the =set!= expression
+with =define= ? (well, we supposed to not to do)
+
+Let's experiment:
+#+BEGIN_SRC scheme
+(define t 1)
+
+;Value: t
+
+(define t (+ t 1))
+
+;Value: t
+
+t
+
+;Value: 2
+#+END_SRC
+
+Seems like we could replace the use of =set!=; but:
+#+BEGIN_SRC scheme
+(define test
+  (let ((t 1))
+    (define t (+ t 1))
+    t))
+#+END_SRC
+
+This definition won't work:
+#+BEGIN_SRC scheme
+(define test
+  (let ((t 1))
+    (define t (+ t 1))
+    t))
+
+;Unassigned variable: t
+#+END_SRC
+
+Do more experiment to grasp what's going on here:
+#+BEGIN_SRC scheme
+(define test
+  (let ((t 1))
+    (define t1 (+ t 1))
+    (define t1 (+ t1 1))
+    t))
+
+;duplicate internal definitions for (#[uninterned-symbol 38 t1]) in |#[let-procedure]|
+#+END_SRC
+
+From these sequence of experiments, we can deduce that the effect of =define=,
+which is similar with =set!=, is only allowed to REPL; in other words, only in
+global environment. Within the evaluation model we learned so far, we can not
+understand fully the behavior of =define=.
+
+In lecture, professor start to define what means by the word "bound":
+#+BEGIN_QUOTE
+We say that a variable, V, is "bound in an expression", E, if the meaning of E
+is unchanged by the uniform replacement of a variable, W, not occurring in E,
+for every occurrence of V in E.
+#+END_QUOTE
+
+And also "free variable":
+#+BEGIN_QUOTE
+We say that a variable, V, is "free in and expression", E, if the meaning of E
+is changed by the uniform replacement of a variable, W, not occurring in E, for
+every occurrence of V in E.
+#+END_QUOTE
+
+By consequence of this, we have concept named "scope":
+#+BEGIN_QUOTE
+If x is a bound variable in E then there is a lambda expression where it is
+bound. We call the list of formal parameters of the lambda expression the "bound
+variable list" and we say that the lambda expression "binds" the variables
+"declared" in its bound variable list. In addition, those parts of the
+expression where a variable has a value defined by the lambda expression which
+binds it is called the "scope" of the variable.
+#+END_QUOTE
+
+The evaluation rule 1:
+#+BEGIN_QUOTE
+A procedure object is applied to a set of arguments by constructing a frame,
+binding the formal parameters of the procedure to the actual arguments of the
+call, and then evaluating the body of the procedure in the context of the new
+environment constructed. The new fram has as its enclosing environment the
+environment part of the procedure object being applied.
+#+END_QUOTE
+
+The evaluation rule 2:
+#+BEGIN_QUOTE
+A lambda-expression is evaluated relative to a given environment as follows: A
+new procedure object is formed, combining the text (code) of the lambda
+expression with a pointer to the environment of evaluation.
+#+END_QUOTE
+
+The terminologis about actions and identity:
+#+BEGIN_QUOTE
+We say that an action, A, had an effect on an object, X, (or equivalently, that
+X was changed by A) if some property, P, which was true of X before A became
+false of X after A.
+
+We say that two objects, X and Y, are the same if any action which has an effect
+on X has the same effect on Y.
+#+END_QUOTE
+
+Professor end the lecture with following quote:
+
+Mr. Gilbert and Sullivan said,
+#+BEGIN_QUOTE
+Things are seldom what they seem, 
+Skim milk masquerades as cream...
+#+END_QUOTE
+
+He wanted to implies, I guess, the stream concept that would come up with following lecture; 
+if we consider the meaning of quote in this specific context but it will convolve a lot more
+profound meaning I think.
+** Representing Queues
+As we do usually, we build our data abstraction for our queue implementation:
+- a constructor :: =(make-queue)= returns an empty queue.
+- two selectors ::
+  - =(empty-queue? <queue>)= tests if the queue is empty.
+  - =(front-queue <queue>)= returns the object at the front of the queue,
+    signaling an error if the queue is empty; it does not modify the queue.
+- two mutators ::
+  - =(insert-queue! <queue> <item>)= inserts the item at the front of the
+    queue and returns the modified queue as its value.
+  - =(delete-queue! <queue>)= removes the item at the front of the queue and
+    returns the modified queue as its value, signaling an error if the queue is
+    empty before the deletion.
+
+
+For the implementation restriction, all the operation should require \Theta (1) steps.
+
+In text book, they install additional layer, between manipulating queue
+representation and implementing queue representation using list structure:
+#+BEGIN_SRC scheme
+;;; wrapping around the queue representation
+(define (front-ptr queue) (car queue))
+(define (rear-ptr queue) (cdr queue))
+(define (set-front-ptr! queue item) (set-car! queue item))
+(define (set-rear-ptr! queue item) (set-cdr! queue item))
+
+;;; selector -- predicate
+(define (empty-queue? queue) (null? (front-ptr queue)))
+
+;;; constructor
+(define (make-queue) (cons '() '()))
+
+;;; selector -- first element
+(define (front-queue queue)
+  (if (empty-queue? queue)
+      (error "FRONT called with an empty queue" queue)
+      (car (front-ptr queue))))
+
+;;; mutator -- insert item
+(define (insert-queue! queue item)
+  (let ((new-pair (cons item '())))
+    (cond ((empty-queue? queue)
+           (set-front-ptr! queue new-pair)
+           (set-rear-ptr! queue new-pair)
+           queue)
+          (else
+           (set-cdr! (rear-ptr queue)
+                     new-pair)
+           (set-rear-ptr! queue new-pair)
+           queue))))
+
+;;; mutator -- delete item
+(define (delete-queue! queue)
+  (cond ((empty-queue? queue)
+         (error "DELETE! called with an empty queue" queue))
+        (else
+         (set-front-ptr! queue (cdr (front-ptr queue)))
+         queue)))
+#+END_SRC
+
+*** Exercise 3.21
+Eva Lu Ator denotes that it is just reachable from two different pointer not
+that =insert-queue= inserts item twice; recall the exercise [[Exercise 3.16][3.16]], where all the
+list has exactly three pairs in it but represented differently. (in both Ben
+Bitdiddle's =count-pairs= and Lisp printer)
+
+Here, to understand how the Lisp printer works, we implement the Lisp printer.
+To implement that, we use nested induction -- induction on depth of expression
+and within that, we run induction on width of expression. To deduce the
+specification of Lisp printer, we play with Lisp interpreter for a while:
+#+BEGIN_SRC scheme
+(cons 1 2)
+
+;Value: (1 . 2)
+
+(list 1 2)
+
+;Value: (1 2)
+
+(cons 1 (cons 2 3))
+
+;Value: (1 2 . 3)
+
+(cons (cons 1 2) 3)
+
+;Value: ((1 . 2) . 3)
+
+(cons 1 (cons 2 '()))
+
+;Value: (1 2)
+#+END_SRC
+
+And here is the implementation:
+#+BEGIN_SRC scheme
+(define (print exp)
+  (cond ((pair? exp) (print-exp exp))
+        (else                           ;not compound
+         (display exp))))
+
+(define (print-exp exp)
+  (define (iter exp)
+    (cond ((null? exp))
+          ((pair? exp)
+           (display " ")
+           (print (car exp))
+           (iter (cdr exp)))
+          (else
+           (display " . ")
+           (print exp))))
+  (display "(")
+  (print (car exp))
+  (iter (cdr exp))
+  (display ")"))
+#+END_SRC
+
+Here is the test:
+#+BEGIN_SRC scheme
+(print (cons 1 2))
+(1 . 2)
+;Unspecified return value
+
+(print (list 1 2))
+(1 2)
+;Unspecified return value
+
+(print (cons 1 (cons 2 3)))
+(1 2 . 3)
+;Unspecified return value
+
+(print (cons (cons 1 2) 3))
+((1 . 2) . 3)
+;Unspecified return value
+
+(print (cons 1 (cons 2 '())))
+(1 2)
+;Unspecified return value
+#+END_SRC
+
+Then here is the examples for what the Ben Bitdiddle misunderstood:
+#+BEGIN_SRC scheme
+(print list3)
+(((3) 3) (3) 3)
+;Unspecified return value
+
+(print list2)
+(1 (3) 3)
+;Unspecified return value
+#+END_SRC
+
+Consequently we can conclude that the Lisp printer display all the element
+recursively following given pointer.
+
+Actually, what version I use for now as scheme interpreter is smarter than that:
+#+BEGIN_SRC scheme
+(define q1 (make-queue))
+
+;Value: q1
+
+(insert-queue! q1 'a)
+
+;Value: (#0=(a) . #0#)
+
+(insert-queue! q1 'b)
+
+;Value: ((a . #0=(b)) . #0#)
+
+(delete-queue! q1)
+
+;Value: (#0=(b) . #0#)
+
+(delete-queue! q1)
+
+;Value: (() b)
+#+END_SRC
+
+It recognize the same pointer using, I guess, memorize all the pointer it
+encountered. But for now, let we stick the old version of printer in text book.
+
+Return to our task, =print-queue= is really simple: Just print following the
+first pointer of queue:
+#+BEGIN_SRC scheme
+(define (print-queue queue)
+  (display (front-ptr queue)))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+(define q1 (make-queue))
+;Value: q1
+
+(print-queue (insert-queue! q1 'a))
+(a)
+;Unspecified return value
+
+(print-queue (insert-queue! q1 'b))
+(a b)
+;Unspecified return value
+
+(print-queue (delete-queue! q1))
+(b)
+;Unspecified return value
+
+(print-queue (delete-queue! q1))
+()
+;Unspecified return value
+#+END_SRC
+
+Ben Bitdiddle should satisfy what =print-queue= display.
+*** Exercise 3.22
+We can map our previous implementation to message passing style by
+- =(front-ptr queue)= \to =front-ptr= in =make-queue=
+- =(rear-ptr queue)= \to =rear-ptr= in =make-queue=
+- ...
+
+
+It get boring to jot down all the relation; let I just show the result:
+#+BEGIN_SRC scheme
+(define (make-queue2)
+  (let ((front-ptr '())
+        (rear-ptr '()))
+    ;; selector -- predicate
+    (define (empty-queue?) (null? front-ptr))
+    ;; selector -- first item
+    (define (front-queue)
+      (if (empty-queue?)
+          (error "FRONT called with an empty queue -- MAKE-QUEUE2" dispatch)
+          (car front-ptr)))
+    (define (insert-queue! item)
+      (let ((new-pair (cons item '())))
+        (cond ((empty-queue?)
+               (set! front-ptr new-pair)
+               (set! rear-ptr new-pair)
+               dispatch)
+              (else
+               (set-cdr! rear-ptr new-pair)
+               (set! rear-ptr new-pair)
+               dispatch))))
+    (define (delete-queue!)
+      (cond ((empty-queue?)
+             (error "DELETE! called with an empty queue -- MAKE-QUEUE2" dispatch))
+            (else
+             (set! front-ptr (cdr front-ptr))
+             dispatch)))
+    (define (dispatch m)
+      (cond ((eq? m 'empty-queue?) empty-queue?)
+            ((eq? m 'front-queue) front-queue)
+            ((eq? m 'insert-queue!) insert-queue!)
+            ((eq? m 'delete-queue!) delete-queue!)
+            (else
+             (error "Unknown request -- MAKE-QUEUE2" m))))
+    dispatch))
+#+END_SRC
+
+And here is how we should use:
+#+BEGIN_SRC scheme
+(define q1 (make-queue2))
+
+;Value: q1
+
+((q1 'insert-queue!) 'a)
+
+;Value: #[compound-procedure 44 dispatch]
+
+((q1 'front-queue))
+
+;Value: a
+
+((q1 'insert-queue!) 'b)
+
+;Value: #[compound-procedure 44 dispatch]
+
+((q1 'front-queue))
+
+;Value: a
+
+((q1 'delete-queue!))
+
+;Value: #[compound-procedure 44 dispatch]
+
+((q1 'front-queue))
+
+;Value: b
+
+((q1 'delete-queue!))
+
+;Value: #[compound-procedure 44 dispatch]
+
+((q1 'front-queue))
+
+;FRONT called with an empty queue -- MAKE-QUEUE2 #[compound-procedure 44 dispatch]
+#+END_SRC
+
+We can integrate =print-queue= to this procedure object:
+#+BEGIN_SRC scheme
+(define (make-queue2)
+  (let ((front-ptr '())
+        (rear-ptr '()))
+    ;; selector -- predicate
+    (define (empty-queue?) (null? front-ptr))
+    ;; selector -- first item
+    (define (front-queue)
+      (if (empty-queue?)
+          (error "FRONT called with an empty queue -- MAKE-QUEUE2" dispatch)
+          (car front-ptr)))
+    (define (insert-queue! item)
+      (let ((new-pair (cons item '())))
+        (cond ((empty-queue?)
+               (set! front-ptr new-pair)
+               (set! rear-ptr new-pair)
+               (print-queue)
+               dispatch)
+              (else
+               (set-cdr! rear-ptr new-pair)
+               (set! rear-ptr new-pair)
+               (print-queue)
+               dispatch))))
+    (define (delete-queue!)
+      (cond ((empty-queue?)
+             (error "DELETE! called with an empty queue -- MAKE-QUEUE2" dispatch))
+            (else
+             (set! front-ptr (cdr front-ptr))
+             (print-queue)
+             dispatch)))
+    (define (print-queue) (display front-ptr))
+    (define (dispatch m)
+      (cond ((eq? m 'empty-queue?) empty-queue?)
+            ((eq? m 'front-queue) front-queue)
+            ((eq? m 'insert-queue!) insert-queue!)
+            ((eq? m 'delete-queue!) delete-queue!)
+            (else
+             (error "Unknown request -- MAKE-QUEUE2" m))))
+    dispatch))
+#+END_SRC
+
+#+BEGIN_SRC scheme
+((q1 'insert-queue!) 'a)
+(a)
+;Value: #[compound-procedure 45 dispatch]
+
+((q1 'insert-queue!) 'b)
+(a b)
+;Value: #[compound-procedure 45 dispatch]
+
+((q1 'delete-queue!))
+(b)
+;Value: #[compound-procedure 45 dispatch]
+
+((q1 'delete-queue!))
+()
+;Value: #[compound-procedure 45 dispatch]
+#+END_SRC
+
+Note that with this local state paradigm, message passing style is more
+succinctly encode the specification than the representation using concrete data
+structure-- here pair.
+
+*** Exercise 3.23
+Not only to traverse one way-- =cdr=, we need means to traverse the opposite
+way to implement /deque/. As we requested in implementation of queue, we need to
+implement all the operation in \Theta (1) steps.
+
+Here we devise new data structure not only /deque/, also /node/ with which we
+represent /deque/. /Node/ has many analogy with primitive data structure, pair;
+it construct one chunk using several pointers together, but /node/ has three
+pointers in one chunk whereas pair has two pointers in it.
+
+Here is the specification for /node/:
+- constructor :: =(make-node prev item next)= returns node that has three
+     pointers, each of which points =prev=, =item=, =next=, respectively.
+- selectors ::
+     - =(prev node)= returns first pointer.
+     - =(item node)= returns second pointer.
+     - =(next node)= returns last pointer.
+- mutators ::
+     - =(set-prev! node new-prev)= resets its pointer that points =prev= to =new-prev=.
+     - =(set-item! node new-item)= resets its pointer that points =item= to =new-item=.
+     - =(set-next! node new-next)= resets its pointer that points =next= to =new-next=.
+
+
+Here is the implementation for /node/:
+#+BEGIN_SRC scheme
+;;; constructor
+(define (make-node prev item next)
+  (define (set-prev! new-prev) (set! prev new-prev))
+  (define (set-item! new-item) (set! item new-item))
+  (define (set-next! new-next) (set! next new-next))
+  (define (dispatch m)
+    (cond ((eq? m 'prev) prev)
+          ((eq? m 'item) item)
+          ((eq? m 'next) next)
+          ((eq? m 'set-prev!) set-prev!)
+          ((eq? m 'set-item!) set-item!)
+          ((eq? m 'set-next!) set-next!)
+          (else
+           (error "Unknown request -- MAKE-NODE" m))))
+  dispatch)
+
+;;; selectors
+(define (prev node) (node 'prev))
+(define (item node) (node 'item))
+(define (next node) (node 'next))
+
+;;; mutators
+(define (set-prev! node new-prev) ((node 'set-prev!) new-prev))
+(define (set-item! node new-item) ((node 'set-item!) new-item))
+(define (set-next! node new-next) ((node 'set-next!) new-next))
+#+END_SRC
+
+Then we can implement /deque/ using the analogy with /queue/. During
+implementing node, queue, and the other massage passing style code, I got
+intrigued by how am I going to implement the conventional array in scheme using
+massage passing style; it should access its element with \Theta (1) steps. So
+far, in message passing style, we dealt with only fixed sized argument list.
+
+One way to deal with unspecified argument list is use the primitive procedure
+syntax, e.g. =(x y . z)=; but the problem of this approach is that to access the
+contents that stored in =z=, as it is list, needs \Theta (n) steps where n is
+the size of =z=. To deal with this unfortunate, if we believe that accessing any
+variable in the frame require only \Theta(1) steps, we need to register all the
+argument of =z= (with =x= and =y= also) current environment of callee, for which
+we don't have any method.
+
+Let alone that problem let we conclude our original task. First let test our
+node code:
+#+BEGIN_SRC scheme
+(define n (make-node '() 2 '()))
+
+;Value: n
+
+(define n2 (make-node n 3 '()))
+
+;Value: n2
+
+(item n)
+
+;Value: 2
+
+(item n2)
+
+;Value: 3
+
+(item (prev n2))
+
+;Value: 2
+
+(define n3 (make-node '() 4 '()))
+
+;Value: n3
+
+(set-next! n2 n3)
+
+;Value: ()
+
+(set-prev! n3 n2)
+
+;Value: ()
+
+(item (prev (prev n3)))
+
+;Value: 2
+#+END_SRC
+
+And this is straightforward implementation for /deque/:
+#+BEGIN_SRC scheme
+;; constructor
+(define (make-deque)
+  (let ((front-ptr '())
+        (rear-ptr '()))
+    ;; selector -- predicate
+    (define (empty-deque?) (or (null? front-ptr)
+                               (null? rear-ptr)))
+    ;; selector -- first item
+    (define (front-deque)
+      (if (empty-deque?)
+          (error "FRONT called with an empty deque -- MAKE-DEQUE" dispatch)
+          (item front-ptr)))
+    (define (rear-deque)
+      (if (empty-deque?)
+          (error "REAR called with an empty deque -- MAKE-DEQUE" dispatch)
+          (item rear-ptr)))
+    (define (rear-insert-deque! item)
+      (let ((new-node (make-node '() item '())))
+        (cond ((empty-deque?)
+               (set! front-ptr new-node)
+               (set! rear-ptr new-node)
+               dispatch)
+              (else
+               (set-next! rear-ptr new-node)
+               (set! rear-ptr new-node)
+               dispatch))))
+    (define (front-insert-deque! item)
+      (let ((new-node (make-node '() item '())))
+        (cond ((empty-deque?)
+               (set! front-ptr new-node)
+               (set! rear-ptr new-node)
+               dispatch)
+              (else
+               (set-prev! front-ptr new-node)
+               (set! front-ptr new-node)
+               dispatch))))
+    (define (front-delete-deque!)
+      (cond ((empty-deque?)
+             (error "FRONT-DELETE! called with an empty deque -- MAKE-DEQUE" dispatch))
+            (else
+             (set! front-ptr (next front-ptr))
+             dispatch)))
+    (define (rear-delete-deque!)
+      (cond ((empty-deque?)
+             (error "FRONT-DELETE! called with an empty deque -- MAKE-DEQUE" dispatch))
+            (else
+             (set! rear-ptr (prev rear-ptr))
+             dispatch)))
+    (define (dispatch m)
+      (cond ((eq? m 'empty-deque?) empty-deque?)
+            ((eq? m 'front-deque) front-deque)
+            ((eq? m 'rear-deque) rear-deque)
+            ((eq? m 'front-insert-deque!) front-insert-deque!)
+            ((eq? m 'rear-insert-deque!) rear-insert-deque!)
+            ((eq? m 'front-delete-deque!) front-delete-deque!)
+            ((eq? m 'rear-delete-deque!) rear-delete-deque!)
+            (else
+             (error "Unknown request -- MAKE-DEQUE" m))))
+    dispatch))
+;; selector -- predicate
+(define (empty-deque? deque) ((deque 'empty-deque?)))
+;; selector -- first item
+(define (front-deque deque) ((deque 'front-deque)))
+;; selector -- last item
+(define (rear-deque deque) ((deque 'rear-deque)))
+;; mutator -- insert front
+(define (front-insert-deque! deque item) ((deque 'front-insert-deque!) item))
+;; mutator -- insert rear
+(define (rear-insert-deque! deque item) ((deque 'rear-insert-deque!) item))
+;; mutator -- delete first
+(define (front-delete-deque! deque) ((deque 'front-delete-deque!)))
+;; mutator -- delete last
+(define (rear-delete-deque! deque) ((deque 'rear-delete-deque!)))
+#+END_SRC
+
+Test for /deque/:
+#+BEGIN_SRC scheme
+(define d (make-deque))
+
+;Value: d
+
+(empty-deque? d)
+
+;Value: #t
+
+(front-insert-deque! d 'a)
+
+;Value: #[compound-procedure 38 dispatch]
+
+(rear-deque d)
+
+;Value: a
+
+(front-deque d)
+
+;Value: a
+
+(rear-insert-deque! d 'b)
+
+;Value: #[compound-procedure 38 dispatch]
+
+(rear-deque d)
+
+;Value: b
+
+(front-deque d)
+
+;Value: a
+
+(front-delete-deque! d)
+
+;Value: #[compound-procedure 38 dispatch]
+
+(front-delete-deque! d)
+
+;Value: #[compound-procedure 38 dispatch]
+
+(empty-deque? d)
+
+;Value: #t
+#+END_SRC
+** Representing Tables
+In chapter 2, we exploited a lot the data structure named /table/. /Table/ was
+the backbone our data-directed programming scheme. Table is so general data
+structure to the extent many of the "practical" programming languages provides
+table as one of the primitive data structure. In Lisp, we don't have any table
+like structure for granted. But we can implement that data structure by our own
+if we allowed to use assignment.
+
+Then what is table? What data structure we think as table? Here we define what
+we think as table informally:
+- We should be able to retrieve the registered value in the table by its key.
+- We should be able to insert new entry, which contains key value pair-like
+  structure, to the table.
+
+
+More formally table should satisfy following axioms:
+- =(lookup key (begin (insert! (make-entry key value) table) table))=
+  returns =value=.
+
+
+What value =(lookup not-in-the-table table)= should returns is implementation
+detail. The implementor can choose whatever value we want unless the specifier
+doesn't specify to that extent.
+
+For the implementation detail, we need to use /headed/ list as the backbone of
+our table to insert given entry to the given table; without this, we couldn't
+locate the locus of the table's contents.
+
+Here is the sample implementation in text book:
+#+BEGIN_SRC scheme
+;;; constructor
+(define (make-table)
+  (list '*table*))
+
+;;; selector + predicate
+(define (lookup key table)
+  (let ((record (assoc key (cdr table))))
+    (if record
+        (cdr record)
+        false)))
+;;; dependency
+;;; we represent contents of table as A-list
+(define (assoc key records)
+  (cond ((null? records) false)
+        ((equal? key (caar records)) (car records))
+        (else (assoc key (cdr records)))))
+
+;;; mutator
+(define (insert! key value table)
+  (let ((record (assoc key records)))
+    (if record
+        (set-cdr! record value)
+        (set-cdr! table
+                  (cons (cons key value)
+                        (cdr table)))))
+  'ok)
+#+END_SRC
+
+*** Two-dimensional tables
+We can extend one-dimensional table above to two-dimensional table by observing
+that each value of one-dimensional table could be A-list. As the key of the
+subtables performs as header, we don't need any auxiliary header as we did in
+one-dimensional table.
+
+As we noted above, all the left is to implement two dimensional lookup procedure
+and insert accordingly:
+#+BEGIN_SRC scheme
+(define (lookup key-1 key-2 table)
+  (let ((subtable (assoc key-1 (cdr table))))
+    (if subtable
+        (let ((record (assoc key-2 (cdr subtable))))
+          (if record
+              (cdr record)
+              false))
+        false)))
+
+(define (insert! key-1 key-2 value table)
+  (let ((subtable (assoc key-1 (cdr table))))
+    (if subtable
+        (let ((record (assoc key-2 (cdr subtable))))
+          (if record
+              (set-cdr! record value)
+              (set-cdr! subtable
+                        (cons (cons key-2 value)
+                              (cdr subtable)))))
+        (set-cdr! table
+                  (cons (list key-1
+                              (cons key-2 value))
+                        (cdr table)))))
+  'ok)
+#+END_SRC
+*** Creating local tables
+We can convert our concrete representation to message-passing:
+#+BEGIN_SRC scheme
+(define (make-table2)
+  (let ((local-table (list '*table*)))
+    (define (lookup key-1 key-2)
+      (let ((subtable (assoc key-1 (cdr local-table))))
+        (if subtable
+            (let ((record (assoc key-2 (cdr subtable))))
+              (if record
+                  (cdr record)
+                  false))
+            false)))
+    (define (insert! key-1 key-2 value)
+      (let ((subtable (assoc key-1 (cdr local-table))))
+        (if subtable
+            (let ((record (assoc key-2 (cdr subtable))))
+              (if record
+                  (set-cdr! record value)
+                  (set-cdr! subtable
+                            (cons (cons key-2 value)
+                                  (cdr subtable)))))
+            (set-cdr! local-table
+                      (cons (list key-1
+                                  (cons key-2 value))
+                            (cdr local-table)))))
+      'ok)
+    (define (dispatch m)
+      (cond ((eq? m 'lookup-proc) lookup)
+            ((eq? m 'insert-proc!) insert!)
+            (else (error "Unknown operation -- TABLE" m))))
+    dispatch))
+#+END_SRC
+*** Exercise 3.24
+It is way too easy to implement we get what we want by slightly amending above
+implementation:
+#+BEGIN_SRC scheme
+(define (make-table3 same-key?)
+
+  (define (assoc key records)
+    (cond ((null? records) false)
+          ((same-key? key (caar records)) (car records))
+          (else (assoc key (cdr records)))))
+
+  (let ((local-table (list '*table*)))
+    (define (lookup key-1 key-2)
+      (let ((subtable (assoc key-1 (cdr local-table))))
+        (if subtable
+            (let ((record (assoc key-2 (cdr subtable))))
+              (if record
+                  (cdr record)
+                  false))
+            false)))
+    (define (insert! key-1 key-2 value)
+      (let ((subtable (assoc key-1 (cdr local-table))))
+        (if subtable
+            (let ((record (assoc key-2 (cdr subtable))))
+              (if record
+                  (set-cdr! record value)
+                  (set-cdr! subtable
+                            (cons (cons key-2 value)
+                                  (cdr subtable)))))
+            (set-cdr! local-table
+                      (cons (list key-1
+                                  (cons key-2 value))
+                            (cdr local-table)))))
+      'ok)
+    (define (dispatch m)
+      (cond ((eq? m 'lookup-proc) lookup)
+            ((eq? m 'insert-proc!) insert!)
+            (else (error "Unknown operation -- TABLE" m))))
+    dispatch))
+#+END_SRC
+*** Exercise 3.25
+It is equivalent to prove the behavior of the specification: Induction on depth
+of the table. If we persist with the A-list representation as before, and also
+assume that all the generalized table structured appropriately, we can easily
+extend the previous table to generalized one:
+#+BEGIN_SRC scheme
+(define (lookup key-list table)
+  (cond ((null? key-list)
+         (error "LOOKUP called with empty key-list"))
+        ((null? (cdr key-list))
+         (let ((record (assoc (car key-list) (cdr table))))
+           (if record
+               (cdr record)
+               false)))
+        (else
+         (let ((subtable (assoc (car key-list) (cdr table))))
+           (if subtable
+               (lookup (cdr key-list table))
+               false)))))
+
+(define (insert! key-list value table)
+  (cond ((null? key-list)
+         (error "INSERT! called with empty key-list"))
+        ((null? (cdr key-list))
+         (let ((record (assoc (car key-list) records)))
+           (if record
+               (set-cdr! record value)
+               (set-cdr! table
+                         (cons (cons (car key-list) value)
+                               (cdr table))))))
+        (else
+         (let ((subtable (assoc (car key-list) (cdr table))))
+           (if subtable
+               (insert! (cdr key-list) value table)
+               (set-cdr! table
+                         (cons (make-table-with key-list value)
+                               (cdr table)))))))
+  'ok)
+
+(define (make-table-with key-list value)
+  (if (null? (cdr key-list))
+      (cons (car key-list) value)
+      (list (car key-list)
+            (make-table-with (cdr key-list) value))))
+#+END_SRC
+
+I didn't tested it but it would work only if we lookup the table that contains
+entry with key list with which we lookup. Unfortunately, it is huge bug, since
+the user of lookup doesn't know whether the table has such entry. To fix this,
+we make our table using the strategy learned from lecture, [[youtube:bWJlEevfp1E?list=PL7BcsI5ueSNFPCEisbaoQ0kXIDX9rR5FF][Abstract Data Type]].
+
+In previous exercise, we only dealt with table of fixed dimension; we don't need
+to check whether the value of given entry is table or not. Here we don't know
+fore hand the dimension of table, and to deal with such situation, we treat
+table as special value of one dimensional table. By induction on the depth on
+the dimension of table, our result table would handle the unspecified dimension
+of table without any trouble.
+
+At our disposal, we have two candidates for implementation of this:
+message-passing style with local state or dispatch on data type with concrete
+data structure.
+
+Here we first try out the message-passing style:
+#+BEGIN_SRC scheme
+;; constructor
+(define (make-table4)
+  (let ((local-table (list '*table*)))
+    (define (lookup-internal key-list)
+      (let ((record (assoc (car key-list) (cdr local-table))))
+        (if record
+            (let ((value (cdr record)))
+              (cond ((null? (cdr key-list)) value)
+                    ((table? value)
+                     (lookup (cdr key-list) value))
+                    (else false)))
+            false)))
+    (define (insert-internal! key-list value)
+      (let ((record (assoc (car key-list) (cdr local-table))))
+        (if record
+            (let ((value (cdr record)))
+              (cond ((null? (cdr key-list)) (set-cdr! record value))
+                    ((table? value)
+                     (insert! (cdr key-list) value))))
+            (set-cdr! local-table
+                      (cons (make-table-with key-list value)
+                            (cdr local-table)))))
+      'ok)
+    (define (make-table-with key-list value)
+      (if (null? (cdr key-list))
+          (cons (car key-list) value)
+          (let ((tbl (make-table4)))
+            (insert! (cdr key-list)
+                     value
+                     tbl)
+            (cons (car key-list) tbl))))
+    (define (dispatch m)
+      (cond ((eq? m 'lookup-proc) lookup-internal)
+            ((eq? m 'insert-proc!) insert-internal!)
+            ((eq? m 'table?) true)
+            (else (error "Unknown operation -- TABLE" m))))
+    dispatch))
+
+;; selector -- predicate
+(define (table? t) (t 'table?))
+(define (lookup ks t) ((t 'lookup-proc) ks))
+
+;; mutator
+(define (insert! ks v t) ((t 'insert-proc!) ks v))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+;; constructor
+(define tbl (make-table4))
+
+;Value: tbl
+
+;; predicate
+(table? tbl)
+
+;Value: #t
+
+;; mutator
+(insert! '(1 2 3 4) 5 tbl)
+
+;Value: ok
+
+;; selector
+(lookup '(1 2 3 4) tbl)
+
+;Value: 5
+
+(lookup '(1) tbl)
+
+;Value: #[compound-procedure 39 dispatch]
+
+(lookup '(2 3 4) (lookup '(1) tbl))
+
+;Value: 5
+#+END_SRC
+
+The another way:
+#+BEGIN_SRC scheme
+;; type tag
+(define table-tag '*table*)
+;; constructor
+(define (make-table5)
+  (list table-tag))
+
+;; selector -- predicate
+(define (table? t)
+  (and (pair? t) (eq? (car t) table-tag)))
+
+;; selector
+(define (lookup key-list tbl)
+  (let ((record (assoc (car key-list) (cdr tbl))))
+    (if record
+        (let ((value (cdr record)))
+          (cond ((null? (cdr key-list)) value)
+                ((table? value)
+                 (lookup (cdr key-list) value))
+                (else false)))
+        false)))
+
+;; mutator
+(define (insert! key-list value tbl)
+  (let ((record (assoc (car key-list) (cdr tbl))))
+    (if record
+        (let ((value (cdr record)))
+          (cond ((null? (cdr key-list)) (set-cdr! record value))
+                ((table? value)
+                 (insert! (cdr key-list) value))))
+        (set-cdr! tbl
+                  (cons (make-table-with key-list value)
+                        (cdr tbl)))))
+  'ok)
+
+(define (make-table-with ks v)
+  (if (null? (cdr ks))
+      (cons (car ks) v)
+      ;; (let ((tbl (make-table5)))
+      ;;       (insert! (cdr key-list)
+      ;;                value
+      ;;                tbl)
+      ;;       (cons (car key-list) tbl))))
+      (cons (car ks) (list table-tag    ;more efficiently
+                           (make-table-with (cdr ks) v)))))
+#+END_SRC
+
+To design =make-table-with=, I've exploit the opaque type. And here is the test:
+#+BEGIN_SRC scheme
+(define tbl (make-table5))
+
+;Value: tbl
+
+(table? tbl)
+
+;Value: #t
+
+(insert! '(1 2 3 4) 5 tbl)
+
+;Value: ok
+
+(lookup '(1 2 3 4) tbl)
+
+;Value: 5
+
+(lookup '(2 3 4) (lookup '(1) tbl))
+
+;Value: 5
+#+END_SRC
+
+Note that the latter one is more efficient than former one; also seems cleaner.
+Object-oriented paradigm do not always win.
+*** Exercise 3.26
+As we already implemented the lookup procedure for binary tree in [[org:../MEGAsync/MIT%20Challenge/6.001/Chapter2.org][exercise 2.66]].
+All the left is to implement constructor and mutator of table.
+
+With the same argument of headed list-- our first backbone of table, we need to
+tag a type to locate "place" to mutate table.
+
+Here for simplicity, we don't consider the "balance" of tree structure; but that
+issue can be dealt with using amortized algorithm.
+
+Here's the result:
+#+BEGIN_SRC scheme
+;; constructor
+(define (make-table6)
+  (cons table-tag '()))
+
+;; selector
+(define (lookup key table)
+  (let ((entry (assoc-tree key (cdr table))))
+    (if entry
+        (value entry)
+        false)))
+(define (assoc-tree given-key tree)
+  (if (null? tree)
+      false
+      (let ((hd (key (entry tree))))
+        (cond ((= given-key hd) (entry tree))
+              ((< given-key hd) (assoc-tree given-key (left-branch tree)))
+              ((> given-key hd) (assoc-tree given-key (right-branch tree)))))))
+
+;; mutator
+(define (insert! key value table)
+  (let ((tree (cdr table)))
+    (if (null? tree)
+        (set-cdr! table
+                  (make-tree-with-entry (make-entry key value)))
+        (insert-tree! key value tree))))
+
+(define (insert-tree! aKey aValue tree)
+  (let ((hd (key (entry tree))))
+    (cond ((= aKey hd) (set-value! (entry tree) aValue))
+          ((< aKey hd)
+           (if (null? (left-branch tree))
+               (set-left-branch! tree (make-tree-with-entry (make-entry aKey aValue)))
+               (insert-tree! aKey aValue (left-branch tree))))
+          ((> aKey hd)
+           (if (null? (right-branch tree))
+               (set-right-branch! tree (make-tree-with-entry (make-entry aKey aValue)))
+               (insert-tree! aKey aValue (right-branch tree)))))))
+
+(define (make-tree-with-entry entry) (make-tree entry '() '()))
+
+;; backbone of table
+;;; constructor
+(define (make-tree entry left right)
+  (list entry left right))
+;;; selectors
+(define (entry tree) (car tree))
+(define (left-branch tree) (cadr tree))
+(define (right-branch tree) (caddr tree))
+;;; mutators
+(define (set-left-branch! tree left-tree) (set-car! (cdr tree) left-tree))
+(define (set-right-branch! tree right-tree) (set-car! (cddr tree) right-tree))
+
+;; lowest layer entry language
+(define (make-entry key value)
+  (cons key value))
+(define (key entry) (car entry))
+(define (value entry) (cdr entry))
+(define (set-value! entry value) (set-cdr! entry value))
+#+END_SRC
+
+Test:
+#+BEGIN_SRC scheme
+(define tbl (make-table6))
+
+;Value: tbl
+
+(insert! 1 'a tbl)
+
+;Unspecified return value
+
+(lookup 1 tbl)
+
+;Value: a
+
+(insert! 5 'e tbl)
+
+;Unspecified return value
+
+(insert! -3 'z tbl)
+
+;Unspecified return value
+
+tbl
+
+;Value: (*table* (1 . a) ((-3 . z) () ()) ((5 . e) () ()))
+
+(lookup -3 tbl)
+
+;Value: z
+#+END_SRC
+*** Exercise 3.27
+I've drawed environment diagram in my personal digital paper. To analysis the
+step complexity of =memo-fib=, let we assume that our =memo-fib= procedure does
+not compute the result of the argument that previously called with -- actually
+this is the reason we use memoization for -- by wishful thinking. Then note
+that, for instance, if our entry point -- the first procedure call -- was made
+by =(memo-fib 7)=, depending on how our the interpreter works, it should compute
+after some step =(memo-fib 6)= (or =(memo-fib 5)=) followed by =(memo-fib 5)=
+(or =(memo-fib 6)=); observe when it comes to the latter point of computation
+the result of that should already be in the local table of =memo-fib= by the
+assumption. Nevertheless, in any circumstance, if we let $T(n)$ denote the step
+complexity of =(memo-fib n)= then we get \[T(n) - T(n - 1) = \Theta(1)\] from
+which, we can conclude that \[T(n) = \Theta(n)\].
+
+To prove our assumption, we need to argue in our environment model for
+evaluation, which just complicate our discussion; yet we can grasp the taste of
+it by simulating (drawing) the evaluation process using environment model.
+** A Simulator for Digital Circuits
+Here we implement /event-driven simulation/; usually we encounter event-driven
+programming in web developing -- JavaScript, ruby on rails, and so on. For
+instance, we develop language for digital circuits simulator.
+
+As the name of our language, simulator, indicates that we model real world
+object exploiting local state variable.
+
+As a powerful language should consist of primitive elements, means of combination, means of
+abstraction, our simulator language also composed by those:
+- primitive elements :: Digital circuits constructed by combination of simple
+     logical function boxes:
+     #+CAPTION: Logical function boxes
+    [[./image/ch3-Z-G-24.gif]]
+     - Inverter
+     - And-gate
+     - Or-gate
+- means of combination :: We can construct more complex function boxes using
+     previous ones: Using wiring up the components.
+- means of abstraction :: As we embed our language in scheme, we inherit
+     scheme's means of abstraction -- =define=.
+
+
+Note that we described above components using real world terminology since we
+assumed that we mapped that concept to our language.
+
+For instance, let we construct half-adder circuit:
+#+CAPTION: half-adder
+
+[[./image/ch3-Z-G-25.gif]]
+#+BEGIN_SRC scheme
+;;; consturct half-adder
+(define a (make-wire))
+(define b (make-wire))
+(define c (make-wire))
+(define d (make-wire))
+(define e (make-wire))
+(define s (make-wire))
+(or-gate a b d)
+(and-gate a b c)
+(inverter c e)
+(and-gate d e s)
+#+END_SRC
+
+As this is general function box, it would be more appropriate to abstract this
+as box:
+#+BEGIN_SRC scheme
+(define (half-adder a b s c)
+  (let ((d (make-wire)) (e (make-wire)))
+    (or-gate a b d)
+    (and-gate a b c)
+    (inverter c e)
+    (and-gate d e s)
+    ))
+#+END_SRC
+
+Using this function box, we can construct more useful, complex function box:
+#+caption: full-adder
+[[./image/ch3-Z-G-26.gif]]
+#+BEGIN_SRC scheme
+(define (full-adder a b c-in sum c-out)
+  (let ((s (make-wire))
+        (c1 (make-wire))
+        (c2 (make-wire)))
+    (half-adder b c-in s c1)
+    (half-adder a s sum c2)
+    (or-gate c1 c2 c-out)
+    'ok))
+#+END_SRC
+
+*** Primitive function boxes
+The primitive function boxes works as force the wire get its signal changed. So
+wire should provides appropriate operations for that:
+- =(get-signal <wire>)=
+  returns the current value of the signal on wire.
+- =(set-signal <wire> <new value>)=
+  changes the value of the signal on the wire to the new value.
+- =(add-action! <wire> <procedure of no arguments>)=
+  asserts that the designated procedure should be run whenever the signal on the
+  wire changes value. Such procedures are the vehicles by which changes in the
+  signal value on the wire are communicated to other wires.
+
+
+Note that the first two operations should be familiar with us -- selector and
+mutator; but the last one is specific for the /event-driven programming/. By
+this effect, the "force" propagates along with the wires.
+
+In addition, to reflect the delay of logical function boxes, we need to make use
+of a procedure =after-delay= that takes a time delay and a procedure to be run
+and executes the given procedure after the given delay.
+
+As we gathered all the components we need, let's define the primitive function
+boxes:
+- inverter
+  #+BEGIN_SRC scheme
+(define (inverter input output)
+  (define (invert-input)
+    (let ((new-value (logical-not (get-signal input))))
+      (after-delay inverter-delay
+                   (lambda ()
+                     (set-signal! output new-value)))))
+  (add-action! input invert-input)
+  'ok)
+
+(define (logical-not s)
+  (cond ((= s 0) 1)
+        ((= s 1) 0)
+        (else (error "Invalid signal" s))))
+  #+END_SRC
+  Note that whenever the input signal changes =invert-input= executed by the
+  =add-action!=
+- and-gate
+  #+BEGIN_SRC scheme
+(define (and-gate a1 a2 output)
+  (define (and-action-procedure)
+    (let ((new-value
+           (logical-and (get-signal a1) (get-signal a2))))
+      (after-delay and-gate-delay
+                   (lambda ()
+                     (set-signal! output new-value)))))
+  (add-action! a1 and-action-procedure)
+  (add-action! a2 and-action-procedure)
+  'ok)
+(define (logical-and s1 s2)
+  (cond ((and (= s1 0) (= s2 0)) 0)
+        ((and (= s1 0) (= s2 1)) 0)
+        ((and (= s1 1) (= s2 0)) 0)
+        ((and (= s1 1) (= s2 1)) 1)
+        (else (error "Invalid signals" (cons s1 s2)))))
+  #+END_SRC
+- or-gate
+  #+BEGIN_SRC scheme
+(define (or-gate a1 a2 output)
+  (define (or-action-procedure)
+    (let ((new-value
+           (logical-or (get-signal a1) (get-signal a2))))
+      (after-delay or-gate-delay
+                   (lambda ()
+                     (set-signal! output new-value)))))
+  (add-action! a1 or-action-procedure)
+  (add-action! a2 or-action-procedure)
+  'ok)
+(define (logical-or s1 s2)
+  (cond ((and (= s1 0) (= s2 0)) 0)
+        ((and (= s1 0) (= s2 1)) 1)
+        ((and (= s1 1) (= s2 0)) 1)
+        ((and (= s1 1) (= s2 1)) 1)
+        (else (error "Invalid signals" (cons s1 s2)))))
+  #+END_SRC
+*** Exercise 3.28
+See the above or-gate part.
+*** Exercise 3.29
+We can use either De Morgan's law or truth table to deduce following logic:
+#+BEGIN_SRC scheme
+(define (or-gate2 a1 a2 output)
+  (let ((not-a1 (make-wire))
+        (not-a2 (make-wire))
+        (not-or (make-wire)))
+    (inverter a1 not-a1)
+    (inverter a2 not-a2)
+    (and-gate not-a1 not-a2 not-or)
+    (inverter not-or output)
+    'ok))
+#+END_SRC
+=or-gate-delay= becomes 2 =inverter-delay= + =and-gate-delay=.
+*** Exercise 3.30
+Using induction on /n/, we can construct /ripple-carry-adder/. More
+specifically, to connect each full-adder boxes, we should hand over the carry
+wire to next full-adder box:
+#+caption: ripple carry adder
+[[./image/ch3-Z-G-27.gif]]
+#+BEGIN_SRC scheme
+(define (ripple-carry-adder aAs aBs aSs C)
+  (define (connect-and-return-carry Ak Bk Ck Sk)
+    (let ((C_k-1 (make-wire)))
+      (full-adder Ak Bk Ck Sk C_k-1)
+      C_k-1))
+  (define (connect-recursive As Bs Ss)
+    (cond ((and (null? As) (null? Bs) (null? Ss))
+           (make-wire))                          ;C_n
+          ((or (null? As) (null? Bs) (null? Ss)) ;defensive programming
+           (error
+            "arguments do not agree in the number of elements --RIPPLE-CARRY-ADDER"
+            (list aAs aBs aSs)))
+          (else
+           (connect-and-return-carry
+            (car As) (car Bs)
+            (connect-recursive (cdr As) (cdr Bs) (cdr Ss))
+            (car Ss)))))
+  (cond ((or (null? aAs) (null? aBs) (null? aSs))
+         (error "RIPPLE-CARRAY-ADDER cannot do connect with given arguemens"
+                (list aAs aBs aSs)))
+        (else (full-adder (car aAs)
+                          (car aBs)
+                          (connect-recursive ;C_1
+                           (cdr aAs)
+                           (cdr aBs)
+                           (cdr aSs))
+                          (car aSs)
+                          C)
+              'ok)))
+#+END_SRC
+
+
+To estimate the whole delay of ripple carry adder, we exploit abstraction over
+the delays of other simpler function boxes that constitute ripple carry adder.
+Observe that the delay from /C_{k}/ to /C_{k-1}/ accumulated; it would be the
+bottle neck of propagation of signal in this function box. So we can conclude
+that the whole delay of ripple carry adder would be approximately /n/ \times
+each of the delay that going to be accumulated.
+
+In turns, to estimate the each delay of that part of full-adder, we need to do the same
+process as above or we could "bottom up" approach to it; calculate from the
+very lower level of function boxes from which full-adder constructed:
+- From half-adder, we have =or-gate-delay= + =and-gate-delay= or 2
+  =and-gate-delay= + =inverter-delay= to propagate the
+  signal from inputs to the =s=.
+- From full-adder, we have 2 (=or-gate-delay= + =and-gate-delay=) or 3
+  =and-gate-delay= + =inverter-delay= + =or-gate-delay= to propagate from =c-in=
+  to =c-out=.
+
+
+So, if we stick with =or-gate= and =and-gate= combination only, we got /n/
+\times 2 (=or-gate-delay= + =and-gate-delay=) as whole. We will verify this when
+we implemented all the parts of our language.
+*** Representing wires
+By wishful thinking, we just used wires to connect the components of our
+primitive boxes until now; this time, we need to represent wires according to
+our use of that -- the specifications deduced from our use.
+
+Our wire should have signal as its state variable from the use of that; i.e.
+=(get-signal <wire>)= and =(set-signal! <wire> <new value>)=. Also it should
+have some way to save all the actions it should executes when it change its
+signal according to =(add-action! <wire> <procedure of no arguments>)=; the
+name's bang of usage implies wire should have "action list" as its state
+variable.
+
+Here, in text book, we implement wire using the message passing style:
+#+BEGIN_SRC scheme
+(define (make-wire)
+  (let ((signal-value 0) (action-procedures '()))
+    (define (set-my-signal! new-value)
+      (if (not (= signal-value new-value))
+          (begin (set! signal-value new-value)
+                 (call-each action-procedures))
+          'done))
+    (define (accept-action-procedure! proc)
+      (set! action-procedures (cons proc action-procedures))
+      (proc))
+    (define (dispatch m)
+      (cond ((eq? m 'get-signal) signal-value)
+            ((eq? m 'set-signal!) set-my-signal!)
+            ((eq? m 'add-action!) accept-action-procedure!)
+            (else (error "Unknown operation -- WIRE" m))))
+    dispatch))
+
+(define (call-each procedures)
+  (if (null? procedures)
+      'done
+      (begin
+        ((car procedures))
+        (call-each (cdr procedures)))))
+#+END_SRC
+
+Then set up the interface for procedure calling style:
+#+BEGIN_SRC scheme
+(define (get-signal wire)
+  (wire 'get-signal))
+(define (set-signal! wire new-value)
+  ((wire 'set-signal!) new-value))
+(define (add-action! wire action-procedure)
+  ((wire 'add-action!) action-procedure))
+#+END_SRC
+*** The agenda
+Only the =after-delay= left to complete our language. We need some data
+structure that contains the schedule of things to do. For that structure we make
+data structure called agenda. Here is the interface of agenda:
+- =(make-agenda)=
+  returns a new empty agenda
+- =(empty-agenda? <agenda>)=
+  is true if the specified agenda is empty.
+- =(first-agenda-item <agenda>)=
+  returns the first item on the agenda.
+- =(remove-first-agenda-item! <agenda>)=
+  modifies the agenda by removing the first item.
+- =(add-to-agenda! <time> <action> <agenda>)=
+  modifies the agenda by adding the given action procedure to be run at the
+  specified time.
+- =(current-time <agenda>)=
+  returns the current simulation time.
+
+
+We also used the wishful thinking to construct this interface. The particular
+agenda that we use along the simulation is denoted as =the-agenda=. Using this
+structure we can implement =after-delay= procedure:
+#+BEGIN_SRC scheme
+(define (after-delay delay action)
+  (add-to-agenda! (+ delay (current-time the-agenda))
+                  action
+                  the-agenda))
+#+END_SRC
+
+With this data structure, we are ready to implement the initiation of simulator:
+#+BEGIN_SRC scheme
+(define (propagate)
+  (if (empty-agenda? the-agenda)
+      'done
+      (let ((first-item (first-agenda-item the-agenda)))
+        (first-item)
+        (remove-first-agenda-item! the-agenda)
+        (propagate))))
+#+END_SRC
+*** A sample simulation
+Cool! Since we can start the simulation, and we got the all the components of
+simulation, we are done only if we represent the agenda data structure? No! We
+can't inspect the simulation: We only can inspect whether the simulation done by
+=propagate=. To cope with this, we implement =probe= procedure that print out
+all the events at given wire:
+#+BEGIN_SRC scheme
+(define (probe name wire)
+  (add-action! wire
+               (lambda ()
+                 (newline)
+                 (display name)
+                 (display " ")
+                 (display (current-time the-agenda))
+                 (display "  New-value = ")
+                 (display (get-signal wire)))))
+#+END_SRC
+
+We exploited the underlying operation for =wire=.
+
+We are really ready to start the simulation. Here is the sample simulation:
+#+BEGIN_SRC scheme
+;;; setup
+(define the-agenda (make-agenda))
+(define inverter-delay 2)
+(define and-gate-delay 3)
+(define or-gate-delay 5)
+(define input-1 (make-wire))
+(define input-2 (make-wire))
+(define sum (make-wire))
+(define carry (make-wire))
+(probe 'sum sum)
+(probe 'carry carry)
+
+;;; set situation and start
+(half-adder input-1 input-2 sum carry)
+(set-signal! input-1 1)
+(propagate)
+
+;;; second situation and start
+(set-signal! input-2 1)
+(propagate)
+#+END_SRC
+*** Exercise 3.31
+We can analyze this problem in two different ways (but not mutually
+independent):
+- Focus the mapping between real world situation, from which we modeled, with
+  our resulting model.
+- Experiment with the alternative and see what happen then evaluate its result
+  (actually to estimate the result, we would use the first way).
+
+
+Let we start with the latter method and then evaluate that with the first
+method. As we did not complete our simulation language, we should simulate with
+their definitions; in other word, we should evaluate each statement as if we
+become a interpreter.
+
+With the normal definition of =accept-action-procedure!=, already the result of
+simulation texted in text book; so here we need only to simulate with the
+following definition on our own:
+#+BEGIN_SRC scheme
+,*** in make-wire
+(define (accept-action-procedure! proc)
+  (set! action-procedures (cons proc action-procedures)))
+#+END_SRC
+
+Let's run our interpreter:
+1. evaluate =(half-adder input-1 input-2 sum carry)=; at this point
+   =(empty-agenda? the-agenda)= returns true as we don't run the action since
+   the input signals doesn't changed at all.
+2. evaluate =(set-signal! input-1 1)=; as referencing the half-adder diagram,
+   the agenda should contains the schedule that looks like
+   #+BEGIN_SRC scheme
+(
+ (3 (lambda ()
+      (set-signal!
+       carry
+       (logical-and
+        (get-signal input-1) (get-signal input-2)))))
+ (5 (lambda ()
+      (set-signal!
+       d
+       (logical-or (get-signal input-1) (get-signal input-2)))))
+ )
+   #+END_SRC
+
+   The first item of each element represent the scheduled time and the next is
+   the action to be executed at that time.
+
+   Here I've used the substitution model for evaluation; but it is not strictly
+   correct -- the value of evaluating logical-and or logical-or should be
+   captured when the connection being made for instance.
+3. evaluate =(propagate)=;
+   #+BEGIN_SRC scheme
+(set-signal!
+ carry
+ (logical-and
+  (get-signal input-1) (get-signal input-2)))
+   #+END_SRC
+   evaluated to
+   #+BEGIN_SRC scheme
+(set-signal! carry 0)
+   #+END_SRC
+   which cause no change at all.
+
+   Next evaluate
+   #+BEGIN_SRC scheme
+(lambda ()
+      (set-signal!
+       d
+       (logical-or (get-signal input-1) (get-signal input-2))))
+   #+END_SRC
+   to
+   #+BEGIN_SRC scheme
+(set-signal! d 1)
+   #+END_SRC
+   ; as =d= changed its signal, it causes further events:
+   #+BEGIN_SRC scheme
+(
+ (8 (lambda ()
+      (set-signal!
+       sum
+       (logical-and
+        (get-signal d) (get-signal e)))))
+ )
+   #+END_SRC
+
+   As
+   #+BEGIN_SRC scheme
+(set-signal! sum 0)
+   #+END_SRC
+   doesn't change the signal of =sum=, it finalize the simulation: ='done=.
+
+
+The evaluation of this simulation is different from previous: =sum= and =carry=
+doesn't change its signal at all.
+
+Now we evaluate the result of our simulation using the criterion of first
+method:
+Our real world situation indicates the previous one is correct: the modified one
+is different from what "really" happens.
+
+Let we conclude with the first method, in this time, it is irrelevant with the
+second method. We observe in real world that as soon as we connect each
+components of digital circuits, the signals of wires, which connect each
+component, affected by its action -- connecting. Therefore, the initialization
+in the =accept-action-procedure!= is necessary when we really want to model that
+situation.
+*** Implementing the agenda
+The agenda is made up of /time segments/; to reflect this structure, we provide
+the backbone of agenda from which agenda constructed up:
+#+BEGIN_SRC scheme
+(define (make-time-segment time queue)
+  (cons time queue))
+(define (seqment-time s) (car s))
+(define (segment-queue s) (cdr s))
+#+END_SRC
+
+It doesn't do any special things except it indicates our strategy that we going
+to use queue for accumulating action procedures to be executed at that time. In
+fact, this is due to limitation of our programming language, as it does not
+allow us to use concurrent process, we need to mimic the situation all the
+procedures executed at once in our sequential language -- using queue.
+
+As we noted before, the agenda itself is a one-dimensional table of time
+segments. It is ordered by increasing time, it has /current time/ as its head:
+#+BEGIN_SRC scheme
+;; constructor
+(define (make-agenda) (list 0))
+;; selector -- time
+(define (current-time agenda) (car agneda))
+;; mutator -- time
+(define (set-current-time! agenda time)
+  (set-car! agenda time))
+;; selector -- segments
+(define (segments agenda) (cdr agenda))
+;; mutator -- segments
+(define (set-segments! agenda segments)
+  (set-cdr! agenda segments))
+;; selector -- operating on segments
+(define (first-segment agenda) (car (segments agenda)))
+;; selector -- operating on segments
+(define (rest-segments agenda) (cdr (segments agenda)))
+
+;; predicate agenda
+(define (empty-agenda? agenda)
+  (null? (segments agenda)))
+#+END_SRC
+
+To add a new action to agenda, we choose to mutate our agenda structure. It
+make us confront with some tricky situation, which would not occur in functional
+programming. We need to maintain the structure to preserve its identity after
+mutating the structure -- as we did in table implementation. So we need to
+follow somewhat more tricky algorithm specified in text book:
+#+BEGIN_SRC scheme
+(define (add-to-agenda! time action agenda)
+  (define (belongs-before? segments)
+    (or (null? segments)
+        (< time (segment-time (car segments)))))
+  (define (make-new-time-segment time action)
+    (let ((q (make-queue)))
+      (insert-queue! q action)
+      (make-new-time-segment time q)))
+  (define (add-to-segments! segments)
+    (if (= (segment-time (car segments)) time)
+        (insert-queue! (segment-queue (car segments))
+                       action)
+        (let ((rest (cdr segments)))
+          (if (belongs-before? rest)
+              (set-cdr!
+               segments
+               (cons (make-new-time-segment time action)
+                     rest))
+              (add-to-segments! rest)))))
+  (let ((segments (segments agenda)))   ;handle the entry point
+    (if (belongs-before? segments)
+        (set-segments!
+         agenda
+         (cons (make-new-tiem-segment time action)
+               segments))
+        (add-to-segments! segments))))
+#+END_SRC
+
+The remover:
+#+BEGIN_SRC scheme
+(define (remove-first-agenda-item! agenda)
+  (let ((q (segment-queue (first-segment agenda))))
+    (delete-queue! q)
+    (if (empty-queue? q)
+        (set-segments! agenda (rest-segments agenda)))))
+#+END_SRC
+
+Finally the access to the agenda from the higher level user:
+#+BEGIN_SRC scheme
+(define (first-agenda-item agenda)
+  (if (empty-agenda? agenda)
+      (error "Agenda is empty -- FIRST-AGENDA-ITEM")
+      (let ((first-seg (first-segment agenda)))
+        (set-current-time! agenda (segment-time first-seg)) ;first item access renew the time
+        (front-queue (segment-queue first-seg))))) ;from the contract, queue is not empty
+#+END_SRC
+
+Then let's test with previous exercise, [[Exercise 3.31][Exercise 3.31]]:
+#+BEGIN_SRC scheme
+(half-adder input-1 input-2 sum carry)
+
+;Value: ok
+
+(set-signal! input-1 1)
+
+;Value: done
+
+(propagate)
+
+;Value: done
+
+(set-signal! input-2 1)
+
+;Value: done
+
+(propagate)
+
+carry 11  New-value = 1
+;Value: done
+#+END_SRC
+
+It is exactly what we expected.
+*** Exercise 3.32
+
+We reason as follows:
+1. By the observation of previous exercise, each action stored in one wire
+   executed when the signal of that wire has changed.
+2. As queue is FIFO, even if it is same time at which the actions to be
+   executed, it is important which one has added to agenda.
+3. There are two possibilities in this particular situation:
+   - 0,1 \to 1,1 \to 1,0 -- abbreviated form of that first transit from 0,1 to
+     1,1 (the first argument change its signal) and then transit from 1,1 to 1,0
+     (the second argument change its signal).
+   - 0,1 \to 0,0 \to 1,0
+4. Case 1: output \to 1 \to 0 -- output of and-gate transit from its initial
+   signal (0) to 1 and then 0 at the same time point.
+   Case 2: output is unchanged.
+5. Case 1 would cause further event propagation; Case 2 would not. But with the
+   current primitive function boxes, after done with propagation, we can't
+   notice the difference between Case 1 from Case 2.
+6. Now let we assume list structure not queue: LIFO; with the same reasoning as
+   with queue, the order of action is important also.
+7. Case 1 would be stacked as (1,1 \to 1,0) (0,1 \to 1,1) as =and-gate-action=
+   capture the signals of wires when it called not the execution time of that action.
+8. That cause output \to unchanged \to 1
+9. Whereas, Case 2 stacked as follows: (0,0 \to 1,0) (0,1 \to 0,0), which cause
+   the output unchanged at all.
+10. Conclusion: If we use list instead of queue, new the order in which actions
+    to be executed start to get mattered; also in the view point of modeling, it
+    doesn't reflect well what behavior the real world takes.
+** Lecture 5B: Computational Objects
+In [[youtube:yedzRWhi-9E?list=PLE18841CABEA24090][this lecture]], we are going to learn how we use computational object -- the
+object of message passing paradigm -- to model the real world object; that is,
+mapping the objects from the real world to our computational world as well as
+all the relations between the objects. In lecture, it brings digital circuit
+simulation as example of instantiation of outlined scheme.
+
+The steps of the conversion, from model of real world to our computational
+model, can be summarized as follows:
+1. Capture the behavior of real world object that we want to map to our minds.
+   It requires more subtle steps for itself; the main concept of that steps is
+   to abstract the behavior as formally as possible.
+
+   In the digital circuit example, the primitive function boxes would be that --
+   inverter, and-gate, or-gate in addition to wire.
+2. Then formalize captured behavior using the state and mutation languages (more
+   specifically using the wishful thinking!).
+
+   In the example of lecture, each the cloudy wire object has to have signal
+   "state" with action procedures list "state" which stores things to inform
+   when it has changed its own signal value.
+3. Turn the language of state and mutation to the language of environment model.
+   Environment model can deal with the evaluation involving mutation and
+   assignment as well as the other expressions, we can safely map all the stuff
+   of the wishful thinking involving computational object as instantiation of
+   environment model.
+
+   In the example of digital circuit, wire is the environment which possess
+   signal and action procedures as variable in its first frame; the references
+   between the objects resolved as bindings in frame.
+4. Convert the environment model to code which produce such environments. We
+   have learned the instance of environment model that given code produces; if
+   we approach backwards, we can get what we want as there is one to one mapping
+   between the environment diagram and that code.
+
+   In the example of the digital circuit, there are more than what we outlined
+   here: as we are going to code digital circuit "simulation", we need to code
+   the fragments to achieve simulation feature such as delay of propagation and
+   so on. The agenda data structure is one of the auxiliary parts we mentioned
+   above.
+
+
+For the latter part of the example, it involves another key concept: Designing
+ADT -- in lecture, the agenda structure. To design and implement ADT,
+1. By wishful thinking, come up with behaviors that we want to have.
+2. Formalize the captured behavior as ADT.
+3. Modeling that behavior using our environment model (or box and pointer
+   diagram if it can be done that way).
+4. Convert that into code as there is direct mapping between code and model as
+   we specified above.
+
+
+The only difference between this and above modeling of real world object is
+that for designing ADT, there is no need to exist in the real world what we want
+to capture; if we can imagine what we want, we can capture that in computational
+object.
+** Propagation of Constraints
+Here we implement the constraint-based programming -- non-directional
+computations. There are some mechanisms works in this way in the real world --
+mechanics of material and so on. This constraint-based programming also known as
+logical programming combined with pattern matching. In that paradigm, all the
+constraints works as /fact/. Using such /facts/, deduce unknown things if
+appropriate amounts of fact provided.
+
+To implement such programming style, we apply what we learned in [[Lecture 5B:
+Computational Objects][Lecture 5B: Computational Objects]]:
+*** Capture the behavior of real world scheme.
+We could start this using the mechanical example we described; but to begin, the
+simpler example we use, the easier to capture the common behavior of those
+scheme, which leads capturing the abstracted concept of those behavior.
+
+So here, we use the conversion of temperature between of Fahrenheit and of
+Celsius. The relationship can be formalize as
+\[9C = 5(F - 32)\]
+
+*** Then we have to capture that as frame of components of ADT or a programming language.
+Here as we develop the programming style, we need to fit our
+components into
+  - primitive elements:
+    As we develop constraint-based programming our primitive elements would be
+    /primitive constraints/ -- primitive adder, multiplier, and constant
+    constraint
+  - means of combination:
+    Analogous to the digital circuit simulation, we combine constraints
+    connecting by connectors. Connectors work similarly with wires.
+  - means of abstraction:
+    As we embedding this language into Scheme, it inherit the abstraction means
+    of Scheme, namely lambda expression with the define.
+
+Here we denote the result of connecting several constraints as /network/. As
+example, the network of the conversion of temperatures given as [[file:image/3_28.gif][Figure 3.28]]. To
+deduce the cloudy objects in our computational world in terms of state and
+references, we need to extract more information from the informal behavior of
+simple examples. Let we inspect the above figure a little more specifically. The
+conversion constraint network consists of primitive adder, multiplier, and
+constant constraints. For that, please see the relevant discussion in the text
+book.
+
+The important concept is not the description of the behavior but how they
+deduced that description. Our task is to trace back that process to apply our
+own application in later. They nicely captured the common behavior of two
+examples -- mechanic law of material and conversion of temperatures -- into
+networks of primitive elements -- constant, multiplier, and adder boxes. Then
+as they simulation in their mind, they filled the details of the
+requirement. All of these made by wishful thinking: They believe that the
+real world system, such as mechanical system, can be mapped into our
+computational world even though we only know rough behavior of real world
+behavior.
+
+With all the specification in the text book, we can deduce the cloudy objects
+as connector should have state variable that holds the value of connector and
+constraint list of all constraints to which the connector linked; in
+addition, it should have informant as its state variable to achieve the
+requirement. For the primitive constraint boxes, it should have references to
+terminals to poll and set; it should possess identity to signature informant
+part of the connector. It forms the cloudy objects.
+
+*** To deduce the concrete environment diagram,
+here we use test usages to make things more concretely.
+
+So far, we developed the skeletons of our language, here we will develop more
+concrete contents by specifying how we want to use the constraint system. The
+temperature constraint network converted to
+#+BEGIN_SRC scheme
+(define C (make-connector))
+(define F (make-connector))
+(celsius-fahrenheiit-converter C F)
+#+END_SRC
+
+The real works defined as
+#+BEGIN_SRC scheme
+(define (celsius-farenheit-converter c f)
+  (let ((u (make-connector))
+        (v (make-connector))
+        (w (make-connector))
+        (x (make-connector))
+        (y (make-connector)))
+    (multiplier c w u)
+    (multiplier v x u)
+    (adder v y f)
+    (constant 9 w)
+    (constant 5 x)
+    (constant 32 y)
+    'ok))
+#+END_SRC
+
+As we did in digital circuit simulation, to see what is going on, we probe on
+the connector that we want to know the value when it changed. It should work
+as follows
+#+BEGIN_SRC scheme
+(probe "Celsius temp" C)
+(probe "Fahrenheit temp" F)
+
+(set-value! C 25 'user)
+Probe : Celsius temp = 25
+Probe : Fahrenheit temp = 77
+done
+#+END_SRC
+
+If we try to set =F= to a new value, say 212 it should behave as
+#+BEGIN_SRC scheme
+(set-value! F 212 'user)
+Error! Contradiction (77 212)
+#+END_SRC
+
+That is, the connector complains that it has sensed a contradiction: Its
+value is 77, and someone is trying to set it to 212. If we really want to
+reuse the network with new values, we should tell =C= to forget its old value
+before setting to new value:
+#+BEGIN_SRC scheme
+(forget-value! C 'user)
+Probe: Celsius temp = ?
+Probe: Fahrenheit temp = ?
+done
+#+END_SRC
+
+=C= finds that the =user=, who set its value originally, is now retracting
+that value, so =C= agrees to lose its value, as shown by the probe, and
+informs the rest of the network of this fact. This information eventually
+propagates to =F=, which now finds that it has no reason for continuing to
+believe that its own value is 77. Thus, =F= also gives up its value, as shown
+by the probe.
+
+Now that =F= has no value, we can safely set it to 212:
+#+BEGIN_SRC scheme
+(set-value! F 212 'user)
+Probe: Fahrenheit temp = 212
+Probe: Celsius temp = 100
+done
+#+END_SRC
+
+*** Unfortunately, what we deduced from the lecture 5B was wrong!
+You should notice something wrong is happening around the previous section or
+process. What we tried to deduce is not just the environment diagram.
+Environment diagram is not dynamic -- it is static as its nature; but what we
+tried to capture is dynamic thing -- it evolves as time passes.
+
+We can only convert the general pattern of the moment of object not the whole
+behavior of particular object, that is the evolution of process, as we capture
+the computation pattern using the substitution model.
+
+To design the behavior of objects we need to consult our old method, wishful
+thinking in terms of ADT or the core features that a powerful language should
+have with the method of designing algorithm.
+
+In fact it is not the unfortunate thing, as we have practiced enough to design
+our own ADT (and algorithm) again and again so far. The only difference is that
+now we have to consider the moment of evolution and capture that moment using
+environment model; in the substitution model, we does not considered the moment
+of evolution as there is no time in it. To summarize our abstract process of
+designing what we want is unchanged but the tools have changed.
+
+*** Implementing the constraint system
+So far, we converted the behavior of sample objects into that of our
+computational world. Now we turn our topic into implementing the primitive
+constraints using the ADT of connector by wishful thinking as we did again and
+again, that is we haven't got the resulting code of connector, that is, we
+just "assume" we have one.
+
+Here is the specifications for the operations on connectors:
+- =(has-value? <connector>)=
+  tells whether the connector has a value.
+- =(get-value <connector>)=
+  returns the connector's current value.
+- =(set-value! <connector> <new-value> <informant>)=
+  indicates that the informant is requesting the connector to set its value to
+  the new value.
+- =(forget-value! <connector> <retractor>)=
+  tells the connector that the retractor is requesting it to forget its value.
+- =(connect <connector> <new-constraint>)=
+  tells the connector to participate in the new constraint.
+
+
+The connectors communicate with the constraints by means of the procedures
+=inform-about-value=, which tells the given constraint that the connector has a
+value, and =inform-about-no-value=, which tells the constraint that the
+connector has lost its value.
+
+Note that by using the wishful thinking we could break down the massive
+structure into smaller ones as we did in the [[org:../MEGAsync/MIT Challenge/6.001/Chapter2.org][Exercise 2.92]]. From this process,
+we can learn how to expand our previous designing skill embracing mutation. The
+only difference is that in previous we used to substitution model in conversion
+from common computation to code, here we use environment model to convert the
+picture of object at some moment to code.
+
+Back to our discourse, =adder= constructs an adder constraint among summand
+connectors =a1= and =a2= and a =sum= connector. To implement this object, we
+think each part composing the whole object separately:
+- To capture the state mutation, and references relations using the environment model,
+- to capture the evolutions using procedure as we did before in the functional programming.
+
+The behavior of our newly defined primitive constraints are similar of the
+primitive function boxes of digital circuit but this constraint has to have
+identity. That means it should be the procedure with the local state -- object
+in message passing style.
+
+Using those observations we can produce code that do the right things:
+#+BEGIN_SRC scheme
+(define (adder a1 a2 sum)
+  (define (process-new-value)
+    (cond ((and (has-value? a1) (has-value? a2))
+           (set-value! sum
+                       (+ (get-value a1) (get-value a2))
+                       me))
+          ((and (has-value? a1) (has-value? sum))
+           (set-value! a2
+                       (- (get-value sum) (get-value a1))
+                       me))
+          ((and (has-value? a2) (has-value? sum))
+           (set-value! a1
+                       (- (get-value sum) (get-value a2))
+                       me))))
+  (define (process-forget-value)
+    (forget-value! sum me)
+    (forget-value! a1 me)
+    (forget-value! a2 me)
+    (process-new-value))
+  (define (me request)
+    (cond ((eq? request 'I-have-a-value)
+           (process-new-value))
+          ((eq? request 'I-lost-my-value)
+           (process-forget-value))
+          (else
+           (error "Unknown request -- ADDER" request))))
+  (connect a1 me)
+  (connect a2 me)
+  (connect sum me)
+  me)
+#+END_SRC
+
+The following "syntax interfaces" are used in conjunction with the dispatch:
+#+BEGIN_SRC scheme
+(define (inform-about-value constraint)
+  (constraint 'I-have-a-value))
+(define (inform-about-no-value constraint)
+  (constraint 'I-lost-my-value))
+#+END_SRC
+
+The adder's local procedure =processs-new-value= is called when the adder is
+informed that one of its connectors has a value. It evolves as what the behavior
+does. The only non-trivial process is the =process-forget-value= it works if the
+adder is told that one of its connectors has lost a value, it requests that all
+of its connectors now lose their value as desired but now it runs
+=process-new-value=. In =adder=, we could not grasp the essence why it needs to
+be done like that but it becomes somewhat more apparently when we consider the
+=multiplier= constraint:
+#+BEGIN_SRC scheme
+(define (multiplier m1 m2 product)
+  (define (process-new-value)
+    (cond ((or (and (has-value? m1) (= (get-value m1) 0))
+               (and (has-value? m2) (= (get-value m2) 0)))
+           (set-value! product 0 me))
+          ((and (has-value? m1) (has-value? m2))
+           (set-value! product
+                       (* (get-value m1) (get-value m2))
+                       me))
+          ((and (has-value? product) (has-value? m1))
+           (set-value m2
+                      (/ (get-value product) (get-value m1))
+                      me))
+          ((and (has-value? product) (has-value? m2))
+           (set-value m1
+                      (/ (get-value product) (get-value m2))
+                      me))))
+  (define (process-forget-value)
+    (forget-value! product me)
+    (forget-value! m1 me)
+    (forget-value! m2 me)
+    (process-new-value))
+  (define (me request)
+    (cond ((eq? request 'I-have-a-value)
+           (process-new-value))
+          ((eq? request 'I-lost-my-value)
+           (process-forget-value))
+          (else
+           (error "Unknown request -- MULTIPLIER" request))))
+  (connect m1 me)
+  (connect m2 me)
+  (connect product me)
+  me)
+#+END_SRC
+
+Think about the situation where =m1= equals to 0 and also =m2= equals to 0
+changed to =m2= got changed its value to not 0; =sum= still have to hold 0 as
+one of the multiplicand is 0. This is why we need to run =process-new-value= at
+the end of =process-forget-value=. So, for the =adder= case, we think this
+additional complexity is for consistency through whole system.
+
+For the other primitives, please refer the contents of text book.
+*** Representing connector
+As we outlined above, connector is represented in our computational world as a
+procedural object with local state variables =value=, the current value of the
+connector; =informant=, the object that set the connector's value; and
+=constraints=, a list of the constraints in which the connector participates.
+
+#+BEGIN_SRC scheme
+(define (make-connector)
+  (let ((value false) (informant false) (constraints '()))
+    (define (set-my-value newval setter)
+      (cond ((not (has-value? me))
+             (set! value newval)
+             (set! informant setter)
+             (for-each-except setter
+                              inform-about-value
+                              constraints))
+            ((not (= value newval))
+             (error "Contradiction" (list value newval)))
+            (else 'ignored)))
+    (define (forget-my-value retractor)
+      (if (eq? retractor informant)
+          (begin (set! informant false)
+                 (for-each-except retractor
+                                  inform-about-no-value
+                                  constraints))
+          'ignored))
+    (define (connect new-constraint)
+      (if (not (memq new-constraint constraints))
+          (set! constraints
+            (cons new-constraint constraints)))
+      (if (has-value? me)
+          (inform-about-value new-constraint))
+      'done)
+    (define (me request)
+      (case request
+        ((has-value?) (if informant true false))
+        ((value) value)
+        ((set-value!) set-my-value)
+        ((forget) forget-my-value)
+        ((connect) connect)
+        (else (error "Unknown operation -- CONNECTOR"
+                     request))))
+    me))
+
+(define (for-each-except exception procedure list)
+  (let loop ((items list))
+    (cond ((null? items)
+           'done)
+          ((eq? (car items) exception) (loop (cdr items)))
+          (else (procedure (car items))
+                (loop (cdr items))))))
+#+END_SRC
+
+Then syntax interfaces:
+#+BEGIN_SRC scheme
+(define (has-value? connector)
+  (connector 'has-value?))
+(define (get-value connector)
+  (connector 'value))
+(define (set-value! connector new-value informant)
+  ((connector 'set-value!) new-value informant))
+(define (connect connector new-constraint)
+  ((connector 'connect) new-constraint))
+#+END_SRC
+*** Exercise 3.33
+We can easily implement requested that is analogous to temperature conversion
+system:
+
+#+BEGIN_SRC scheme
+(define (averager a b c)
+  (let ((x (make-connector))
+        (y (make-connector)))
+    (adder a b x)
+    (multiplier c y x)
+    (constant 2 y)
+    'ok))
+#+END_SRC
+
+Test:
+#+BEGIN_SRC scheme
+(define a (make-connector))
+
+;Value: a
+
+(define b (make-connector))
+
+;Value: b
+
+(define c (make-connector))
+
+;Value: c
+
+(averager a b c)
+
+;Value: ok
+
+(probe 'average c)
+
+;Value: #[compound-procedure 43 me]
+
+(set-value! a 2 'user)
+
+;Value: done
+
+(set-value! b 3 'user)
+
+Probe: average = 5/2
+;Value: done
+#+END_SRC
+*** Exercise 3.34
+We want to implement the =squarer= which is the constraint version of =square=
+procedure. Louis Reasoner builds this constraint using the =multipliter=:
+#+BEGIN_SRC scheme
+(define (squarer a b)
+  (multiplier a a b))
+#+END_SRC
+
+Unfortunately, it does not work as desired: It only works from a to b not the
+other way around:
+#+BEGIN_SRC scheme
+(define a (make-connector))
+
+;Value: a
+
+(define b (make-connector))
+
+;Value: b
+
+(probe 'a a)
+
+;Value: #[compound-procedure 42 me]
+
+(probe 'b b)
+
+;Value: #[compound-procedure 43 me]
+
+(squarer a b)
+
+;Value: #[compound-procedure 44 me]
+
+(set-value! a 4 'user)
+
+Probe: b = 16
+Probe: a = 4
+;Value: done
+
+(forget-value! a 'user)
+
+Probe: b = ?
+Probe: a = ?
+;Value: done
+
+(set-value! b 16 'user)
+
+Probe: b = 16
+;Value: done
+#+END_SRC
+*** Exercise 3.35
+#+BEGIN_SRC scheme
+(define (squarer a b)
+  (define (process-new-value)
+    (cond ((has-value? b)
+           (if (< (get-value b) 0)
+               (error "sqaure less than 0 -- SQUARER" (get-value b))
+               (set-value! a (sqrt b) me)))
+          ((has-value? a)
+           (set-value! b (square a) me))))
+  (define (process-forget-value)
+    (forget-value! a me)
+    (forget-value! b me)
+    (process-new-value))
+  (define (me request)
+    (case request
+      ((I-have-a-value) (process-new-value))
+      ((I-lost-my-value) (process-forget-value))
+      (else
+       (error "Unknown request -- SQUARER" request))))
+  (connect a me)
+  (connect b me)
+  me)
+#+END_SRC
+
+Test:
+#+BEGIN_SRC scheme
+(define a (make-connector))
+
+;Value: a
+
+(define b (make-connector))
+
+;Value: b
+
+(probe 'a a)
+
+;Value: #[compound-procedure 39 me]
+
+(probe 'b b)
+
+;Value: #[compound-procedure 40 me]
+
+(squarer a b)
+
+;Value: #[compound-procedure 41 me]
+
+(set-value! a 4 'user)
+
+Probe: b = 16
+Probe: a = 4
+;Value: done
+
+(forget-value! a 'user)
+
+Probe: b = ?
+Probe: a = ?
+;Value: done
+
+(set-value! b 4 'user)
+
+Probe: a = 2
+Probe: b = 4
+;Value: done
+#+END_SRC
+*** Exercise 3.36
+I've done this with my digital paper.
+*** Exercise 3.37
+Using the expression-oriented style of definition, we can rewrite the
+=celsius-fahrenheit-converter= procedure as follows:
+#+BEGIN_SRC scheme
+(define (celsius-fahrenheit-converter x)
+  (c+ (c* (c/ (cv 9) (cv 5))
+          x)
+      (cv 32)))
+(define C (make-connector))
+(define F (celsius-fahrenheit-converter C))
+#+END_SRC
+
+Here =c+=, =c*=, etc. are the "constraint" versions of the arithmetic
+operations. For example, =c+= takes two connectors as arguments and returns a
+connector that is related to these by an adder constraint:
+#+BEGIN_SRC scheme
+(define (c+ x y)
+  (let ((z (make-connector)))
+    (adder x y z)
+    z))
+#+END_SRC
+
+Then, we can define =c-=, =c*=, =c/=, and =cv= (constant value) analogous to
+=c+=:
+#+BEGIN_SRC scheme
+(define (c- s x)
+  (let ((y (make-connector)))
+    (adder x y s)
+    y))
+
+(define (c* x y)
+  (let ((z (make-connector)))
+    (multiplier x y z)
+    z))
+
+(define (c/ z x)
+  (let ((y (make-connector)))
+    (multiplier x y z)
+    y))
+
+(define (cv num)
+  (let ((x (make-connector)))
+    (constant num x)
+    x))
+#+END_SRC
+
+Test:
+#+BEGIN_SRC scheme
+(define (celsius-fahrenheit-converter x)
+  (c+ (c* (c/ (cv 9) (cv 5))
+          x)
+      (cv 32)))
+(define C (make-connector))
+(define F (celsius-fahrenheit-converter C))
+
+(set-value! f 212 'user)
+
+;Value: done
+
+(probe 'f f)
+
+Probe: f = 212
+;Value: #[compound-procedure 42 me]
+
+(probe 'c c)
+
+Probe: c = 100
+;Value: #[compound-procedure 43 me]
+#+END_SRC
+* Concurrency: Time Is of the Essence
+** The Nature of Time in Concurrent Systems
+*** Exercise 3.38 **** a.
+Note that as Peter \to Paul results in same as Paul \to Peter, There are only
+four of cases that differs each other:
+- M \to P \to P -- $40;
+- Peter \to M \to Paul -- $35;
+- Paul \to M \to Peter -- $50;
+- P \to P \to M -- $45;
+
+
+Here we abbreviated Marry as M, Peter or Paul as P when it doesn't matter
+whether Peter or Paul.
+**** b.
+Note that the timing of the accessing the shared variable & mutating that only
+matters here. For simplicity (and for the discussion), we only consider the
+situation where mutation can not occur at the very same time -- if we allow
+this, then the discussion would be bogged down to bit mutation level. Then our
+concurrent process can be grouped as
+- the three people accessing the same value (at the same timing) of the shared
+  variable (the three people try to mutate the shared variable concurrently);
+- two of them accessing the same value (at the same timing) of the shared
+  variable (two of them try to mutate concurrently);
+- each of them accessing the shared variable without interleaving with others
+  (the *a.* cases).
+
+
+If we draw diagram relating these concurrent process, the first case of outlined
+above equivalent to only one person of them participate to the mutation, the
+second is two of them participate, and the last one participate all of them. As
+consequence the number of different situation here is 3 + 5 + 4 = 12. That is,
+- first case ::
+  - Peter: $110
+  - Paul: $80
+  - Marry: $50
+- second case ::
+  - P \to P: $90
+  - M \to Peter: $60
+  - M \to Paul: $30
+  - Paul \to M: $40
+  - Peter \to M: $55
+- last case (*a.*) ::
+  - M \to P \to P -- +$40+;
+  - Peter \to M \to Paul -- $35;
+  - Paul \to M \to Peter -- +$50+;
+  - P \to P \to M -- $45;
+
+
+Here we stroke out the duplicated result; overall number of different result is 10.
+** Mechanisms for Controlling Concurrency
+There are several strategy to control the concurrency. In the text book, they
+implemented /serializer/, which works as station where issues permission to
+operate. Then each of procedure who can mutate shared variable should be
+registered by the same serializer to prevent the interleaving process. We can
+implement this behavior following the steps of [[Propagation of Constrains][previous section]].
+
+There are several implementation details that we can choose for our own:
+- Serializer should have state variable that stores all the procedures that
+  registered to self? Actually the way of text book's have chosen reverse way --
+  the procedures have to reference the serializer to be controlled.
+- How the serializer permit specific procedure to run? We could have done this
+  using the massage-passing paradigm:
+  #+BEGIN_SRC plantuml :exports results :file ./image/chap3_1.png
+actor User
+participant "serialized-proc1"
+participant serializer
+User --> "serialized-proc1": Use!
+"serialized-proc1" -> serializer: request permission
+serializer -> "serialized-proc1": permit
+"serialized-proc1" --> User: result
+  #+END_SRC
+
+  #+RESULTS:
+  [[file:./image/chap3_1.png]]
+
+  However it is not the way of the book's; they make the serializer
+  "busy-waiting". If we implement this asynchronous way, we can make our
+  serializing scheme more efficient. But, here we only consider what way the
+  book driving for the simplicity.
+*** Exercise 3.39
+Since =s=, now control only one of two execution, not the all of them, and the
+controlled procedure never executed twice that are concurrently; thus the
+serializer does not work in this situation -- make no difference at all from the
+previous unserialized version. Consequently remain all of the previous cases.
+*** Exercise 3.40
+#+BEGIN_SRC scheme
+(define x 10)
+(parallel-execute (lambda () (set! x (* x x)))
+                  (lambda () (set! x (* x x x))))
+#+END_SRC
+We can capture above situation abstractly:
+- access x_{1} \to access x_{2} \to set x_{3} to (* x_{1} x_{2}); let we
+  abbreviate this sequence of events as (x, y, z).
+- access x^{1} \to access x^{2} \to access x^{3} \to set x^{4} to (* x^{1} x^{2}
+  x^{3}); let we abbreviate this sequence of events as (a, b, c, d)
+
+
+We used subscriptions or superscriptions to capture the times to access the
+variable =x=. Then the resulting sequence of execution should be an sequence
+that contains all of the elements of above sequences -- x, y, z, a, b, c, d in
+some order with constraints that elements of each sequence should be preserve
+the relative order. And note that only mutation (assignment) make the context
+different; that is, the number of cases that possibly produce different result
+are the number of ways of organizing (0, 0, 0) with 1 plus (1, 1, 1, 1) with 0
+minus 2 (duplicated cases among those -- (1, 0) and (0, 1)) -- 7 cases:
+- (0, 0, 0, 1): 10^{6}
+- (0, 0, 1, 0): 10^{2}
+- (0, 1, 0, 0): 10^{4}
+- (1, 0, 0, 0): +10^{6}+
+- (1, 1, 1, 0, 1): 10^{3}
+- (1, 1, 0, 1, 1): +10^{4}+
+- (1, 0, 1, 1, 1): 10^{5}
+
+
+We represented the (x, y, z) sequence as (0, 0, 0) similarly (1, 1, 1, 1) for
+(a, b, c, d); so the last element of each sequence represent the assignment
+statement. Also in the combined sequences, we only noted one element of other
+sequence such as (0, 0, 0, 1) -- here 1 represent the assignment of latter
+sequence. -- as only assignment make context different.
+
+If we use the serializer here, the only two case survives -- (0, 1) and (1, 0)
+both results to 10^{6}.
+*** Exercise 3.41
+The Ben Bitdiddle's observation is not correct: As the balance method only
+access to the shared state variable not mutating it, this method calling could
+not make any different context (can not alter the environment) at all; recall
+that the anomalous behavior we concerned here is the interleaving processes
+which do access the shared variable and based on that, mutate that variable.
+*** Exercise 3.42
+To answer this question, we need to inspect the behavior of serializer more
+formally. If we interpret the informal specification described in the text book
+as only one of evaluation can be processed among the set of procedures
+associated with that serializer, then the modification made by Ben Bitdiddle
+results to the same behavior as previous one.
+
+On the other hand, if it means only one of procedure, whose instance gets
+permission from the serializer, allowed to be executed, then it results in the
+instances (processes) of that procedure allowed to be processed concurrently.
+That causes the chaos in the banking system cause it will allow interleaving
+processes.
+
+So it is good convention to define the banking account procedure as original one
+since it does not depend on the interpretation of the specification, which is
+the implementation details.
+*** Exercise 3.43
+As it is evaluated sequentially, all we need to show is that if before
+sequential execution specific condition holds, then after which it still holds.
+And this assertion can be proved as choose arbitrary one of the execution of
+element of sequence; then prove if the a specific condition holds before that
+execution, it still holds after that.
+
+By setting the specific condition as the account balances should be $10, $20,
+and $30 after the sequential execution, we got what we want.
+
+This condition can be violated allowing the interleaving exchange. I've drawn
+the figure describing this situation in the digital paper.
+
+Now we try to prove even this situation, the total balance of accounts are
+conserved. Basically, the structure of our proof is same as outlined above. We
+decompose the goal into about the each exchange execution, and then into the
+individual execution of =withdraw= or =deposit=. About the decomposed goal, we
+have the lemma-like specification in the book, so if we formalize that
+observation, we are done -- completion of proof. To prove the final decomposed
+goal, we need to incorporate the user -- the caller of =exchange= -- to interact
+or possess the balance -- difference.
+
+For the last request, I've drawn diagram in the digital paper.
+*** Exercise 3.44
+As we noted in [[Exercise 3.42][exercise 3.42]], the anomalous behavior can be introduced only by
+consequent access to value & mutating that variable. In the previous exchange
+procedure, we accessed each account to calculate the difference of those
+balances then mutated each account appropriately. That is, the anomaly involved each
+account as shared variable. Whereas in our situation, we do not access the
+values to mutate the account; in other word our mutation does not depend on the
+shared variable. So our execution sequence does not satisfy the condition of
+anomalous behavior.
+*** Exercise 3.45
+Ben Bitdiddle's introduces not halting process -- due to the so called
+"deadlock": Our serialized exchange process locks the serializer until it
+terminates all of the statement of its body; however the withdrawal (or deposit)
+process also require the permission of the same serializer otherwise it can not
+proceed, which would be free after that withdrawal (or deposit) process
+terminate. This situation end up with interlocked process, does not terminate at all.
+*** Exercise 3.46
+I've drawn required in my digital paper.
+*** Exercise 3.47
+**** a.
+To implement the semaphore using the mutex, here we modify the definition of
+mutex not to make the caller of =acquire= method of that to busy wait.
+#+BEGIN_SRC scheme
+;; modifed mutex -- to fit in the semaphore
+(define (make-mutex)
+  (let ((cell (list false)))
+    (define (the-mutex m)
+      (case m
+        ((acquire) (test-and-set! cell))
+        ((release) (clear! cell))))
+    the-mutex))
+(define (clear! cell)
+  (set-car! cell false))
+(define (test-and-set! cell)
+  (without-interrupts
+   (lambda ()
+     (if (car cell)
+         true
+         (begin (set-car! cell true)
+                false)))))
+#+END_SRC
+
+Then the previous =make-serializer= can be implemented as
+#+BEGIN_SRC scheme
+(define (make-serializer)
+  (let ((mutex (make-mutex)))
+    (lambda (p)
+      (define (serialized-p . args)
+        (if (mutex 'acquire)
+            (mutex 'acquire))           ;retry
+        (let ((val (apply p args)))
+          (mutex 'release)
+          val))
+      serialized-p)))
+#+END_SRC
+
+Armed with this modified mutex, we can implement semaphore:
+#+BEGIN_SRC scheme
+(define (make-semaphore n)
+  (define (make-mutex-chain n)
+    (if (zero? n)
+        '()
+        (cons (make-mutex)
+              (make-mutex-chain (-1+ n)))))
+  (let ((mutexes (make-cycle (make-mutex-chain n))))
+    (define (the-semaphore request)
+      (case request
+        ((acquire)
+         (let loop ((current-cycle mutexes))
+           (let ((mutex (car current-cycle)))
+             (if (mutex 'acquire)
+                 (loop (cdr current-cycle))
+                 mutex))))
+        (else (error "Unknown request -- MAKE-SEMAPHORE" request))))
+    the-semaphore))
+#+END_SRC
+
+Then the serializer with n concurrent procedure:
+#+BEGIN_SRC scheme
+(define (make-semaphore n)
+  (define (make-mutex-chain n)
+    (if (zero? n)
+        '()
+        (cons (make-mutex)
+              (make-mutex-chain (-1+ n)))))
+  (let ((mutexes (make-cycle (make-mutex-chain n))))
+    (define (the-semaphore request)
+      (case request
+        ((acquire)
+         (let loop ((current-cycle mutexes))
+           (let ((mutex (car current-cycle)))
+             (if (mutex 'acquire)
+                 (loop (cdr current-cycle))
+                 mutex))))
+        (else (error "Unknown request -- MAKE-SEMAPHORE" request))))
+    the-semaphore))
+#+END_SRC
+**** b.
+ With atomic =test-and-set!= it becomes more concise -- the semaphore only need
+ to keep track the number of current concurrent procedures:
+ #+BEGIN_SRC scheme
+(define (make-semaphore2 n)
+  (let ((cell (list 0)))
+    (define (test-and-set!)
+      (without-interrupts
+       (lambda ()
+         (if (< (car cell) n)
+             (begin (set-car! cell (1+ (car cell)))
+                    false)
+             true))))
+    (define (clear!)
+      (without-interrupts
+       (lambda ()
+         (set-car! cell (-1+ (car cell))))))
+    (define (the-semaphore request)
+      (case request
+        ((acquire)
+         (test-and-set!))
+        ((release)
+         (clear!))
+        (else
+         (error "Unknown reuqest -- MAKE-SEMAPHORE2" request))))
+    the-semaphore))
+
+(define (make-serializer-with2 n)
+  (let ((the-semaphore (make-semaphore2 n)))
+    (lambda (p)
+      (define (serialized-p . args)
+        (if (the-semaphore 'acquire)
+            (the-semaphore 'acquire))
+        (let ((val (apply p args)))
+          (the-semaphore 'release)
+          val))
+      serialized-p)))
+ #+END_SRC
+*** Exercise 3.48
+As noted in the text, deadlock occur in the situation where each process needs
+to get permission of every permission from specified serializer set to execute,
+but each permission doesn't have to be acquired in specific order. Thus several
+process can get some number of permissions concurrently, which leads interlocked
+processes.
+
+The given deadlock-avoidance method constrain each process needs to get
+permission in specific order; that means the interlocked situation can not occur
+at all since to occur such situation, one should break the ordering constraint.
+
+To implement this idea, first we need to modify =make-account-and-serializer= to
+issue identification number to each account:
+#+BEGIN_SRC scheme
+(define make-account-and-serializer
+  (let ((id 0))
+    (lambda (balance)
+      (let ((id (begin (set! id (1+ id))
+                       id)))
+        (define (withdraw amount)
+          (if (>= balance amount)
+              (begin (set! balance (- balance amount))
+                     balance)
+              "Insufficient funds"))
+        (define (deposit amount)
+          (set! balance (+ balance amount))
+          balance)
+        (let ((balance-serializer (make-serializer)))
+          (define (dispatch m)
+            (case m
+              ((withdraw) withdraw)
+              ((deposit) deposit)
+              ((balance) balance)
+              ((serializer) balance-serializer)
+              ((id) id)
+              (else (error "Unknown request -- MAKE-ACCOUNT" m))))
+          dispatch)))))
+#+END_SRC
+
+Then test the id feature:
+#+BEGIN_SRC scheme
+(define a (make-account-and-serializer 100))
+(define b (make-account-and-serializer 100))
+(a 'id)
+;Value: 1
+
+(b 'id)
+;Value: 2
+#+END_SRC
+
+#+BEGIN_SRC scheme
+(define (serialized-exchange account1 account2)
+  (let ((id1 (account1 'id))
+        (id2 (account2 'id))
+        (serializer1 (account1 'serializer))
+        (serializer2 (account2 'serializer)))
+    (if (< id1 id2)
+        ((serializer1 (serializer2 exchange))
+         account1
+         account2)
+        ((serializer2 (serializer1 exchange))
+         account2
+         account1))))
+#+END_SRC
+*** Exercise 3.49
+Such scenario should satisfy the selection of the other account depends on the
+value of the shared resource of first account and also it should mutate the
+depending resource in that process.
+
+We can think of the joint account situation a bit screwed from what discussed in
+the text book -- jointing accounts results to making each account reference the
+other account in their state variable. Then now think of the situation where we
+want to exchange the account's balance of ones with the joint account's. It
+cannot be avoided by outlined procedure in [[Exercise 3.48][exercise 3.48]].
+*** Concurrency, time, and communication
+Let we conclude this section quoting the last paragraph of the text's this
+section:
+
+#+BEGIN_QUOTE
+The basic phenomenon here is that synchronizing different processes,
+establishing shared state, or imposing an order on events requires communication
+among the processes. In essence, any notion of time in concurrency control must
+be intimately tied to communication. It is intriguing that a similar connection
+between time and communication also arises in the Theory of Relativity, where
+the speed of light (the fastest signal that can be used to synchronize events)
+is a fundamental constant relating time and space. The complexities we encounter
+in dealing with time and state in our computational models may in fact mirror a
+fundamental complexity of the physical universe.
+#+END_QUOTE
+* Streams
+Here we approach the modeling of real world in different angle: We try to
+capture time as sequence of instants; that is analogous to the physical
+interpretation of world as 4 dimension -- time axis with 3D space.
+
+With this view point, we can use our sequence processing interface to process
+the streams. In fact, this stream processing is powerful model which enables us
+to deal the state without ever using assignment or mutable data.
+
+On the other hand, the stream framework raises difficulties of its own, and the
+question of which modeling technique leads to more modular and more easily
+maintained systems remains open.
+** Streams Are Delayed Lists
+*** Exercise 3.50
+Use type contract:
+#+BEGIN_SRC scheme
+;; (A,...,A -> B), List<Stream<A>> -> Stream<B>
+(define (stream-map proc . argstreams)
+  (if (empty-stream? (car argstreams))
+      the-empty-stream
+      (cons-stream
+       (apply proc (map stream-car argstreams))
+       (apply stream-map
+              (cons proc (map stream-cdr argstreams))))))
+#+END_SRC
+*** Exercise 3.51
+It should
+#+BEGIN_SRC scheme
+(define x (stream-map show (stream-enumerate-interval 0 10)))
+;display 0
+(stream-ref x 5)
+;display 1, 2, 3, 4, 5
+(stream-ref x 7)
+;display 6, 7
+#+END_SRC
+
+And it did:
+#+BEGIN_SRC scheme
+(define x (stream-map show (stream-enumerate-interval 0 10)))
+
+0
+;Value: x
+
+(stream-ref x 5)
+
+1
+2
+3
+4
+5
+;Value: 5
+
+(stream-ref x 7)
+
+6
+7
+;Value: 7
+#+END_SRC
+*** Exercise 3.52
+Mentally calculated:
+#+BEGIN_SRC scheme
+(define seq (stream-map accum (stream-enumerate-interval 1 20)))
+;sum = 1
+(define y (stream-filter even? seq))
+;sum = 6
+(define z (stream-filter (lambda (x) (= (remainder x 5) 0))
+                         seq))
+;sum = 10
+(stream-ref y 7)
+;136
+;sum = 136
+(display-stream z)
+;10, 15, 45, 55, 105, 120, 190, 210
+;sum = 210
+#+END_SRC
+
+Actual response:
+#+BEGIN_SRC scheme
+(stream-ref y 7)
+
+;Value: 136
+
+(display-stream z)
+
+10
+15
+45
+55
+105
+120
+190
+210
+;Unspecified return value
+#+END_SRC
+
+For the latter question: Yes it'll produce different result, since it now the
+duplicated evaluation aggregate the value of sum by the computation result of
+that additional evaluation.
+** Infinite Streams
+The important aspect of streams that differs from previous processes --
+iterative, recursive -- is that streams unfolds the specified process while the
+others folding the given argument; that is, streams make more complex things as
+it evolves, whereas the others simplifying those.
+
+Observe that procedure dealing with streams usually capture the differential
+equation as we'll learn from 6.01.
+*** Exercise 3.53
+This stream captures the differential equation given by
+\begin{matrix}
+s[n] =& s[n-1] + s[n-1] =& 2s[n-1]\\
+s[0] =& 0
+\end{matrix}
+
+So, by solving the deduced equation, we got $s[n] = 2^{n}$.
+*** Exercise 3.54
+The differential equation we want:
+\begin{matrix}
+f[n] =& f[n-1] \times int[n + 1]\\
+f[0] =& 1
+\end{matrix}
+
+The converted code:
+#+BEGIN_SRC scheme
+(define (mul-streams s1 s2)
+  (stream-map * s1 s2))
+
+(define factorials (cons-stream 1 (mul-streams (integers-starting-from 2)
+                                               factorials)))
+#+END_SRC
+*** Exercise 3.55
+The differential equation we want:
+\begin{matrix}
+f[n] =& f[n-1] + s[n]\\
+f[0] =& s[0]
+\end{matrix}
+
+Then the code:
+#+BEGIN_SRC scheme
+(define (partial-sums s)
+  (define partials
+    (cons-stream (stream-car s)
+                 (add-streams (stream-cdr s) partials)))
+  partials)
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+(define test-partial-sums (partial-sums integers))
+
+(display-stream test-partial-sums)
+
+1
+3
+6
+10
+15
+21
+28
+36
+45
+55
+...
+#+END_SRC
+*** Exercise 3.56
+We need to merge all of =(scale-stream s 2)=, =(scale-stream s 3)=,
+=(scale-stream s 5)=:
+#+BEGIN_SRC scheme
+(define S (cons-stream 1
+                       (merge (scale-stream s 2)
+                              (merge (scale-stream s 3)
+                                     (scale-stream s 5)))))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+(stream-ref s 100)
+
+;Value: 1600
+
+s
+
+;Value: {1 2 3 4 5 6 8 9 10 12 15 16 18 20 24 25 27 30 32 36 ...
+#+END_SRC
+*** Exercise 3.57
+We answers to the questions in order:
+1. The number of additions results to $n-2$ since
+   - base case: 3th =fibs= needs one addition.
+   - inductive case: nth =fibs= needs # of additions of n-1th =fibs= + 1.
+2. The number of the latter would be greater than 2^{n/2 - 1} since
+   - \[T(3) = 1\]
+   - \[T(n) = T(n-1) + T(n-2) + 1\]
+   These equation can be deduced as it does not involve any assignment
+   explicitly & implicitly; so the evaluation does not depends on context, that
+   is to the result of $T(n-2)$ after evaluating $T(n-1)$ same as $T(n-2)$
+   before evaluating $T(n-1)$.
+*** Exercise 3.58
+#+BEGIN_SRC scheme
+(define (expand num den radix)
+  (cons-stream
+   (quotient (* num radix) den)
+   (expand (remainder (* num radix) den) den radix)))
+#+END_SRC
+It produce the sequence representing radix point number expansion of rational
+number $\frac{num}{den}$.
+
+Tests:
+#+BEGIN_SRC scheme
+(define 1over7 (expand 1 7 10))
+
+;Value: |1over7|
+
+1over7
+
+;Value: {1 ...}
+
+(stream-ref 1over7 10)
+
+;Value: 5
+
+1over7
+
+;Value: {1 4 2 8 5 7 1 4 2 8 5 ...}
+
+(define 3over8 (expand 3 8 10))
+
+;Value: |3over8|
+
+(stream-ref 3over8 10)
+
+;Value: 0
+
+3over8
+
+;Value: {3 7 5 0 0 0 0 0 0 0 0 ...}
+#+END_SRC
+*** Exercise 3.59
+**** a.
+The code do the right things:
+#+BEGIN_SRC scheme
+(define (integrate-series s)
+  (stream-map (lambda (s i) (/ s i)) s integers))
+#+END_SRC
+
+And test:
+#+BEGIN_SRC scheme
+(define test-integrate-series
+  (integrate-series ones))
+test-integrate-series
+
+;Value: {1 1/2 1/3 1/4 1/5 1/6 1/7 1/8 1/9 1/10 1/11 ...}
+#+END_SRC
+**** b.
+Here we using following observation:
+#+BEGIN_SRC scheme
+(cons-stream (stream-car series), (integrate-series (deriv series))) = series
+#+END_SRC
+
+So, the answers can be implemented as
+
+#+BEGIN_SRC scheme
+(define cosine-series
+  (cons-stream 1 (integrate-series (stream-map - sine-series))))
+
+(define sine-series
+  (cons-stream 0 (integrate-series cosine-series)))
+#+END_SRC
+*** Exercise 3.60
+Let S_{2} be $\{a_{0}, a_{1}, \ldots\}$ then =(mul-series S1 S2)= should equals
+to $a_{0} S_{1} + x S_{1} \times \{a_{1}, a_{2}, \ldots\}$.
+
+From above observation, we can deduce
+#+BEGIN_SRC scheme
+(mul-series s1 s2)
+= (add-series (scale-stream s1 (stream-car s2))
+                                 (shift (mul-series s1 (stream-cdr s2))))
+= (let ((a0s1 (scale-stream s1 (stream-car s2))))
+    (cons-stream
+     (stream-car a0s1)
+     (add-series (stream-cdr a0s1)
+                 (mul-series s1 (stream-cdr s2)))))
+#+END_SRC
+
+Then the result:
+#+BEGIN_SRC scheme
+(define (mul-series s1 s2)
+  (let ((a0s1 (scale-stream s1 (stream-car s2))))
+    (cons-stream
+     (stream-car a0s1)
+     (add-series (stream-cdr a0s1)
+                 (mul-series s1 (stream-cdr s2))))))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+;; test for sine, cosine series with mul-series
+(define (square-series s)
+  (mul-series s s))
+(define test-trigonometric-stream
+  (add-series (square-series sine-series)
+              (square-series cosine-series)))
+
+test-trigonometric-stream
+
+;Value: {1 0 0 0 0 0 ...}
+#+END_SRC
+*** Exercise 3.61
+The straight forward implementation:
+#+BEGIN_SRC scheme
+(define (invert-unit-series s)
+  (define X (cons-stream
+             (stream-car s)
+             (mul-series
+              (stream-cdr s)
+              (stream-map - X))))
+  X)
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+(define test-invert-series
+  (invert-unit-series test-integrate-series))
+test-invert-series
+
+;Value: {1 -1/2 -1/12 -1/24 -19/720 -3/160 -863/60480 -275/24192 -33953/3628800 -8183/1036800 -3250433/479001600 ...}
+#+END_SRC
+
+The problem is I don't know the result of the test case is right. Let this test
+delegate to next exercise.
+*** Exercise 3.62
+Here we use following observation:
+\begin{align*}
+&\{n_{0}, n_{1}, \ldots\} / \{d_{0}, d_{1}, \ldots\}\\
+=&\frac{\{n_{0}, n_{1}, \ldots\}/d_{0}}{\{1, d_{1}/d_{0}, d_{2}/d_{0}, \ldots\}}
+\end{align*}
+It results into
+#+BEGIN_SRC scheme
+(define (div-series ns ds)
+  (let ((d0 (stream-car ds)))
+    (cond ((zero? d0)
+           (error "Zero division -- DIV-SERIES" ds))
+          (else
+           (let ((ns/d0 (stream-map (lambda (n) (/ n d0)) ns))
+                 (ds/d0 (stream-map (lambda (d) (/ d d0)) ds)))
+             (mul-series
+              ns/d0
+              (invert-unit-series ds/d0)))))))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+(define test-div-series
+  (div-series sine-series sine-series))
+;Zero division -- DIV-SERIES {0 1 0 -1/6 0 ...}
+(define test-div-series
+  (div-series cosine-series cosine-series))
+
+test-div-series
+
+;Value: {1 0 0 0 0 0 0 0 0 0 0 ...}
+
+;; tangent-series
+(define tangent-series
+  (div-series sine-series cosine-series))
+
+tangent-series
+
+;Value: {0 1 0 1/3 0 2/15 0 17/315 0 62/2835 0 ...}
+#+END_SRC
+** Exploiting the Stream Paradigm
+*** Exercise 3.63
+The modified version need to recalculate the subsequent call of =(sqrt-stream
+x)= within the body of =sqrt-stream= whereas the original one just refer the
+precalculated result.
+
+If we just use call-by-name not call-by-need, the two different version of these
+procedure would hardly differ each other since both should recalculate recursive
+call of expression.
+
+I've deduced this result using environment diagram. You should also draw by
+yourself.
+*** Exercise 3.64
+This procedure should involve conditional branch:
+#+BEGIN_SRC scheme
+(define (stream-limit s tolerance)
+  (let ((x (stream-car s))
+        (y (stream-car (stream-cdr s))))
+    (if (< (abs (- x y)) tolerance)
+        y
+        (stream-limit (stream-cdr s) tolerance))))
+#+END_SRC
+*** Exercise 3.65
+It is analogous to =pi-stream= in text book:
+#+BEGIN_SRC scheme
+(define (ln2-summands n)
+  (cons-stream (/ 1.0 n)
+               (stream-map -
+                           (ln2-summands (1+ n)))))
+
+(define ln2-stream
+  (accelerated-sequence
+   euler-transform (partial-sums (ln2-summands 1))))
+#+END_SRC
+
+Then let's test it together with previous exercise:
+#+BEGIN_SRC scheme
+(define ln2 (stream-limit ln2-stream 1e-8))
+
+ln2
+
+;Value: .6931471805604039
+#+END_SRC
+
+It seems reasonable.
+*** Exercise 3.66
+To answer the question, we need to formulate the mapping rule of =pairs=, that
+is, the relation between the pair of index of =s= with =t= and that the index of
+=(pairs s t)=. That, in turns, involves the mapping rule of =interleave=.
+
+Let we start with the easy one: The mapping rule of =interleave=. Let we denote
+/i/ as the /i/-th element of S_{1} and similarly /j/ for /j/-th element of
+S_{2}. Then we deduce the relation between /i/ or /j/ and the index of that
+element in the =(interleave s1 s2)= as
+\begin{equation*}
+\left\{
+\begin{matrix}
+i \to& 2i - 1\\
+j \to& 2j
+\end{matrix}
+\right.
+\end{equation*}
+
+Using this, we can construct the mapping rule of =pairs=:
+\begin{equation*}
+f(x,y) =
+\left\{
+\begin{matrix}
+1,1 &\to& 1\\
+1,i+1 &\to& (2i - 1) + 1\\
+j+1, k+1 &\to& 2 f(j,k) +1
+\end{matrix}
+\right.
+\end{equation*}
+
+By solving this equation, we can deduce the closed form of that:
+\begin{align*}
+f(n, n+m) &= 2^{n-1}f(1, 1 + m) + 2^{n-1} - 1\\
+&= 2^{n-1} (2m + 1) -1
+\end{align*}
+
+Consequently, we got the precise mathematical statements about the order mapping
+rule of =pairs=. Using this, we can calculate the given test cases as
+\begin{align*}
+f(1,100) &= 2^{0} (2\times 99 + 1) - 1\\
+&= 198\\
+f(99,100) &= 2^{98} (2\times 1 + 1) - 1\\
+&= 2^{98}\times 3 - 1\\
+f(100, 100) &= 2^{100} -1
+\end{align*}
+
+Let's verify above results:
+#+BEGIN_SRC scheme
+(define test-order-of-pairs (pairs integers integers))
+
+(stream-ref test-order-of-pairs (-1+ 198))
+
+;Value: (1 100)
+
+(stream-ref test-order-of-pairs (-1+ (-1+ (* 3 (expt 2 8)))))
+
+;Value: (9 10)
+
+(stream-ref test-order-of-pairs (-1+ (-1+ (expt 2 10))))
+
+;Value: (10 10)
+#+END_SRC
+
+Here we replaced last two cases as $f(9, 10)$ and $f(10, 10)$ respectively
+since, as we computed the order of given pair order, the input order number
+turns out so enormous that we can not wait the calculation.
+*** Exercise 3.67
+It is analogous to =pairs=:
+#+BEGIN_SRC scheme
+(define (all-pairs s t)
+  (cons-stream
+   (list (stream-car s) (stream-car t))
+   (interleave
+    (stream-map (lambda (x) (list (stream-car s) x))
+                (stream-cdr t))
+    (interleave
+     (stream-map (lambda (x) (list x (stream-car t)))
+                 (stream-cdr s))
+     (all-pairs (stream-cdr s) (stream-cdr t))))))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+(define test-all-pairs (all-pairs integers integers))
+test-all-pairs
+
+;Value: {(1 1) (1 2) (2 1) (1 3) (2 2) (1 4) (3 1) (1 5) (2 3) (1 6) (4 1) (1 7) (3 2) (1 8) (5 1) (1 9) (2 4) (1 10) (6 1) (1 11) (3 3) ...}
+#+END_SRC
+*** Exercise 3.68
+The implementation of Reasoner would fall into infinite loop since evaluating the
+=pairs=, in turns, execute another =pairs= with different arguments but without
+delay, which execute another =pairs=, and so on.
+
+Why this version execute =pairs= successively whereas the original one didn't?
+It is due to the evaluation order: Applicative order is default in Scheme.
+*** Exercise 3.69
+Let we simply the problem as we did in designing =pairs=; let we think integer
+triples. If we could implement the integer triples generally enough then that
+process automatically cope with the stream of triples of /S/, /T/, /U/.
+
+Observe the all the elements after $(i,j)$ of =int-pairs= satisfy that each part of
+pair is greater than or equals to /i/. Using this observation we can implement
+=int-triples= as follows
+#+BEGIN_SRC scheme
+(define int-triples
+  (define (make-int-triples integers int-pairs)
+    (cons-stream
+     (cons (stream-car integers) (stream-car int-pairs))
+     (interleave
+      (stream-map (lambda (x) (cons (stream-car integers) x))
+                  (stream-cdr int-pairs))
+      (make-int-triples (stream-cdr integers) (stream-cdr int-pairs)))))
+  (make-int-triples integers int-pairs))
+#+END_SRC
+
+You should notice the similarity with =pairs= since I've used that structure
+here. Given that we can generalize as
+#+BEGIN_SRC scheme
+(define (triples s t u)
+  (define pair-s (pairs t u))
+  (cons-stream
+   (cons (stream-car s) (stream-car pair-s))
+   (interleave
+    (stream-map (lambda (x) (cons (stream-car s) x))
+                (stream-cdr pair-s))
+    (triples (stream-cdr s) (stream-cdr t) (stream-cdr u)))))
+#+END_SRC
+
+Then the final request can be achieved as
+#+BEGIN_SRC scheme
+(define pythagorean-triples
+  (stream-filter
+   (lambda (t)
+     (let ((squared-triple (map square t)))
+       (= (+ (car squared-triple)
+             (cadr squared-triple))
+          (caddr squared-triple))))
+   (triples integers integers integers)))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+(display-stream pythagorean-triples)
+
+(3 4 5)
+(6 8 10)
+(5 12 13)
+(9 12 15)
+(8 15 17)
+(12 16 20)
+#+END_SRC
+*** Exercise 3.70
+=Merge-weighted= is like =merge= except the =weight=:
+#+BEGIN_SRC scheme
+(define (merge-weighted weight s1 s2)
+  (cond ((stream-null? s1) s2)
+        ((stream-null? s2) s1)
+        (else
+         (let ((s1car (stream-car s1))
+               (s2car (stream-car s2)))
+           (let ((s1w (apply weight s1car))
+                 (s2w (apply weight s2car)))
+             (cond ((< s1w s2w)
+                    (cons-stream s1car (merge-weighted weight (stream-cdr s1) s2)))
+                   (else
+                    (cons-stream s2car (merge-weighted weight s1 (stream-cdr s2))))))))))
+#+END_SRC
+
+Then =weighted-pairs= is just =pairs= using different combiner:
+#+BEGIN_SRC scheme
+(define (weighted-pairs weight s t)
+  (cons-stream
+   (list (stream-car s) (stream-car t))
+   (merge-weighted
+    weight
+    (stream-map (lambda (x) (list (stream-car s) x))
+                (stream-cdr t))
+    (weighted-pairs weight (stream-cdr s) (stream-cdr t)))))
+#+END_SRC
+Then
+**** a.
+#+BEGIN_SRC scheme
+(define weighted-as-i+j
+  (weighted-pairs + integers integers))
+#+END_SRC
+
+#+BEGIN_SRC scheme
+(display-stream weighted-as-i+j)
+
+(1 1)
+(1 2)
+(2 2)
+(1 3)
+(2 3)
+(1 4)
+(3 3)
+(2 4)
+(1 5)
+(3 4)
+(2 5)
+(1 6)
+(4 4)
+(3 5)
+(2 6)
+(1 7)
+#+END_SRC
+**** b.
+#+BEGIN_SRC scheme
+(define weighted-filtered-2-3-5
+  (let ((2-3-5-filtered-integers
+         (stream-filter
+          (lambda (i)
+            (not (or (divisible-by? 2 i)
+                     (divisible-by? 3 i)
+                     (divisible-by? 5 i))))
+          integers)))
+    (weighted-pairs
+     (lambda (i j)
+       (+ (* 2 i)
+          (* 3 j)
+          (* 5 i j)))
+     2-3-5-filtered-integers
+     2-3-5-filtered-integers)))
+#+END_SRC
+
+#+BEGIN_SRC scheme
+(display-stream weighted-filtered-2-3-5)
+
+(1 1)
+(1 7)
+(1 11)
+(1 13)
+(1 17)
+(1 19)
+(1 23)
+(1 29)
+(1 31)
+(7 7)
+(1 37)
+(1 41)
+(1 43)
+(1 47)
+(1 49)
+(1 53)
+(7 11)
+(1 59)
+#+END_SRC
+*** Exercise 3.71
+Here is the procedures that do the right things:
+#+BEGIN_SRC scheme
+(define (merge-consecutive-weight s weight merger)
+  (let ((x (stream-car s))
+        (y (stream-car (stream-cdr s))))
+    (let ((a (apply weight x))
+          (b (apply weight y)))
+      (if (= a b)
+          (cons-stream
+           (merger x y)
+           (merge-consecutive-weight
+            (stream-cdr s)
+            weight
+            merger))
+          (merge-consecutive-weight
+           (stream-cdr s)
+           weight
+           merger)))))
+
+(define ramanujans
+  (let* ((weight
+          (lambda (i j)
+            (+ (cube i)
+               (cube j))))
+         (merger
+          (lambda (x y) (apply weight x))))
+    (merge-consecutive-weight
+     (weighted-pairs weight integers integers)
+     weight
+     merger)))
+#+END_SRC
+I've implemented =merge-consecutive-weight= general enough to cover next exercise.
+
+Here is the first 5 numbers:
+#+BEGIN_SRC scheme
+ramanujans
+
+;Value: {1729 4104 13832 20683 32832 ...}
+#+END_SRC
+
+You should draw Henderson diagram of =merge-consecutive-weight= to understand
+the process of design.
+*** Exercise 3.72
+Here is the a little convolved coding:
+#+BEGIN_SRC scheme
+(define ramanujan-likes
+  (let ((weight
+         (lambda (i j)
+           (+ (square i) (square j)))))
+    (merge-consecutive-weight
+     (merge-consecutive-weight
+      (weighted-pairs weight integers integers)
+      weight
+      list)
+     (lambda (p1 p2) (apply weight p1))
+     (lambda (x y)
+       (append x (cdr y))))))
+#+END_SRC
+
+Then the results:
+#+BEGIN_SRC scheme
+(display-stream ramanujan-likes)
+
+((10 15) (6 17) (1 18))
+((13 16) (8 19) (5 20))
+((17 19) (11 23) (5 25))
+((14 23) (10 25) (7 26))
+((19 22) (13 26) (2 29))
+((15 25) (11 27) (3 29))
+((21 22) (14 27) (5 30))
+((20 25) (8 31) (1 32))
+((23 24) (12 31) (9 32))
+((12 31) (9 32) (4 33))
+((25 25) (17 31) (5 35))
+((20 30) (12 34) (2 36))
+((22 29) (13 34) (10 35))
+((22 31) (17 34) (1 38))
+((19 33) (15 35) (9 37))
+((25 30) (9 38) (2 39))
+((28 29) (20 35) (16 37))
+((20 35) (16 37) (5 40))
+...
+#+END_SRC
+*** Exercise 3.73
+#+BEGIN_SRC scheme
+(define (RC R C dt)
+  (lambda (I v0)
+    (add-streams
+     (scale-stream I R)
+     (integral (scale-stream I (/ 1.0 C))
+               v0
+               dt))))
+#+END_SRC
+
+Then test using the example required:
+#+BEGIN_SRC scheme
+(define RC1 (RC 5 1 0.5))
+(define zeros (cons-stream 0 zeros))
+(define emulate-currents
+  (stream-append
+   (list->stream '(0 0.5 1 1 1 1 1 0.5 0))
+   zeros))
+(display-stream (RC1 emulate-currents 1))
+
+1
+3.5
+6.25
+6.75
+7.25
+7.75
+8.25
+6.25
+4.
+4.
+4.
+4.
+4.
+4.
+4.
+4.
+4.
+#+END_SRC
+*** Exercise 3.74
+First we implement =sign-change-detector=, which was supposed to be implemented
+by Alyssa.
+#+BEGIN_SRC scheme
+(define (sign-change-detector current last-value)
+  (cond ((negative? last-value)
+         (if (negative? current)
+             0
+             ;; 0 is also treated as positive
+             1))
+        (else
+         ;; 0 is also treated as positive
+         (if (negative? current)
+             -1
+             0))))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+(define test-data
+  (stream-append
+   (list->stream '(1 2 1.5 1 0.5 -0.1 -2 -3 -2 -0.5 0.2 3 4))
+   zeros))
+
+(define test-crossings
+  (make-zero-crossings test-data 0))
+
+test-crossings
+
+;Value: {0 0 0 0 0 -1 0 0 0 0 1 0 0 0 ...}
+#+END_SRC
+
+It correspond to what jotted in the text.
+
+Then the main task:
+#+BEGIN_SRC scheme
+(define zero-crossings
+  (stream-map sign-change-detector
+              test-data
+              (cons-stream 0 test-data)))
+
+zero-crossings
+
+;Value: {0 0 0 0 0 -1 0 0 0 0 1 0 0 0 ...}
+#+END_SRC
+*** Exercise 3.75
+In the given implementation, it use =last-value= in mixed sense: In one place it
+works as last averaged value -- previous =avpt= --; in the others it works as
+last element of =sense-data=.
+
+Thus, we can fix the problem by specifying what value the place expect:
+#+BEGIN_SRC scheme
+(define (make-zero-crossings input-stream last-value last-avpt)
+  (let ((avpt (/ (+ (stream-car input-stream) last-value) 2)))
+    (cons-stream (sign-change-detector avpt last-avpt)
+                 (make-zero-crossings (stream-cdr input-stream)
+                                      (stream-car input-stream)
+                                      avpt))))
+#+END_SRC
+
+Test:
+#+BEGIN_SRC scheme
+(define test-crossings2
+  (make-zero-crossings2 test-data 0 0))
+
+test-crossings2
+
+;Value: {0 0 0 0 0 0 -1 0 0 0 0 1 0 0 ...}
+#+END_SRC
+*** Exercise 3.76
+#+BEGIN_SRC scheme
+(define (smooth s)
+  (stream-map average s (stream-cdr s)))
+#+END_SRC
+
+Then
+#+BEGIN_SRC scheme
+(define (make-smoothed-zero-crossings input-stream last-value)
+  (let ((smooted (smooth input-stream)))
+    (stream-map sign-change-detector
+                smooted
+                (cons-stream
+                 last-value
+                 smooted))))
+#+END_SRC
+*** Exercise 3.77
+#+BEGIN_SRC scheme
+(define (integral delayed-integrand initial-value dt)
+  (cons-stream initial-value
+               (let ((integrand (force delayed-integrand)))
+                 (if (stream-null? integrand)
+                     the-empty-stream
+                     (integral (delay (stream-cdr integrand))
+                               (+ (* dt (stream-car integrand))
+                                  initial-value)
+                               dt)))))
+#+END_SRC
+*** Exercise 3.78
+#+BEGIN_SRC scheme
+(define (solved-2nd a b dt y0 dy0)
+  (define y (integral (delay dy) y0 dt))
+  (define dy (integral (delay ddy) dy0 dt))
+  (define ddy
+    (add-streams
+     (scale-stream dy a)
+     (scale-stream y b)))
+  y)
+#+END_SRC
+*** Exercise 3.79
+#+BEGIN_SRC scheme
+(define (solved-2nd f dt y0 dy0)
+  (define y (integral (delay dy) y0 dt))
+  (define dy (integral (delay ddy) dy0 dt))
+  (define ddy
+    (stream-map f dy y))
+  y)
+#+END_SRC
+*** Exercise 3.80
+#+BEGIN_SRC scheme
+(define (RLC R L C dt)
+  (lambda (vC0 iL0)
+    (define vC
+      (integral (delay dvC) vC0 dt))
+    (define iL
+      (integral (delay diL) iL0 dt))
+    (define dvC
+      (scale-stream iL (/ -1.0 C)))
+    (define diL
+      (add-streams
+       (scale-stream vC (/ 1.0 L))
+       (scale-stream iL (/ (- R) L))))
+    (cons vC iL)))
+#+END_SRC
+
+Then the test accomplishing the example:
+#+BEGIN_SRC scheme
+(define RLC1s ((RLC 1 1 0.2 0.1) 10 0))
+
+(display-stream (car RLC1s))
+
+10
+10
+9.5
+8.55
+7.220000000000001
+5.5955
+3.77245
+1.8519299999999999
+-.0651605000000004
+-1.8831384500000004
+-3.5160605800000004
+-4.8915335745
+-5.95365624055
+-6.66498996127
+-7.0075074978905
+-6.982523782785449
+-6.609663064296379
+-5.924962228516943
+-4.978248323100632
+-3.829957696800105
+...
+
+(display-stream (cdr RLC1s))
+
+0
+1.
+1.9
+2.66
+3.249
+3.6461
+3.84104
+3.834181
+3.6359559
+3.2658442599999997
+2.750945989
+2.1242453320999997
+1.4226674414399998
+.6850350732409998
+-4.9967430210100305e-2
+-.7457214369781403
+-1.3694016715588713
+-1.893427810832622
+-2.296581252601054
+-2.5647479596510117
+-2.691268933365921
+-2.676900411726789
+-2.529405295583274
+...
+#+END_SRC
+** Modularity of Functional Programs and Modularity of Objects
+*** Exercise 3.81
+This is the message passing paradigm in stream:
+#+BEGIN_SRC scheme
+(define (rand-generator messages rand-seed)
+  (if (empty-stream? messages)
+      the-empty-stream
+      (let* ((message (stream-car messages))
+             (msg (car message))
+             (args (cdr message)))
+        (case msg
+          ((generate)
+           (let ((new-seed (rand-update rand-seed)))
+             (cons-stream new-seed
+                          (rand-generator (stream-cdr messages)
+                                          new-seed))))
+          ((reset)
+           (cons-stream 'done
+                        (rand-generator (stream-cdr messages)
+                                        (first args))))
+          (else
+           (error "Unknown request -- RAND-GENERATOR" message))))))
+#+END_SRC
+
+Then let's test it:
+#+BEGIN_SRC scheme
+(define test-rand-generator
+  (rand-generator
+   (list->stream '((generate) (reset 0) (generate) (reset 0)))
+   2))
+
+(display-stream test-rand-generator)
+
+80
+done
+26
+done
+26
+;Unspecified return value
+#+END_SRC
+*** Exercise 3.82
+We could have implemented the =monte-carlo-stream= using stream processing
+convention:
+#+BEGIN_SRC scheme
+(define (monte-carlo-stream2 experiments)
+  (stream-map
+   (lambda (p) (/ (car p) (+ (car p) (cdr p))))
+   (stream-cdr
+    (stream-fold-left
+     (lambda (acc successed?)
+       (if successed?
+           (cons (1+ (car acc))
+                 (cdr acc))
+           (cons (car acc)
+                 (1+ (cdr acc)))))
+     (cons 0 0)
+     experiments))))
+
+(define (stream-fold-left procedure initial stream)
+  (cons-stream initial
+               (stream-fold-left procedure
+                                 (procedure initial (stream-car stream))
+                                 (stream-cdr stream))))
+#+END_SRC
+
+Anyway, we can implement =estimate-integral= in stream version as follows
+#+BEGIN_SRC scheme
+(define (estimate-integral P rect)
+  (scale-stream
+   (stream-map P (randoms-in-rect rect))
+   (area rect)))
+
+(define (randoms-in-rect rect)
+  (cons-stream
+   (random-in-rect rect)
+   (randoms-in-rect rect)))
+#+END_SRC
+
+Here we used =random-in-rect=, which implicitly use the assignment; so
+canonically it is not the stream version we expected. To implement
+=randoms-in-rect= in stream, we need =randoms= in real number version between
+0 and 1. It is George's problem; here we assume that we have that one. Then we
+can make =randoms-in-rect= that is analogous to =cesaro-stream=:
+#+BEGIN_SRC scheme
+(define (randoms-in-rect rect)
+  (let ((points (list (bottom-left rect) (top-right rect))))
+    (map-successive-pairs
+     (lambda (r1 r2)
+       (make-point
+        ((apply map-in-range
+                (map x-coor points))
+         r1)
+        ((apply map-in-range
+                (map y-coor points))
+         r2)))
+     randoms-in-unit-range)))
+
+(define (map-in-range low high)
+  (lambda (number-over-unit-range)
+    (let ((range (- high low)))
+      (+ low (* range number-over-unit-range)))))
+#+END_SRC
+
+It is unfortunate that we should explicitly manipulate random number stream to
+get updated random number by the help of =map-successive-pairs=.
+*** A functional-programming view of time
+In text, they noted that to formulate or deal with the concurrency problem of
+Paul and Peter's that we encountered with in section [[The Costs of Introducing Assignment][3.1.3]] we need to
+reintroduce the notion of time into our language -- which functional style was
+meant to eliminate. I thought to deal with this specific problem with making
+that affection regional so that it does not leak over all the other components,
+we should stamp the "time" when the user typed the input implicitly so that the
+=merge= procedure can fairly merger the joint input stream by using the time as /weight/.

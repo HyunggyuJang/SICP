@@ -1787,13 +1787,13 @@
 
 ;; Exercise 3.50
 ;; (A,...,A -> B), List<Stream<A>> -> Stream<B>
-(define (stream-map proc . argstreams)
-  (if (empty-stream? (car argstreams))
-      the-empty-stream
-      (cons-stream
-       (apply proc (map stream-car argstreams))
-       (apply stream-map
-              (cons proc (map stream-cdr argstreams))))))
+;; (define (stream-map proc . argstreams)
+;;   (if (empty-stream? (car argstreams))
+;;       the-empty-stream
+;;       (cons-stream
+;;        (apply proc (map stream-car argstreams))
+;;        (apply stream-map
+;;               (cons proc (map stream-cdr argstreams))))))
 
 ;; Exercise 3.51
 (define (stream-enumerate-interval low high)
@@ -1975,11 +1975,15 @@
 (define (stream-limit s tolerance)
   (let ((x (stream-car s))
         (y (stream-car (stream-cdr s))))
-    (if (< (abs (- x y) tolerance))
+    (if (< (abs (- x y)) tolerance)
         y
         (stream-limit (stream-cdr s) tolerance))))
 
 ;; Exercise 3.65
+(define (pi-summands n)
+  (cons-stream (/ 1.0 n)
+               (stream-map - (pi-summands (+ n 2)))))
+
 (define (euler-transform s)
   (let ((s0 (stream-ref s 0))           ;S_{n-1}
         (s1 (stream-ref s 1))           ;S_{n}
@@ -1987,3 +1991,406 @@
     (cons-stream (- s2 (/ (square (- s2 s1))
                           (+ s0 (* -2 s1) s2)))
                  (euler-transform (stream-cdr s)))))
+
+(define (make-tableau transform s)
+  (cons-stream s
+               (make-tableau transform
+                             (transform s))))
+
+(define (accelerated-sequence transform s)
+  (stream-map stream-car
+              (make-tableau transform s)))
+
+(define (ln2-summands n)
+  (cons-stream (/ 1.0 n)
+               (stream-map -
+                           (ln2-summands (1+ n)))))
+
+(define ln2-stream
+  (accelerated-sequence
+   euler-transform (partial-sums (ln2-summands 1))))
+
+(define ln2 (stream-limit ln2-stream 1e-8))
+
+;; Exercise 3.66
+(define (interleave s1 s2)
+  (if (stream-null? s1)
+      s2
+      (cons-stream (stream-car s1)
+                   (interleave s2 (stream-cdr s1)))))
+
+(define (pairs s t)
+  (cons-stream
+   (list (stream-car s) (stream-car t))
+   (interleave
+    (stream-map (lambda (x) (list (stream-car s) x))
+                (stream-cdr t))
+    (pairs (stream-cdr s) (stream-cdr t)))))
+
+;;; test the ordering of pairs
+(define test-order-of-pairs (pairs integers integers))
+
+;; Exercise 3.67
+(define (all-pairs s t)
+  (cons-stream
+   (list (stream-car s) (stream-car t))
+   (interleave
+    (stream-map (lambda (x) (list (stream-car s) x))
+                (stream-cdr t))
+    (interleave
+     (stream-map (lambda (x) (list x (stream-car t)))
+                 (stream-cdr s))
+     (all-pairs (stream-cdr s) (stream-cdr t))))))
+;;; test all-pairs
+(define test-all-pairs (all-pairs integers integers))
+;; test-all-pairs
+
+;; ;Value: {(1 1) (1 2) (2 1) (1 3) (2 2) (1 4) (3 1) (1 5) (2 3) (1 6) (4 1) (1 7) (3 2) (1 8) (5 1) (1 9) (2 4) (1 10) (6 1) (1 11) (3 3) ...}
+
+;; Exercise 3.69
+(define (triples s t u)
+  (define pair-s (pairs t u))
+  (cons-stream
+   (cons (stream-car s) (stream-car pair-s))
+   (interleave
+    (stream-map (lambda (x) (cons (stream-car s) x))
+                (stream-cdr pair-s))
+    (triples (stream-cdr s) (stream-cdr t) (stream-cdr u)))))
+
+(define pythagorean-triples
+  (stream-filter
+   (lambda (t)
+     (let ((squared-triple (map square t)))
+       (= (+ (car squared-triple)
+             (cadr squared-triple))
+          (caddr squared-triple))))
+   (triples integers integers integers)))
+
+;; Exercise 3.70
+(define (merge-weighted weight s1 s2)
+  (cond ((stream-null? s1) s2)
+        ((stream-null? s2) s1)
+        (else
+         (let ((s1car (stream-car s1))
+               (s2car (stream-car s2)))
+           (let ((s1w (apply weight s1car))
+                 (s2w (apply weight s2car)))
+             (cond ((< s1w s2w)
+                    (cons-stream s1car (merge-weighted weight (stream-cdr s1) s2)))
+                   (else
+                    (cons-stream s2car (merge-weighted weight s1 (stream-cdr s2))))))))))
+(define (weighted-pairs weight s t)
+  (cons-stream
+   (list (stream-car s) (stream-car t))
+   (merge-weighted
+    weight
+    (stream-map (lambda (x) (list (stream-car s) x))
+                (stream-cdr t))
+    (weighted-pairs weight (stream-cdr s) (stream-cdr t)))))
+;; a.
+(define weighted-as-i+j
+  (weighted-pairs + integers integers))
+;; b.
+(define (divisible-by? m n)
+  (= (remainder n m) 0))
+(define weighted-filtered-2-3-5
+  (let ((2-3-5-filtered-integers
+         (stream-filter
+          (lambda (i)
+            (not (or (divisible-by? 2 i)
+                     (divisible-by? 3 i)
+                     (divisible-by? 5 i))))
+          integers)))
+    (weighted-pairs
+     (lambda (i j)
+       (+ (* 2 i)
+          (* 3 j)
+          (* 5 i j)))
+     2-3-5-filtered-integers
+     2-3-5-filtered-integers)))
+
+;; Exercise 3.71
+(define (merge-consecutive-weight s weight merger)
+  (let ((x (stream-car s))
+        (y (stream-car (stream-cdr s))))
+    (let ((a (apply weight x))
+          (b (apply weight y)))
+      (if (= a b)
+          (cons-stream
+           (merger x y)
+           (merge-consecutive-weight
+            (stream-cdr s)
+            weight
+            merger))
+          (merge-consecutive-weight
+           (stream-cdr s)
+           weight
+           merger)))))
+(define ramanujans
+  (let* ((weight
+          (lambda (i j)
+            (+ (cube i)
+               (cube j))))
+         (merger
+          (lambda (x y) (apply weight x))))
+    (merge-consecutive-weight
+     (weighted-pairs weight integers integers)
+     weight
+     merger)))
+
+;; Exercise 3.72
+(define ramanujan-likes
+  (let ((weight
+         (lambda (i j)
+           (+ (square i) (square j)))))
+    (merge-consecutive-weight
+     (merge-consecutive-weight
+      (weighted-pairs weight integers integers)
+      weight
+      list)
+     (lambda (p1 p2) (apply weight p1))
+     (lambda (x y)
+       (append x (cdr y))))))
+
+;; Exercise 3.73
+
+;; (define (integral integrand initial-value dt)
+;;   (define int
+;;     (cons-stream initial-value
+;;                  (add-streams (scale-stream integrand dt)
+;;                               int)))
+;;   int)
+
+(define (RC R C dt)
+  (lambda (I v0)
+    (add-streams
+     (scale-stream I R)
+     (integral (scale-stream I (/ 1.0 C))
+               v0
+               dt))))
+
+;; test RC
+(define RC1 (RC 5 1 0.5))
+(define zeros (cons-stream 0 zeros))
+(define emulate-currents
+  (stream-append
+   (list->stream '(0 0.5 1 1 1 1 1 0.5 0))
+   zeros))
+;; (display-stream (RC1 emulate-currents 1))
+
+;; Exercise 3.74
+(define (sign-change-detector current last-value)
+  (cond ((negative? last-value)
+         (if (negative? current)
+             0
+             ;; 0 is also treated as positive
+             1))
+        (else
+         ;; 0 is also treated as positive
+         (if (negative? current)
+             -1
+             0))))
+;; test sign-change-detector
+(define test-data
+  (stream-append
+   (list->stream '(1 2 1.5 1 0.5 -0.1 -2 -3 -2 -0.5 0.2 3 4))
+   zeros))
+
+(define (make-zero-crossings input-stream last-value)
+  (cons-stream
+   (sign-change-detector (stream-car input-stream) last-value)
+   (make-zero-crossings (stream-cdr input-stream)
+                        (stream-car input-stream))))
+
+(define test-crossings
+  (make-zero-crossings test-data 0))
+
+
+(define zero-crossings
+  (stream-map sign-change-detector
+              test-data
+              (cons-stream 0 test-data)))
+
+;; Exercise 3.75
+
+(define (make-zero-crossings2 input-stream last-value last-avpt)
+  (let ((avpt (/ (+ (stream-car input-stream) last-value) 2)))
+    (cons-stream (sign-change-detector avpt last-avpt)
+                 (make-zero-crossings2 (stream-cdr input-stream)
+                                      (stream-car input-stream)
+                                      avpt))))
+;; test for make-zero-crossings2
+(define test-crossings2
+  (make-zero-crossings2 test-data 0 0))
+
+;; Exercise 3.76
+(define (average a b) (/ (+ a b) 2))
+(define (smooth s)
+  (stream-map average s (stream-cdr s)))
+(define (make-smoothed-zero-crossings input-stream last-value)
+  (let ((smooted (smooth input-stream)))
+    (stream-map sign-change-detector
+                smooted
+                (cons-stream
+                 last-value
+                 smooted))))
+
+;; Exercise 3.77
+;; (define (integral delayed-integrand initial-value dt)
+;;   (define int
+;;     (cons-stream initial-value
+;;                  (let ((integrand (force delayed-integrand)))
+;;                    (add-streams (scale-stream integrand dt)
+;;                                 int))))
+;;   int)
+
+(define (solve f y0 dt)
+  (define y (integral (delay dy) y0 dt))
+  (define dy (stream-map f y))
+  y)
+
+(define (integral delayed-integrand initial-value dt)
+  (cons-stream initial-value
+               (let ((integrand (force delayed-integrand)))
+                 (if (stream-null? integrand)
+                     the-empty-stream
+                     (integral (delay (stream-cdr integrand))
+                               (+ (* dt (stream-car integrand))
+                                  initial-value)
+                               dt)))))
+
+;; Exercise 3.78
+;; (define (solved-2nd a b dt y0 dy0)
+;;   (define y (integral (delay dy) y0 dt))
+;;   (define dy (integral (delay ddy) dy0 dt))
+;;   (define ddy
+;;     (add-streams
+;;      (scale-stream dy a)
+;;      (scale-stream y b)))
+;;   y)
+
+;; Exercise 3.79
+(define (solved-2nd f dt y0 dy0)
+  (define y (integral (delay dy) y0 dt))
+  (define dy (integral (delay ddy) dy0 dt))
+  (define ddy
+    (stream-map f dy y))
+  y)
+
+;; Exercise 3.80
+(define (RLC R L C dt)
+  (lambda (vC0 iL0)
+    (define vC
+      (integral (delay dvC) vC0 dt))
+    (define iL
+      (integral (delay diL) iL0 dt))
+    (define dvC
+      (scale-stream iL (/ -1.0 C)))
+    (define diL
+      (add-streams
+       (scale-stream vC (/ 1.0 L))
+       (scale-stream iL (/ (- R) L))))
+    (cons vC iL)))
+
+;; test for RLC
+(define RLC1s ((RLC 1 1 0.2 0.1) 10 0))
+
+;; Exercise 3.81
+(define (rand-generator messages rand-seed)
+  (if (empty-stream? messages)
+      the-empty-stream
+      (let* ((message (stream-car messages))
+             (msg (car message))
+             (args (cdr message)))
+        (case msg
+          ((generate)
+           (let ((new-seed (rand-update rand-seed)))
+             (cons-stream new-seed
+                          (rand-generator (stream-cdr messages)
+                                          new-seed))))
+          ((reset)
+           (cons-stream 'done
+                        (rand-generator (stream-cdr messages)
+                                        (first args))))
+          (else
+           (error "Unknown request -- RAND-GENERATOR" message))))))
+;; test for rand-generator
+(define test-rand-generator
+  (rand-generator
+   (list->stream '((generate) (reset 0) (generate) (reset 0) (generate)))
+   2))
+
+;; Exercise 3.82
+
+;; for reference
+;; (define (fold-left procedure initial first)
+;;   (if (null? first)
+;;       initial
+;;       (fold-left procedure (procedure inital (car first)) (cdr first))))
+
+(define (monte-carlo-stream experiment-stream passed failed)
+  (define (next passed failed)
+    (cons-stream
+     (/ passed (+ passed failed))
+     (monte-carlo
+      (stream-cdr experiment-stream) passed failed)))
+  (if (stream-car experiment-stream)
+      (next (+ passed 1) failed)
+      (next passed (+ failed 1))))
+
+(define (stream-fold-left procedure initial stream)
+  (cons-stream initial
+               (stream-fold-left procedure
+                                 (procedure initial (stream-car stream))
+                                 (stream-cdr stream))))
+
+(define (monte-carlo-stream2 experiments)
+  (stream-map
+   (lambda (p) (/ (car p) (+ (car p) (cdr p))))
+   (stream-cdr
+    (stream-fold-left
+     (lambda (acc successed?)
+       (if successed?
+           (cons (1+ (car acc))
+                 (cdr acc))
+           (cons (car acc)
+                 (1+ (cdr acc)))))
+     (cons 0 0)
+     experiments))))
+
+(define random-numbers
+  (cons-stream random-init
+               (stream-map rand-update random-numbers)))
+
+;; (define (randoms n)
+;;   (stream-map
+;;    (lambda (r) (remainder r n))
+;;    random-numbers))
+
+(define (map-in-range low high)
+  (lambda (number-over-unit-range)
+    (let ((range (- high low)))
+      (+ low (* range number-over-unit-range)))))
+
+(define (estimate-integral P rect)
+  (scale-stream
+   (stream-map P (randoms-in-rect rect))
+   (area rect)))
+
+(define (map-successive-pairs f s)
+  (cons-stream
+   (f (stream-car s) (stream-car (stream-cdr s)))
+   (map-successive-pairs f (stream-cdr (stream-cdr s)))))
+
+(define (randoms-in-rect rect)
+  (let ((points (list (bottom-left rect) (top-right rect))))
+    (map-successive-pairs
+     (lambda (r1 r2)
+       (make-point
+        ((apply map-in-range
+                (map x-coor points))
+         r1)
+        ((apply map-in-range
+                (map y-coor points))
+         r2)))
+     randoms-in-unit-range)))
