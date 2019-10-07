@@ -653,3 +653,792 @@ Do that and re-run:
 Oh-huh there are good news and bad news:
 - Our test code was wrong! =(fib 3)= should return 2 not 1 as it count from 0!
 - Our code works right!
+
+*** Exercise 4.9
+For example, here we try to implement typical imperative control structure,
+=while=. Let us think about the what syntax should it be? Analogous to any other
+imperative programming language, let we make our syntax as follows:
+#+BEGIN_SRC scheme
+(while <pred>
+  <exp1>
+  ...
+  <expN>)
+#+END_SRC
+
+The semantic of this control structure are followings:
+1. Evaluate =<pred>= first.
+2. If it true, execute from =<exp1>= until =<expN>= sequentially; Then go to *1.*
+3. If it was false, then return the control to consequent structure (return
+   undefined value).
+
+
+All of the above expressions should be evaluated in a same environment; we don't
+need to extend the given environment.
+
+Then here is the code:
+#+BEGIN_SRC scheme
+(define (install-eval-while)
+  (define pred cadr)
+  (define body cddr)
+  (define (eval-while exp env)
+    (let ((bexp (sequence->exp (body exp))))
+      (let loop ()
+        (if (true? (eval (pred exp) env))
+            (begin (eval bexp env)
+                   (loop))
+            'done))))
+  (put 'eval 'while eval-while)
+  'done)
+#+END_SRC
+
+Then here is the test code:
+#+BEGIN_SRC scheme
+(eval '(begin
+         (define x 5)
+         (define sum 0)
+         (while (> x 0)
+           (set! sum (+ x sum))
+           (set! x (-1+ x)))
+         sum)
+      the-global-environment)
+;Should return 15
+#+END_SRC
+
+And run:
+#+BEGIN_SRC scheme
+(eval '(begin
+         (define x 5)
+         (define sum 0)
+         (while (> x 0)
+           (set! sum (+ x sum))
+           (set! x (-1+ x)))
+         sum)
+      the-global-environment)
+
+;Value: 15
+#+END_SRC
+
+Sweet!
+*** Exercise 4.10
+Here we will use dispatch on type rather than data-directed style since we are
+going to mix the infix expressions with prefix expressions. Specifically we will
+transform the assignment notation and that of definition into infix notation:
+- From =(set! <var> <exp>)= to =(<var> <- <exp>)=;
+- From =(define <var> <exp>)= to =(<var> = <exp>)=.
+
+
+All we need to change is the detectors and selectors:
+- From
+  #+BEGIN_SRC scheme
+;; detector
+(define (assignment? exp)
+  (tagged-list? exp 'set!))
+
+;; selectors
+(define (assignment-variable exp) (cadr exp))
+(define (assignment-value exp) (caddr exp))
+  #+END_SRC
+  to
+  #+BEGIN_SRC scheme
+;; detector
+(define (assignment? exp)
+  (infix-tag-list? exp '<-))
+
+;; selectors
+(define (assignment-variable exp) (car exp))
+(define (assignment-value exp) (caddr exp))
+  #+END_SRC
+- From
+  #+BEGIN_SRC scheme
+;; detector
+(define (definition? exp)
+  (tagged-list? exp 'define))
+
+;; selectors
+(define (definition-variable exp)
+  (if (symbol? (cadr exp))
+      (cadr exp)
+      (caadr exp)))
+(define (definition-value exp)
+  (if (symbol? (cadr exp))
+      (caddr exp)
+      (make-lambda (cdadr exp)
+                   (cddr exp))))
+  #+END_SRC
+  to
+  #+BEGIN_SRC scheme
+;; detector
+(define (definition? exp)
+  (infix-tag-list? exp '=))
+
+;; selectors
+(define (definition-variable exp)
+  (if (symbol? (car exp))
+      (car exp)
+      (caar exp)))
+(define (definition-value exp)
+  (if (symbol? (car exp))
+      (caddr exp)
+      (make-lambda (cdar exp)
+                   (cddr exp))))
+  #+END_SRC
+
+
+Then the test code:
+#+BEGIN_SRC scheme
+;; Test infix defintion
+(eval '(begin (x = 2)
+              x)
+      the-global-environment)
+;; 2
+;; procedure definition
+(eval
+ '((factorial n) = (if (= n 1)
+                       1
+                       (* n (factorial (-1+ n)))))
+ the-global-environment)
+;; ok
+(eval '(factorial 3) the-global-environment)
+;; 6
+
+
+;; test infix assignment
+(eval '(begin (x <- 5)
+              x)
+      the-global-environment)
+;; 5
+#+END_SRC
+
+Then let's run
+#+BEGIN_SRC scheme
+(eval '(begin (x = 2)
+              x)
+      the-global-environment)
+
+;Value: 2
+
+(eval
+ '((factorial n) = (if (= n 1)
+                       1
+                       (* n (factorial (-1+ n)))))
+ the-global-environment)
+
+;Value: ok
+
+(eval '(factorial 3) the-global-environment)
+
+;Value: 6
+
+(eval '(begin (x <- 5)
+              x)
+      the-global-environment)
+
+;Value: 5
+#+END_SRC
+** Evaluator Data Structures
+*** Exercise 4.11
+This is same as replace our frame data structure with table as we did in section
+3.3. Then the changes are trivial:
+#+BEGIN_SRC scheme
+;; For extend-environment
+(define (make-frame vars vals)
+  (let ((bindings
+         ;; provided that the length of both arguments match
+         (fold-right
+          (lambda (var val bindings)
+            (cons (list var val) bindings))
+          '()
+          vars
+          vals))
+        (tbl (make-table)))
+    (set-bindings! tbl bindings)
+    tbl))
+
+;; Table ADT
+;; constructor
+(define (make-table)
+  (list '*table*))
+;; mutator
+(define set-bindings! set-cdr!)
+;; selector
+(define bindings cdr)
+
+;; For lookup-variable-value
+(define (lookup-variable-value var env)
+  (let env-loop ((env env))
+    (if (eq? env the-empty-environment)
+        (error "Unbound variable" var)
+        (let ((frame (first-frame env)))
+          (cond ((assoc var (bindings frame)) => cadr)
+                (else (env-loop
+                       (enclosing-environment env))))))))
+
+;; For set-variable-value!
+(define (set-variable-value! var val env)
+  (let env-loop ((env env))
+    (if (eq? env the-empty-environment)
+        (error "Unbound variable -- SET!" var)
+        (let ((frame (first-frame env)))
+          (cond ((assoc var (bindings frame))
+                 => (lambda (b) (set-car! (cdr b) val)))
+                (else (env-loop
+                       (enclosing-environment env))))))))
+
+;; For define-variable!
+(define (define-variable! var val env)
+  (let ((frame (first-frame env)))
+    (cond ((assoc var (bindings frame))
+                 => (lambda (b) (set-car! (cdr b) val)))
+          (else (set-bindings! frame
+                               (cons (list var val)
+                                     (bindings frame)))))))
+#+END_SRC
+
+By using the built in procedures about the alist structure, we could write our
+procedures more succinctly; this leads that we recognize the common patterns in
+above procedures more obviously, which we revisit in the next exercise.
+
+Return to our discourse, let we code the test:
+#+BEGIN_SRC scheme
+;; test definition
+(eval '(define test-def 0) the-global-environment)
+;; ok
+
+;; test assignment in nested frame
+(eval '(define (test-assignment) (set! test-def 5))
+      the-global-environment)
+;; ok
+
+(eval 'test-def the-global-environment)
+;; 0
+
+(eval '(test-assignment) the-global-environment)
+;; ok
+
+;; test lookup-variable-value
+(eval 'test-def the-global-environment)
+;; 5
+
+;; verify that we using the new data structure for frame
+(caar the-global-environment)
+;; *table*
+#+END_SRC
+
+Then run:
+#+BEGIN_SRC scheme
+(eval '(define test-def 0) the-global-environment)
+
+;Value: ok
+
+(eval '(define (test-assignment) (set! test-def 5))
+      the-global-environment)
+
+;Value: ok
+
+(eval 'test-def the-global-environment)
+
+;Value: 0
+
+(eval '(test-assignment) the-global-environment)
+
+;Value: ok
+
+(eval 'test-def the-global-environment)
+
+;Value: 5
+
+(caar the-global-environment)
+
+;Value: *table*
+#+END_SRC
+*** Exercise 4.12
+We can capture the common pattern first by recognizing the same code in those
+code and then refine them with their role of behavior, namely traversing given
+frame and traversing given environment:
+#+BEGIN_SRC scheme
+;; Var, (Vals -> Any) -> FrameOp
+(define (find-var-and-apply-in-frame var vals-op)
+  (lambda (null-op frame)
+    (let scan ((vars (frame-variables frame))
+               (vals (frame-values frame)))
+      (cond ((null? vars)
+             (null-op))
+            ((eq? var (car vars))
+             (vals-op vals))
+            (else (scan (cdr vars) (cdr vals)))))))
+
+;; FrameOp, void -> Any, Env
+;; -> Any
+(define (traverse-env-using frame-op empty-env-op env)
+  (if (eq? env the-empty-environment)
+      (empty-env-op)
+      (frame-op (first-frame env)
+                (lambda () (traverse-env-using frame-op empty-env-op
+                                               (enclosing-environment env))))))
+#+END_SRC
+Here we, for interfacing the traverser on environment with traverser on frame,
+defined new data type, namely =FrameOp= -- ~FrameOp := Frame, NullOp -> Any~,
+~NullOp := void -> Any~.
+
+Then our operations on environments get
+#+BEGIN_SRC scheme
+(define (lookup-variable-value var env)
+  (traverse-env-using
+   (find-var-and-apply-in-frame var car)
+   (lambda () (error "Unbound variable" var))
+   env))
+
+(define (set-variable-value! var val env)
+  (traverse-env-using
+   (find-var-and-apply-in-frame
+    var
+    (lambda (vals) (set-car! vals val)))
+   (lambda () (error "Unbound variable -- SET!" var))
+   env))
+
+(define (define-variable! var val env)
+  (let ((frame (first-frame env)))
+    ((find-var-and-apply-in-frame
+      var
+      (lambda (vals) (set-car! vals val)))
+     (lambda ()
+       (add-binding-to-frame! var val frame))
+     frame)))
+#+END_SRC
+
+Then test using the test code of previous exercise:
+#+BEGIN_SRC scheme
+...
+(eval 'test-def the-global-environment)
+
+;The object #[compound-procedure 38], passed as the first argument to cdr, is not the correct type.
+;To continue, call RESTART with an option number:
+; (RESTART 2) => Specify an argument to use in its place.
+; (RESTART 1) => Return to read-eval-print level 1.
+
+2 error> (pp #@38)
+(lambda ()
+  (traverse-env-using frame-op empty-env-op (enclosing-environment env)))
+;Unspecified return value
+#+END_SRC
+
+Got error! It is due to the ill-ordered argument in =traverse-env-using=. After
+fixing that we got:
+#+BEGIN_SRC scheme
+(eval '(define test-def 0) the-global-environment)
+
+;Value: ok
+
+(eval '(define (test-assignment) (set! test-def 5))
+      the-global-environment)
+
+;Value: ok
+
+(eval 'test-def the-global-environment)
+
+;Value: 0
+
+(eval '(test-assignment) the-global-environment)
+
+;Value: ok
+
+(eval 'test-def the-global-environment)
+
+;Value: 5
+#+END_SRC
+
+Our code got more cleaner and easier for us to read.
+*** Exercise 4.13
+As we can think of this new special form as counter expression against =define=,
+let we make =make-unbound!= remove only the binding in the first frame of the
+environment. To implement this feature, that is to remove specific binding in the
+frame, we need to do nearly what we did in =remove-first-item= in agenda data
+structure. So, we would not reuse the abstract procedure of previous exercise,
+=find-var-and-apply-in-frame=; but the resulting procedure would be nearly same
+as that.
+
+To encompass this pattern, we extend =find-var-and-apply-in-frame= with:
+#+BEGIN_SRC scheme
+(define (find-var-and-apply-to-bindings var find-op bindings-op)
+  (lambda (null-op frame)
+    (let scan ((vars (frame-variables frame))
+               (vals (frame-values frame)))
+      (cond ((null? vars)
+             (null-op))
+            ((eq? var (find-op vars))
+             (bindings-op vars vals))
+            (else (scan (cdr vars) (cdr vals)))))))
+#+END_SRC
+
+Then we can define
+#+BEGIN_SRC scheme
+(define (find-var-and-apply-in-frame var vals-op)
+  (find-var-and-apply-to-bindings
+   var car (lambda (vars vals) (vals-op vals))))
+#+END_SRC
+
+Or it would better to refine our frame data structure by making the
+=frame-variables= and =frame-values= to be headed list respectively to encompass
+=make-unbound!= in our scheme uniformly.
+
+As we defined our frame data structure abstractly, all we need to change is the
+representation of frame:
+#+BEGIN_SRC scheme
+;; Change the representation of frame
+(define (make-frame variables values)
+  (cons (cons '*variables* variables)
+        (cons '*values* values)))
+
+(define (frame-variables frame) (cdar frame))
+(define (frame-values (cddr frame)))
+#+END_SRC
+
+Then we exploit this idea by amending the =find-var-and-apply-to-bindings=
+allowing even the selectors and detector for frame:
+#+BEGIN_SRC scheme
+(define (find-var-and-apply-to-bindings
+         var find-op bindings-op frame-vars frame-vals empty-vars?)
+  (lambda (null-op frame)
+    (let scan ((vars (frame-vars frame))
+               (vals (frame-vals frame)))
+      (cond ((empty-vars? vars)
+             (null-op))
+            ((eq? var (find-op vars))
+             (bindings-op vars vals))
+            (else (scan (cdr vars) (cdr vals)))))))
+
+(define (find-var-and-apply-in-frame var vals-op)
+  (find-var-and-apply-to-bindings
+   var car (lambda (vars vals) (vals-op vals))
+   frame-variables frame-values null?))
+#+END_SRC
+
+Then we can define what we wanted:
+#+BEGIN_SRC scheme
+(define (unbound-variable! var val env)
+  (let ((frame (first-frame env)))
+    ((find-var-and-apply-to-bindings
+      var cadr
+      (lambda (h-vars h-vals)
+        (set-cdr! h-vars (cddr h-vars))
+        (set-cdr! h-vals (cddr h-vals)))
+      car cdr (lambda (h-vars) (null? (cdr h-vars))))
+     (lambda ()
+       (error "Unbound variable in the given frame -- MAKE-UNBOUND!" var))
+     frame)))
+
+(define (install-eval-make-unbound)
+  (define var cadr)
+  (define val caddr)
+  (put 'eval 'make-unbound!
+       (lambda (exp env)
+         (unbound-variable! (var exp)
+                            (val exp)
+                            env))))
+#+END_SRC
+
+Then let we first test the new frame data structure:
+#+BEGIN_SRC scheme
+(eval '(test-assignment) the-global-environment)
+
+;Unbound variable test-assignment
+#+END_SRC
+Error! This is due to the =add-binding-to-frame!= as we did not updated that
+procedure, which is mutator of frame structure!
+
+Then refine the data structure for frame:
+#+BEGIN_SRC scheme
+;; Change the representation of frame
+(define (make-frame variables values)
+  (cons (cons '*variables* variables)
+        (cons '*values* values)))
+
+;; selectors for frame
+(define (frame-variables frame) (cdar frame))
+(define (frame-values frame) (cddr frame))
+
+;; mutators of frame
+(define (add-binding-to-frame! var val frame)
+  (set-cdr! (car frame) (cons var (frame-variables frame)))
+  (set-cdr! (cdr frame) (cons val (frame-values frame))))
+
+(define (remove-binding-from-frame! var frame exception)
+  ((find-var-and-apply-to-bindings
+      var cadr
+      (lambda (h-vars h-vals)
+        (set-cdr! h-vars (cddr h-vars))
+        (set-cdr! h-vals (cddr h-vals)))
+      car cdr (lambda (h-vars) (null? (cdr h-vars))))
+     exception
+     frame))
+#+END_SRC
+
+Then our procedure get clarified as
+#+BEGIN_SRC scheme
+(define (unbound-variable! var env)
+  (remove-binding-from-frame!
+   var
+   (first-frame env)
+   (lambda ()
+     (error "Unbound variable in the given frame -- MAKE-UNBOUND!" var))))
+#+END_SRC
+
+Re-run our test code:
+#+BEGIN_SRC scheme
+(eval '(define test-def 0) the-global-environment)
+
+;Value: ok
+
+(eval '(define (test-assignment) (set! test-def 5))
+      the-global-environment)
+
+;Value: ok
+
+(eval 'test-def the-global-environment)
+
+;Value: 0
+
+(eval '(test-assignment) the-global-environment)
+
+;Value: ok
+
+(eval 'test-def the-global-environment)
+
+;Value: 5
+
+(eval '(make-unbound! test-def) the-global-environment)
+
+;ok
+
+(eval '(make-unbound! test-def) the-global-environment)
+
+;Unbound variable in the given frame -- MAKE-UNBOUND! test-def
+#+END_SRC
+
+Works sweetly!
+** Running the Evaluator as a Program
+*** Exercise 4.14
+1. It is because our evaluator uses data abstraction for decouple the semantics
+   from syntaxes of language.
+2. Combined with the *1.*, it is due to the difference of how evaluator treats
+   application of compound procedure from that of primitive procedure.
+3. =Map= needs to apply evaluated procedure to the each element of given list;
+   but the value of that procedure is wrapped around by type-tag and it handled
+   underlying Scheme's evaluator which don't know how to handle our type-tagged data.
+4. So namely, it is not the procedure, which handed over to =map=, in
+   implementation language but in language being implemented.
+** Data as Programs
+*** Exercise 4.15
+We can prove this by case analysis with /reductio ad absurdum/:
+- =(try try)= \to ='halted=:
+  By definition of =try=, it implies that =(halts? try try)= evaluated as
+  =false=. Which in turn means =(try try)= raises error or run forever by the
+  definition of =halts?=; this is contradiction with our assumption -- =(try
+  try)= returns ='halted=, which means it halted.
+- =(try try)= \to /run forever/ or /raise error/:
+  With the same argument from the previous one, it leads to contradiction with
+  assumption in any case -- whether it evaluated as /run forever/ or /raise error/.
+** Internal Definitions
+*** Exercise 4.16
+**** a.
+#+BEGIN_SRC scheme
+(define (lookup-variable-value var env)
+  (traverse-env-using
+   (find-var-and-apply-in-frame
+    var
+    (lambda (vals)
+      (let ((val (car vals)))
+        (if (eq? val undef)
+            (error "Unassigned variable" var)
+            val))))
+   (lambda () (error "Unbound variable" var))
+   env))
+#+END_SRC
+**** b.
+I've designed in the text book with my digital paper:
+#+BEGIN_SRC scheme
+(define (scan-out-defines proc-body)
+  (let ((extrated-exps
+         ;; List<Exp> (proc-body) -> List<Exp> x List<Exp>
+         ;; We implement this a little bit complicate procedure since
+         ;; we want to examine possible user error --
+         ;; defenstive programming.
+         (fold-right
+          (lambda (exp extracted)
+            (if (definition? exp)
+                (cons (cons exp (car extracted)) (cdr extracted))
+                (if (null? (car extracted))
+                    (cons (car extracted) (cons exp (cdr extracted)))
+                    ;; intertwined internal definitions with others
+                    (error "Internal defintions intertwins with others" proc-body))))
+          (cons '() '())
+          proc-body)))
+    (let ((internal-defs (car extrated-exps))
+          (rest-body (cdr extrated-exps)))
+      (let ((vars (map definition-variable internal-defs))
+            (exps (map definition-value internal-defs)))
+        (let ((bindings
+               (map (lambda (var) (list var (list 'quote undef)))
+                    vars))
+              (set-exps
+               (map (lambda (var val)
+                      (make-assignment var val))
+                    vars
+                    exps)))
+          (make-let bindings (append set-exps rest-body)))))))
+#+END_SRC
+
+Then let's test:
+#+BEGIN_SRC scheme
+;; test for scan-out-defines
+(scan-out-defines
+ '((define u <e1>)
+   (define v <e2>)
+   <e3>))
+;; should return
+(let ((u '*unassigned*)
+      (v '*unassigned*))
+  (set! u <e1>)
+  (set! v <e2>)
+  <e3>)
+#+END_SRC
+
+Then the results:
+#+BEGIN_SRC scheme
+(pretty-print (scan-out-defines
+               '((define u <e1>)
+                 (define v <e2>)
+                 <e3>)))
+(let ((u '*unassigned*) (v '*unassigned*))
+  (set! u <e1>)
+  (set! v <e2>)
+  <e3>)
+;Unspecified return value
+#+END_SRC
+as expected.
+**** c.
+The construction time is better. Note that it is analogous to the choice we made
+when we comes with rational number arithmetic package. Since procedure is
+"captured common computational process," it is supposed to be applied more than
+defining ones; so by make =scan-out-defines= run in the construction time, we'll
+get more efficient implementation dynamically.
+
+Then here is the code:
+#+BEGIN_SRC scheme
+(define (make-procedure parameters body env)
+  (list 'procedure parameters
+        (scan-out-defines body)
+        env))
+#+END_SRC
+*** Exercise 4.17
+I've drawn the required diagram with my digital paper.
+
+For the second question, first we need to recognize what the correct program is;
+as jotted in the text book, correct program means what program obeyed the
+described restriction -- the defined variables' values can be evaluated without
+using any of variables' values. Then we can answer given question: Variables
+that can be looked up in evaluating =<e3>= is same in both environment
+structure; as an evaluation of any statement can not inspect the environment
+directly, the behavior of both should equals among both. More formally, we can
+prove the argument using the structure induction on eval/apply; that is,
+evaluation of statement achieved by eval/apply, so we need to prove if all the
+behavior of the program before the transformation are same, then after that
+transformation the evaluation result of each clause should results in same as
+before the transformation.
+
+Lastly, we can fix this different environment structure by transforming the
+internal definitions into
+- Define the variables of them with =*unassigned*= then =set!= the value by
+  corresponding expressions afterward, which would do not make any extra frame
+  and also satisfy all the specifications described above.
+- Note that this fixation does not involve any ill-defined procedure, that is
+  the infinite loop where calls itself again and again.
+
+
+The code:
+#+BEGIN_SRC scheme
+(define (scan-out-defines2 proc-body)
+  (let ((extrated-exps
+         ;; List<Exp> (proc-body) -> List<Exp> x List<Exp>
+         ;; We implement this a little bit complicate procedure since
+         ;; we want to examine possible user error --
+         ;; defenstive programming.
+         (fold-right
+          (lambda (exp extracted)
+            (if (definition? exp)
+                (cons (cons exp (car extracted)) (cdr extracted))
+                (if (null? (car extracted))
+                    (cons (car extracted) (cons exp (cdr extracted)))
+                    ;; intertwined internal definitions with others
+                    (error "Internal defintions intertwines with others" proc-body))))
+          (cons '() '())
+          proc-body)))
+    (let ((internal-defs (car extrated-exps))
+          (rest-body (cdr extrated-exps)))
+      (let ((vars (map definition-variable internal-defs))
+            (exps (map definition-value internal-defs)))
+        (let ((def-vars
+               (map (lambda (var) (make-definition var (list 'quote undef)))
+                    vars))
+              (set-exps
+               (map (lambda (var val)
+                      (make-assignment var val))
+                    vars
+                    exps)))
+          (append def-vars (append set-exps rest-body)))))))
+
+(define (make-definition var val)
+  (list 'define var val))
+#+END_SRC
+
+
+Then test again:
+#+BEGIN_SRC scheme
+(pretty-print (scan-out-defines2
+               '((define u <e1>)
+                 (define v <e2>)
+                 <e3>)))
+((define u '*unassigned*) (define v '*unassigned*) (set! u <e1>) (set! v <e2>) <e3>)
+#+END_SRC
+*** Exercise 4.18
+This new version would not work; whereas the version in the text works. We can
+reason this as follows:
+#+BEGIN_SRC scheme
+(define (solve f y0 dt)
+  (define y (integral (delay dy) y0 dt)) ;does not evaluate dy until it need
+  ;; ↑ in this block structure it never needed.
+  (define dy (stream-map f y))          ;does evaluate y
+  y)
+#+END_SRC
+1. As noted above annotation, the value expression of =dy= involves =y= and need
+   to evaluate that to return the value.
+2. Since in this transformation strategy does not change all the occurrence of
+   =u= and =v= into =a= and =b= respectively in the =<e1>= and =<e2>= as it
+   assume the restriction is obeyed, when it comes to evaluate =y= it lookup and
+   signal error as it found =*unassigned*=.
+3. This malfunction is due to the modification of the name of definition without
+   changing all the expressions that depend on the name of internal definitions
+   as we noted above.
+*** Exercise 4.19
+1. I myself couldn't yet be convinced by why we need to treat internal
+   definitions especially; so I support Ben's view since it make me (and
+   possibly other people too) easy to understand the behavior of internal
+   definition in consistent manner.
+
+   However it is trickier than it seems since the difference between procedure
+   and other data. And because of the limitation of text editor environment: We
+   are forced to write code in sequential manner; so it forces us to think as if
+   we are dealing with sequential events. But it isn't as we discuss below.
+
+   The above discussion is not consistent with that of mutual recursive
+   procedures -- it works as if the defines evaluated simultaneously. So in
+   theory Eva's view point is the most consistent one.
+
+2. For the second question; yes, we can but it should be implemented in a error
+   handling manner: If we got into unassigned value error, then try to delegate
+   the execution of that assignment statement (to stack another place and try
+   each of them when we reach the end of assignment statement; if there are no
+   reduction in stack after one-loop finally it should raise an error -- give
+   up!). This algorithm is expensive since it recursively reduces the stacked
+   statements until there is no change.
+*** Exercise 4.20

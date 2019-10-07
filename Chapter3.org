@@ -4919,4 +4919,5 @@ reintroduce the notion of time into our language -- which functional style was
 meant to eliminate. I thought to deal with this specific problem with making
 that affection regional so that it does not leak over all the other components,
 we should stamp the "time" when the user typed the input implicitly so that the
-=merge= procedure can fairly merger the joint input stream by using the time as /weight/.
+=merge= procedure can fairly merger the joint input stream by using the time as
+/weight/.
