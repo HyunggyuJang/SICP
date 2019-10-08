@@ -1442,3 +1442,731 @@ reason this as follows:
    up!). This algorithm is expensive since it recursively reduces the stacked
    statements until there is no change.
 *** Exercise 4.20
+**** a.
+Here we implement the strategy written in text book. That is, to transform from
+#+BEGIN_SRC scheme
+(letrec ((u <e1>)
+         (v <e2>))
+  <e3>)
+#+END_SRC
+to
+#+BEGIN_SRC scheme
+(let ((u '*unassigned*)
+      (v '*unassigned*))
+  (set! u <e1>)
+  (set! v <e2>)
+  <e3>)
+#+END_SRC
+
+So we can code the test code using above example:
+#+BEGIN_SRC scheme
+(pretty-print (letrec->let-assignment
+               (letrec ((u <e1>)
+                        (v <e2>))
+                 <e3>)))
+(let ((u '*unassigned*)
+      (v '*unassigned*))
+  (set! u <e1>)
+  (set! v <e2>)
+  <e3>)
+;Unspecified return value
+#+END_SRC
+
+Then code:
+#+BEGIN_SRC scheme
+(define (install-eval-letrec)
+  (define bindings cadr)                ;((u <e1>) (v <e2>))
+  (define body cddr)                    ;<e3>
+  (define (letrec->let-assignment exp)
+    (let ((binds (bindings exp))
+          (rest-body (body exp)))
+      (let ((vars (map car binds))
+            (exps (map cadr binds)))
+        (make-let
+         (map (lambda (var) (list var (list 'quote undef)))
+              vars)
+         (append
+          (map (lambda (var exp) (make-assignment var exp))
+               vars exps)
+          rest-body)))))
+  (put 'eval 'letrec
+       (lambda (exp env)
+         (eval (letrec->let-assignment exp) env)))
+  ;; test
+  (letrec->let-assignment
+   '(letrec ((u <e1>)
+             (v <e2>))
+      <e3>)))
+#+END_SRC
+
+And test!
+#+BEGIN_SRC scheme
+(pretty-print (install-eval-letrec))
+(let ((u '*unassigned*) (v '*unassigned*))
+  (set! u <e1>)
+  (set! v <e2>)
+  <e3>)
+;Unspecified return value
+#+END_SRC
+**** b.
+Solely let, we cannot express recursive process within the body of procedure.
+I've drawn the environment diagram reasoning about this assertion.
+*** Exercise 4.21
+**** a.
+#+BEGIN_SRC scheme
+((lambda (n)
+   ((lambda (fact)
+      (fact fact n))
+    (lambda (ft k)
+      (if (= k 1)
+          1
+          (* k (ft ft (- k 1)))))))
+ 10)
+
+;Value: 3628800
+#+END_SRC
+It works well. By using this technique -- specifically the lambda calculus by
+Alonzo Church -- we can reason our program's behavior using, back to our old
+friend, substitution model.
+
+Fibonacci number can be calculated by using this strategy:
+#+BEGIN_SRC scheme
+((lambda (n)
+   ((lambda (fibo)
+      (fibo fibo n))
+    (lambda (fib k)
+      (if (< k 2)
+          k
+          (+ (fib fib (- k 1))
+             (fib fib (- k 2)))))))
+ 4)
+
+;Value: 3
+#+END_SRC
+
+The common pattern in above procedures is that the inner procedure, which do all
+the serious process, take additional parameter. We can think of this parameter
+as /self/ reference; as soon as we calculate the type contract of this /self/
+parameter, we realize this is same as that type of the procedure of discourse.
+**** b.
+#+BEGIN_SRC scheme
+(define (f x)
+  ((lambda (even? odd?)
+     (even? even? odd? x))
+   (lambda (ev? od? n)
+     (if (= n 0) true (od? ev? od? (-1+ n))))
+   (lambda (ev? od? n)
+     (if (= n 0) false (ev? ev? od? (-1+ n))))))
+#+END_SRC
+
+then test:
+#+BEGIN_SRC scheme
+(f 5)
+
+;Value: #f
+
+(f 4)
+
+;Value: #t
+#+END_SRC
+** Separating Syntactic Analysis from Execution
+*** Exercise 4.22
+We can get what we want by mapping the expression part to =let->combination= to
+=analyze-application=. First let we make our analyzer to be data-directed
+style, which is analogous to [[Exercise 4.3][ex 4.3]]:
+#+BEGIN_SRC scheme
+(define (analyze exp)
+  (cond ((self-evaluating? exp)
+         (analyze-self-evaluating exp))
+        ((variable? exp) (analyze-variable exp))
+        (else
+         (let ((op (and (tagged-exp? exp)
+                        (get 'analyze (type-tag exp)))))
+           (cond (op (op exp))
+                 ((application? exp)
+                  (analyze-application exp))
+                 (else
+                  (error "Unknown expression type -- ANALYZE" exp)))))))
+#+END_SRC
+
+Then extend our =eval= /ad-hoc/ table into more general 2 dimensional
+hash-table:
+#+BEGIN_SRC scheme
+(define operation-table (make-hash-table))
+(define (put op type item)
+  (let ((type-table (hash-table-ref operation-table op (lambda () #f))))
+    (if type-table
+        (hash-table-set! type-table type item)
+        (let ((type-table (make-hash-table)))
+          (hash-table-set! type-table type item)
+          (hash-table-set! operation-table op type-table)))))
+(define (get op type)
+  (let ((type-table
+         (hash-table-ref operation-table op (lambda () #f))))
+    (and type-table
+         (hash-table-ref type-table type (lambda () #f)))))
+#+END_SRC
+
+And then
+#+BEGIN_SRC scheme
+(define (install-analyze-clauses)
+  (put 'analyze 'quote analyze-quoted)
+  (put 'analyze 'set! analyze-assignment)
+  (put 'analyze 'define analyze-definition)
+  (put 'analyze 'if analyze-if)
+  (put 'analyze 'lambda analyze-lambda)
+  (put 'analyze 'begin (lambda (exp) (analyze-sequence (begin-actions exp))))
+  (put 'analyze 'cond (lambda (exp) (analyze (cond->if exp))))
+  'done)
+#+END_SRC
+
+Finally we can return our original task:
+#+BEGIN_SRC scheme
+(define (install-analyze-let)
+  (define let->combination
+    (cadr (assq 'let->combination (install-eval-let))))
+  (put 'analyze 'let (lambda (exp) (analyze-application (let->combination exp)))))
+#+END_SRC
+
+To make available the =let->combination= procedure, which is defined in
+=install-eval-let=, I've made following change to the end of =install-eval-let=:
+#+BEGIN_SRC scheme
+,*** the last line of install-eval-let
+  `((let->combination ,let->combination))
+#+END_SRC
+
+That is, the alist of procedures, which we want to export. And you may find
+[[https://www.gnu.org/software/mit-scheme/documentation/mit-scheme-ref/Quoting.html][Scheme manual about quasi-quote]] useful.
+*** Exercise 4.23
+The procedure of Alyssa's version start to link all the sequence expressions
+into one analyzed expression in execution time; whereas the version of text do
+link the sequence in the analysis time. As consequence, the number of steps it
+needs when it executed are quite different among both. I've wrote the sample
+execute in my digital paper using the substitution model since the execution
+does not involve any side effect (the side effect of executed statement does not
+affect the behavior of this level of abstraction).
+*** Exercise 4.24
+**** Compare Execution Time
+Here we compare the time it needs to execute application of test procedure. For
+the test procedure we use procedure which calculate Fibonacci number using multi
+recursive process (since it is expensive, we can measure the time more
+apparently).
+
+The definition of test procedure:
+#+BEGIN_SRC scheme
+(define (fib n)
+  (cond ((= n 0) 0)
+        ((= n 1) 1)
+        (else (+ (fib (- n 1))
+                 (fib (- n 2))))))
+#+END_SRC
+
+And we can extract /only/ the execution of application not the definition by
+using =eval=, namely
+#+BEGIN_SRC scheme
+(eval '(fib 33) the-global-environment)
+#+END_SRC
+
+Then we can time it needs to execute whole of this process the variation from
+project 3:
+#+BEGIN_SRC scheme
+(define (timed proc)
+  (let ((start (runtime)))
+    (let ((val (proc)))
+      (newline)
+      (display "time expended: ")
+      (display (- (runtime) start))
+      val)))
+#+END_SRC
+
+Then we can use this as
+#+BEGIN_SRC scheme
+(timed (lambda () (eval '(fib 33) the-global-environment)))
+#+END_SRC
+
+As we designed the experiments, now let's run those:
+#+BEGIN_SRC scheme
+;;; Analysis
+(install-analyze-clauses)
+(eval
+ '(define (fib n)
+    (cond ((= n 0) 0)
+          ((= n 1) 1)
+          (else (+ (fib (- n 1))
+                   (fib (- n 2))))))
+ the-global-environment)
+(timed (lambda () (eval '(fib 20) the-global-environment)))
+
+time expended: 1.6300000000000026
+;Value: 6765
+#+END_SRC
+
+Turns out =(fib 33)= way more expensive to wait.
+
+Then without analysis version:
+#+BEGIN_SRC scheme
+(install-eval-clauses)
+(eval
+ '(define (fib n)
+    (cond ((= n 0) 0)
+          ((= n 1) 1)
+          (else (+ (fib (- n 1))
+                   (fib (- n 2))))))
+ the-global-environment)
+(timed (lambda () (eval '(fib 20) the-global-environment)))
+
+time expended: 3.21
+;Value: 6765
+#+END_SRC
+
+With analysis, we halved the time it takes. Quite impressive isn't it?
+
+For curiosity, let we run also the primitive evaluator of our Scheme!
+#+BEGIN_SRC scheme
+(define (fib n)
+    (cond ((= n 0) 0)
+          ((= n 1) 1)
+          (else (+ (fib (- n 1))
+                   (fib (- n 2))))))
+
+;Value: fib
+
+(timed (lambda () (fib 20)))
+
+time expended: .02999999999999936
+;Value: 6765
+#+END_SRC
+
+Huge difference!
+**** Compare the time spent by analysis versus by execution
+Here is the previous =fib= procedure's:
+#+BEGIN_SRC scheme
+(timed
+ (lambda ()
+   (repeat 1000 (lambda ()
+                  (eval '(fib 2)
+                        the-global-environment)))))
+
+time expended: .20000000000000018
+;Value: done
+#+END_SRC
+
+And that of simple execution:
+#+BEGIN_SRC scheme
+(timed
+ (lambda ()
+   (repeat 1000 (lambda ()
+                  (eval '(fib 1)
+                        the-global-environment)))))
+
+time expended: .07000000000000028
+;Value: done
+#+END_SRC
+
+Or simple recursive execution:
+#+BEGIN_SRC scheme
+(timed
+ (lambda ()
+   (repeat 1000 (lambda ()
+                  (eval '(fib 2)
+                        the-global-environment)))))
+
+time expended: .20000000000000018
+;Value: done
+#+END_SRC
+
+Here we used =repeat= to measure the time otherwise unable to estimate:
+#+BEGIN_SRC scheme
+(define (repeat n proc)
+  (let loop ((k n))
+    (if (> k 0)
+        (begin (proc)
+               (loop (-1+ k)))
+        'done)))
+#+END_SRC
+
+Or let us test the sequential statements:
+#+BEGIN_SRC scheme
+;; Or those of sequential statements
+(define test-sequential
+  '(define (test-sequential)
+     (define x 0)
+     (set! x (1+ x))
+     (set! x (1+ x))
+     (set! x (1+ x))
+     (set! x (1+ x))
+     (set! x (1+ x))
+     x))
+;; analysis time
+(timed (lambda () (repeat 1000 (lambda () (analyze test-sequential)))))
+
+time expended: .08999999999999986
+;Value: done
+
+;; execution time
+(eval test-sequential the-global-environment)
+(timed (lambda ()
+         (repeat 1000 (lambda ()
+                        (eval '(test-sequential) the-global-environment)))))
+
+time expended: .17000000000000015
+;Value: done
+#+END_SRC
+* Variations on a Scheme -- Lazy Evaluation
+** Normal Order and Applicative Order
+*** Exercise 4.25
+It will falls into infinite loop since what ever argument we hand over, it
+should call itself with different argument to pass the =unless= procedure as
+parameter -- as our underlying Scheme evaluate in applicative order, evaluator
+first evaluate the operands of application of compound procedure and then apply.
+
+And yes, our procedure will work in normal-order language since in normal-order
+language, expressions only got evaluated when the expression is operation in
+application or the operation part unwound into primitive procedure.
+
+If we apply above discussion into our =factorial= application, it unwound into
+application of =unless=, which in turn got into =if= expression that is special
+form; by the rule of =if= evaluation, now the predicate part evaluated and
+depending on that value, in turn, whether consequent part of alternative part
+got evaluated and so on.
+*** Exercise 4.26
+Here is the =unless= as derived form:
+#+BEGIN_SRC scheme
+(define (unless->if exp)
+  (make-if (unless-pred exp)
+           (unless-alter exp)
+           (unless-conseq exp)))
+(define unless-pred cadr)
+(define unless-conseq caddr)
+(define unless-alter cadddr)
+#+END_SRC
+
+Let us think the discussion using more simple example -- not =unless= itself --
+the =and= or =or= special form. It has the ability to be used as "short circuit" the
+code. I couldn't count the number of times if I had =or= as non-special form so
+that I can code up with higher order function like =fold-right=.
+
+Back to the original question, we can think about the possibilities if we
+allowed to use =unless= with combination of stream processing frame work. By
+using that combination, we could code event driven system in functional
+programming style as we use the =unless= to control the input stream.
+
+Well, in any case, if we allowed to use =unless= not as special form, we can
+pass that as argument of another higher order procedures; or as the value of
+application.
+** An Interpreter with Lazy Evaluation
+*** Exercise 4.27
+The first =<response>= should be 1 and that of second =<response>= and third
+would be 10 and 2 respectively since
+1. The value expression of =w= is evaluated by =eval-definition= but as it's
+   application of compound procedure, it will evaluate the body of given
+   compound procedure with *delayed* arguments.
+2. Since the first statement of the body is special form with application of
+   primitive procedure, it will change the value of count from 0 to 1.
+3. The last statement of that is variable, it will lookup in the extended
+   environment and return the *delayed* value, that is the promise to evaluate
+   =(id 10)= in that environment.
+
+
+Here is the verification:
+#+BEGIN_SRC scheme
+;;; L-Eval input:
+(define count 0)
+
+;;; L-Eval value:
+ok
+
+;;; L-Eval input:
+(define (id x)
+  (set! count (+ count 1))
+  x)
+
+;;; L-Eval value:
+ok
+
+;;; L-Eval input:
+(define w (id (id 10)))
+
+;;; L-Eval value:
+ok
+
+;;; L-Eval input:
+count
+
+;;; L-Eval value:
+1
+
+;;; L-Eval input:
+w
+
+;;; L-Eval value:
+10
+
+;;; L-Eval input:
+count
+
+;;; L-Eval value:
+2
+
+#+END_SRC
+*** Exercise 4.28
+The example should be the case where the evaluated value is thunk and then it
+used as operator in combination.
+
+Generally, we need this extra complexity for dealing with the case where the
+expression is itself result of combination of applying compound procedure where
+it participate as argument.
+
+We can deduce this using the previous exercise as example. Observe that in the
+previous exercise that the arguments in the application (of compound procedure)
+are made thunk by =list-of-delayed-args=. By using this observation, we can make
+the situation where satisfy the property outlined above:
+#+BEGIN_SRC scheme
+(((lambda (x) x) +) 2 4)
+#+END_SRC
+
+Then verification:
+#+BEGIN_SRC scheme
+(thunk? (eval '((lambda (x) x) +) the-global-environment))
+
+;Value: #t
+#+END_SRC
+
+So we need the =actual-value= to get the value, which in turn applied to given
+operands:
+#+BEGIN_SRC scheme
+(thunk? (actual-value '((lambda (x) x) +) the-global-environment))
+
+;Value: #f
+#+END_SRC
+*** Exercise 4.29
+The good example of such program should exhibit the situation where some object
+evaluated more than once; so
+#+BEGIN_SRC scheme
+(factorial (factorial 20))
+#+END_SRC
+would make huge difference between with memoization and without that.
+
+And for the second question, we can reason about this as follows:
+- For with memoization:
+  1. Evaluate =(square (id 10))=, which in turn
+  2. extend the environment with binding =x: (thunk (id 10) env)=
+     and evaluate =(* x1 x2)= (here we used =x1= and =x2= instead =x= since
+     we need to take the time when we accessed to that variable since
+     memoization introduce assignment implicitly);
+  3. force x_{1}, which in turn evaluate =(id 10)=; it leads to set =count= to
+     be 1 and in the environment set =x= to be evaluated thunk with value 10;
+  4. force x_{2}, which already evaluated by force x_{1}, so it just return 10;
+  5. returned to =(* x1 x2)=, as now the values are obtained, it return 100 as
+     final value.
+- For without memoization:
+  1. Evaluate =(square (id 10))=, which in turn
+  2. extend the environment with binding =x: (thunk (id 10) env)=
+     and evaluate =(* x1 x2)=;
+  3. force x_{1}, which in turn evaluate =(id 10)=; it leads to set =count= to
+     be 1;
+  4. force x_{2}, which in turn evaluate =(id 10)=; it leads to set =count= to
+     be 2;
+  5. returned to =(* x1 x2)=, as now the values are obtained, it return 100 as
+     final value.
+
+
+So the first response is same in both as 100; the second are 1, 2 in with
+memoization and without that respectively.
+*** Exercise 4.30
+**** a.
+Since
+- as this is application of compound procedure;
+- it evaluate the body of =for-each= with delayed arguments;
+- in turn, =if-predicate= force items to be actual value;
+- by the first statement of =begin= of =for-each= is application so =proc= got
+  forced;
+- it leads the body of =proc= evaluated with thunked =(car items)= -- 57 in this
+  example;
+- as all of the statement of =proc= is application of primitive procedures the
+  argument, =x=, is forced and evaluated -- 57 is displayed at this moment;
+- now another =for-each= is evaluated same as above since all the conditions are
+  same for applying the above argument.
+
+
+By above argument all the statements in the sequence got forced.
+**** b.
+As we noted in [[Exercise 4.28][ex 4.28]], the thunked expression is not evaluated as value without
+forcing it -- by =actual-value= --, in turn, user can thunk the expression only
+via application of compound procedure.
+
+So by applying this observation to the given Cy's examples with original
+=eval-sequence=, we got =(p1 1)= \to =(1 2)= and =(p2 1)= \to 1; since while the
+first does not involve any application of compound procedure; the second
+assignment thunked and that, in turn, evaluated without forcing it. But with
+Cy's modified version return =(1 2)= in both cases since now all the
+intermediate statement forced.
+**** c.
+Since already forced value can not be changed by additional =force-it=. As we
+noted in *a.* each statement of in the sequence already fully evaluated --
+forced, so the modification does not affect at all to that specific example.
+**** d.
+Whatever choice we made, the evaluation of sequence being made in unexpected or
+hard to be estimated time. It is totally due to the nature of normal-order
+evaluation rule: By choosing the normal-order evaluation, we decoupled the time
+when the expression got assembled from the time the expression actually got
+evaluated. However, using assignment, we are meant to control the "time"
+explicitly in the computer, that is when the evaluation is being carried out,
+which mirrored the real world. The time is "state." So those -- the assignment
+and normal-order rule -- are incompatible in themselves; we shouldn't expect to
+use sequence of expressions /per se/ side-effects.
+*** Exercise 4.31
+We need to change =list-of-delayed-args= to encompass this new extension. And
+also we need to change the =force-it= and add additional data structure that is
+analogous to =thunk= -- =memo-thunk=.
+
+We decide =thunk= to represent the delayed object without memoized; =memo-thunk=
+for delayed object with memoization.
+
+Let us code what we designed using digital paper!
+#+BEGIN_SRC scheme
+(define (apply procedure arguments env)
+  (cond ((primitive-procedure? procedure)
+         (apply-primitive-procedure
+          procedure
+          (list-of-arg-values arguments env))) ; changed
+        ((compound-procedure? procedure)
+         (eval-sequence
+          (procedure-body procedure)
+          (let ((params (procedure-parameters procedure)))
+            (extend-environment
+             (map param-name params)
+             (list-if-delayed-args
+              arguments (map param-type params) env) ; changed
+             (procedure-environment procedure)))))
+        (else
+         (error
+          "Unknown procedure type -- APPLY" procedure))))
+
+;; param ADT
+(define (typed-param? param)
+  (and (pair? param)
+       (pair? (cdr param))))
+(define (param-type param)
+  (if (typed-param? param)
+      (cadr param)
+      'strict))
+(define (param-name param)
+  (if (typed-param? param)
+      (car param)
+      param))
+
+(define (list-if-delayed-args exps types env)
+  (cond ((no-operands? exps) '())
+        ((null? types)
+         (error "the number of arguments do not agree with procedure"
+                ;; actually whether we should use more sophisticated error message
+                ;; or should delegate the error raise to extend-environment
+                ;; current error message is not informative enough to be useful.
+                exps))
+        (else
+         (cons
+          ((case (first types)
+             ((strict) actual-value)
+             ((lazy) delay-it)
+             ((lazy-memo) delay-memo-it)
+             (else (error "Unknown parameter type")))
+           (first-operand exps)
+           env)
+          (list-if-delayed-args (rest-operands exps)
+                                (cdr types)
+                                env)))))
+
+;; memo-thunk ADT
+(define (delay-memo-it exp env)
+  (list 'memo-thunk exp env))
+(define (memo-thunk? obj)
+  (tagged-list? obj 'memo-thunk))
+
+(define (force-it obj)
+  (cond ((thunk? obj)
+         (actual-value (thunk-exp obj) (thunk-env obj)))
+        ((memo-thunk? obj)
+         (let ((result (actual-value
+                        (thunk-exp obj)
+                        (thunk-env obj))))
+           (set-car! obj 'evaluated-thunk)
+           (set-car! (cdr obj) result)  ; replace exp with its value
+           (set-cdr! (cdr obj) '())     ; forget unneeded env
+           result))
+        ((evaluated-thunk? obj)
+         (thunk-value obj))
+        (else obj)))
+#+END_SRC
+
+Then test! Here we use [[Exercise 4.29][ex 4.29]] for test:
+#+BEGIN_SRC scheme
+;;; L-Eval input:
+(define count 0)
+
+;;; L-Eval value:
+ok
+
+;;; L-Eval input:
+(define count-memo 0)
+
+;;; L-Eval value:
+ok
+
+;;; L-Eval input:
+(define (id-memo (x lazy-memo))
+  (set! count-memo (+ count-memo 1))
+  x)
+
+;;; L-Eval value:
+ok
+
+;;; L-Eval input:
+(define (id-lazy (x lazy))
+  (set! count (+ count 1))
+  x)
+
+;;; L-Eval value:
+ok
+
+;;; L-Eval input:
+(define (square-memo (x lazy-memo))
+  (* x x))
+
+;;; L-Eval value:
+ok
+
+;;; L-Eval input:
+(define (square-lazy (x lazy))
+  (* x x))
+
+;;; L-Eval value:
+ok
+
+;;; L-Eval input:
+(square-memo (id-memo 10))
+
+;;; L-Eval value:
+100
+
+;;; L-Eval input:
+count-memo
+
+;;; L-Eval value:
+1
+
+;;; L-Eval input:
+(square-lazy (id-lazy 10))
+
+;;; L-Eval value:
+100
+
+;;; L-Eval input:
+count
+
+;;; L-Eval value:
+2
+
+#+END_SRC
+
+Works!

@@ -1,5 +1,5 @@
 ;; For section 4.1.1 ~ 4.1.4
-(load "ch4-mceval.scm")
+;; (load "ch4-mceval.scm")
 
 ;; Exercise 4.11
 ;; ;; For extend-environment
@@ -201,19 +201,6 @@
 
 
 
-;; initialize the startup environment
-(define primitive-procedures
-  (append (list
-           (list '> >)
-           (list '< <)
-           (list '- -)
-           (list '= =)
-           (list '+ +)
-           (list '* *)
-           (list '-1+ -1+)
-           (list '1+ 1+))
-          primitive-procedures))
-(define the-global-environment (setup-environment))
 ;; Exercise 4.1
 ;;; Left to Right
 ;; (define (list-of-values exps env)
@@ -250,16 +237,23 @@
 (define (tagged-exp? exp)
   (pair? exp))
 
-;; data-directed eval table
-(define eval-table (make-hash-table))
+(define operation-table (make-hash-table))
+;; ;; data-directed eval table
+;; (define eval-table (make-hash-table))
+;; ;; for analyze of section 4.1.7
+;; (define analyze-table (make-hash-table))
 (define (put op type item)
-  (if (eq? op 'eval)
-      (hash-table-set! eval-table type item)
-      (error "Unallowed operation -- PUT" op)))
+  (let ((type-table (hash-table-ref operation-table op (lambda () #f))))
+    (if type-table
+        (hash-table-set! type-table type item)
+        (let ((type-table (make-hash-table)))
+          (hash-table-set! type-table type item)
+          (hash-table-set! operation-table op type-table)))))
 (define (get op type)
-  (if (eq? op 'eval)
-      (hash-table-ref eval-table type (lambda () #f))
-      (error "Unknown operation -- GET" op)))
+  (let ((type-table
+         (hash-table-ref operation-table op (lambda () #f))))
+    (and type-table
+         (hash-table-ref type-table type (lambda () #f)))))
 
 (define (install-eval-clauses)
   (put 'eval 'quote (lambda (exp env) (text-of-quotation exp)))
@@ -429,7 +423,7 @@
   (define body cddr)
   (put 'eval 'let (lambda (exp env)
                     (eval (let->combination exp) env)))
-  'done)
+  `((let->combination ,let->combination)))
 
 (define (install-eval-let*)
   (define (let*->let exp)
@@ -663,16 +657,16 @@
 ;;   (set! u <e1>)
 ;;   (set! v <e2>)
 ;;   <e3>)
-(pretty-print (scan-out-defines
-               '((define u <e1>)
-                 (define v <e2>)
-                 <e3>)))
+;; (pretty-print (scan-out-defines
+;;                '((define u <e1>)
+;;                  (define v <e2>)
+;;                  <e3>)))
 
 ;;; c.
-(define (make-procedure parameters body env)
-  (list 'procedure parameters
-        (scan-out-defines body)
-        env))
+;; (define (make-procedure parameters body env)
+;;   (list 'procedure parameters
+;;         (scan-out-defines body)
+;;         env))
 
 ;; Exercise 4.17
 (define (scan-out-defines2 proc-body)
@@ -707,3 +701,299 @@
 
 (define (make-definition var val)
   (list 'define var val))
+
+;; Exercise 4.20
+;;; a.
+(define (install-eval-letrec)
+  (define bindings cadr)                ;((u <e1>) (v <e2>))
+  (define body cddr)                    ;<e3>
+  (define (letrec->let-assignment exp)
+    (let ((binds (bindings exp))
+          (rest-body (body exp)))
+      (let ((vars (map car binds))
+            (exps (map cadr binds)))
+        (make-let
+         (map (lambda (var) (list var (list 'quote undef)))
+              vars)
+         (append
+          (map (lambda (var exp) (make-assignment var exp))
+               vars exps)
+          rest-body)))))
+  (put 'eval 'letrec
+       (lambda (exp env)
+         (eval (letrec->let-assignment exp) env)))
+  ;; test
+  (letrec->let-assignment
+   '(letrec ((u <e1>)
+             (v <e2>))
+      <e3>)))
+
+;; Exercise 4.21
+;; ((lambda (n)
+;;    ((lambda (fact)
+;;       (fact fact n))
+;;     (lambda (ft k)
+;;       (if (= k 1)
+;;           1
+;;           (* k (ft ft (- k 1)))))))
+;;  10)
+
+;; ((lambda (n)
+;;    ((lambda (fibo)
+;;       (fibo fibo n))
+;;     (lambda (fib k)
+;;       (if (< k 2)
+;;           k
+;;           (+ (fib fib (- k 1))
+;;              (fib fib (- k 2)))))))
+;;  5)
+
+(define (f x)
+  ((lambda (even? odd?)
+     (even? even? odd? x))
+   (lambda (ev? od? n)
+     (if (= n 0) true (od? ev? od? (-1+ n))))
+   (lambda (ev? od? n)
+     (if (= n 0) false (ev? ev? od? (-1+ n))))))
+
+;; From section 4.1.7
+;; (load "ch4-analyzingmceval")
+(load "ch4-leval")
+;; initialize the startup environment
+;; (define primitive-procedures
+;;   (append (list
+;;            (list '> >)
+;;            (list '< <)
+;;            (list '- -)
+;;            (list '= =)
+;;            (list '+ +)
+;;            (list '* *)
+;;            (list '-1+ -1+)
+;;            (list '1+ 1+))
+;;           primitive-procedures))
+(define the-global-environment (setup-environment))
+
+(define (analyze exp)
+  (cond ((self-evaluating? exp)
+         (analyze-self-evaluating exp))
+        ((variable? exp) (analyze-variable exp))
+        (else
+         (let ((op (and (tagged-exp? exp)
+                        (get 'analyze (type-tag exp)))))
+           (cond (op (op exp))
+                 ((application? exp)
+                  (analyze-application exp))
+                 (else
+                  (error "Unknown expression type -- ANALYZE" exp)))))))
+
+(define (install-analyze-clauses)
+  (put 'analyze 'quote analyze-quoted)
+  (put 'analyze 'set! analyze-assignment)
+  (put 'analyze 'define analyze-definition)
+  (put 'analyze 'if analyze-if)
+  (put 'analyze 'lambda analyze-lambda)
+  (put 'analyze 'begin (lambda (exp) (analyze-sequence (begin-actions exp))))
+  (put 'analyze 'cond (lambda (exp) (analyze (cond->if exp))))
+  'done)
+
+;; Exercise 4.22
+(define (install-analyze-let)
+  (define let->combination
+    (cadr (assq 'let->combination (install-eval-let))))
+  (put 'analyze 'let (lambda (exp) (analyze-application (let->combination exp)))))
+
+(define (timed proc)
+  (let ((start (runtime)))
+    (let ((val (proc)))
+      (newline)
+      (display "time expended: ")
+      (display (- (runtime) start))
+      val)))
+
+;; Compare Execution Time
+;;; Analysis
+;; (install-analyze-clauses)
+;; (eval
+;;  '(define (fib n)
+;;     (cond ((= n 0) 0)
+;;           ((= n 1) 1)
+;;           (else (+ (fib (- n 1))
+;;                    (fib (- n 2))))))
+;;  the-global-environment)
+;; (timed (lambda () (eval '(fib 20) the-global-environment)))
+
+;; time expended: 1.6300000000000026
+;; ;Value: 6765
+
+;;; Without Analysis
+;; (install-eval-clauses)
+;; (eval
+;;  '(define (fib n)
+;;     (cond ((= n 0) 0)
+;;           ((= n 1) 1)
+;;           (else (+ (fib (- n 1))
+;;                    (fib (- n 2))))))
+;;  the-global-environment)
+;; (timed (lambda () (eval '(fib 20) the-global-environment)))
+
+;; time expended: 3.21
+;; ;Value: 6765
+
+;; Compare the time spent by analysis versus by execution
+;;; auxiliary procedure
+(define (repeat n proc)
+  (let loop ((k n))
+    (if (> k 0)
+        (begin (proc)
+               (loop (-1+ k)))
+        'done)))
+
+;; analysis time for fib
+;; (timed
+;;  (lambda ()
+;;    (repeat 1000 (lambda ()
+;;                   (analyze '(define (fib n)
+;;                               (cond ((= n 0) 0)
+;;                                     ((= n 1) 1)
+;;                                     (else (+ (fib (- n 1))
+;;                                              (fib (- n 2)))))))))))
+
+;; execution time for fib
+;; (timed
+;;  (lambda ()
+;;    (repeat 1000 (lambda ()
+;;                   (eval '(fib 1)
+;;                         the-global-environment)))))
+
+;; Or those of sequential statements
+;; (define test-sequential
+;;   '(define (test-sequential)
+;;      (define x 0)
+;;      (set! x (1+ x))
+;;      (set! x (1+ x))
+;;      (set! x (1+ x))
+;;      (set! x (1+ x))
+;;      (set! x (1+ x))
+;;      x))
+;; analysis time
+;; (timed (lambda () (repeat 1000 (lambda () (analyze test-sequential)))))
+
+;; execution time
+;; (eval test-sequential the-global-environment)
+;; (timed (lambda ()
+;;          (repeat 1000 (lambda ()
+;;                         (eval '(test-sequential) the-global-environment)))))
+
+;; Exercise 4.26
+;;; unless->if
+(define (unless->if exp)
+  (make-if (unless-pred exp)
+           (unless-alter exp)
+           (unless-conseq exp)))
+(define unless-pred cadr)
+(define unless-conseq caddr)
+(define unless-alter cadddr)
+
+;; Exercise 4.27
+;; (define count 0)
+;; (define (id x)
+;;   (set! count (+ count 1))
+;;   x)
+;; (define w (id (id 10)))
+;; count
+;; w
+;; count
+
+;; Exercise 4.31
+(define (apply procedure arguments env)
+  (cond ((primitive-procedure? procedure)
+         (apply-primitive-procedure
+          procedure
+          (list-of-arg-values arguments env))) ; changed
+        ((compound-procedure? procedure)
+         (eval-sequence
+          (procedure-body procedure)
+          (let ((params (procedure-parameters procedure)))
+            (extend-environment
+             (map param-name params)
+             (list-if-delayed-args
+              arguments (map param-type params) env) ; changed
+             (procedure-environment procedure)))))
+        (else
+         (error
+          "Unknown procedure type -- APPLY" procedure))))
+
+;; param ADT
+(define (typed-param? param)
+  (and (pair? param)
+       (pair? (cdr param))))
+(define (param-type param)
+  (if (typed-param? param)
+      (cadr param)
+      'strict))
+(define (param-name param)
+  (if (typed-param? param)
+      (car param)
+      param))
+
+(define (list-if-delayed-args exps types env)
+  (cond ((no-operands? exps) '())
+        ((null? types)
+         (error "the number of arguments do not agree with procedure"
+                ;; actually whether we should use more sophisticated error message
+                ;; or should delegate the error raise to extend-environment
+                ;; current error message is not informative enough to be useful.
+                exps))
+        (else
+         (cons
+          ((case (first types)
+             ((strict) actual-value)
+             ((lazy) delay-it)
+             ((lazy-memo) delay-memo-it)
+             (else (error "Unknown parameter type")))
+           (first-operand exps)
+           env)
+          (list-if-delayed-args (rest-operands exps)
+                                (cdr types)
+                                env)))))
+
+;; memo-thunk ADT
+(define (delay-memo-it exp env)
+  (list 'memo-thunk exp env))
+(define (memo-thunk? obj)
+  (tagged-list? obj 'memo-thunk))
+
+(define (force-it obj)
+  (cond ((thunk? obj)
+         (actual-value (thunk-exp obj) (thunk-env obj)))
+        ((memo-thunk? obj)
+         (let ((result (actual-value
+                        (thunk-exp obj)
+                        (thunk-env obj))))
+           (set-car! obj 'evaluated-thunk)
+           (set-car! (cdr obj) result)  ; replace exp with its value
+           (set-cdr! (cdr obj) '())     ; forget unneeded env
+           result))
+        ((evaluated-thunk? obj)
+         (thunk-value obj))
+        (else obj)))
+
+;; test for this extension
+;; Here we use ex 4.29 for testing
+; (driver-loop)
+; (define count 0)
+; (define count-memo 0)
+; (define (id-memo (x lazy-memo))
+;   (set! count-memo (+ count-memo 1))
+;   x)
+; (define (id-lazy (x lazy))
+;   (set! count (+ count 1))
+;   x)
+; (define (square-memo (x lazy-memo))
+;   (* x x))
+; (define (square-lazy (x lazy))
+;   (* x x))
+; (square-memo (id-memo 10))
+; count-memo
+; (square-lazy (id-lazy 10))
+; count
