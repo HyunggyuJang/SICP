@@ -288,7 +288,10 @@
         (list 'integer? integer?)
         (list 'sqrt sqrt)
         (list 'eq? eq?)
-;;      more primitives
+        (list '<= <=)
+        (list '1+ 1+)
+        (list '-1+ -1+)
+        ;;      more primitives
         ))
 
 

@@ -2170,3 +2170,552 @@ count
 #+END_SRC
 
 Works!
+*** Exercise 4.32
+Now we can construct /reversed/ stream, that is, we use =car= to traverse and
+=cdr= to store elements. With this extra concept combined with original stream,
+we can now manipulate line not only ray! -- what we defined as integers in
+stream was actually just natural numbers not integers, strictly speaking. More
+over, we can manipulate tree operations lazily as well as list structure. So
+until this point, to manipulate tree in combination with stream, we needed to
+first construct whole tree strictly and then convert that into stream. If we
+represent the graph in lazy tree structure, conceptually it equivalent to the
+non-deterministic programming, which decomposed automatic search from
+computation. We can think this differently: By allowed to manipulate not only
+future -- =cdr= part -- but also past -- =car= part; so we can now traverse the
+time branches back and forth freely.
+*** Exercise 4.33
+The reason it produce an error is as follows:
+1. Quoted expression processed by the =read= procedure, by which we get the
+   input from terminal, of underlying Lisp language; it is "list" in
+   implementation language not that in language being implemented.
+2. So we need transform from list structure of implementation language into that
+   of language being implemented.
+
+
+Here is the code do the right thing:
+#+BEGIN_SRC scheme
+(define (list->list lst)
+  (fold-right (lambda (item ->list)
+                `(cons ,item ,->list))
+              '(quote ())
+              lst))
+(define (text-of-quotation exp)
+  (let ((contents (cadr exp)))
+    (if (list? contents)
+        (eval (list->list contents) the-global-environment)
+        contents)))
+#+END_SRC
+
+Then let's test!
+#+BEGIN_SRC scheme
+;;; setup
+(eval cons-def the-global-environment)
+(eval car-def the-global-environment)
+(eval cdr-def the-global-environment)
+;;; test quotation
+(actual-value '(car '(a b c)) the-global-environment)
+
+;Quit!
+#+END_SRC
+
+Unfortunately, it doesn't return the control! It turns out due to the test
+=list?= since
+#+BEGIN_SRC scheme
+(list? '())
+
+;Value: #t
+#+END_SRC
+
+So
+#+BEGIN_SRC scheme
+(actual-value '(quote ()) the-global-environment)
+
+;Quit!
+#+END_SRC
+runs forever!
+
+Fix the procedure as
+#+BEGIN_SRC scheme
+(define (text-of-quotation exp)
+  (let ((contents (cadr exp)))
+    (if (and (not (null? contents))
+             (list? contents))
+        (eval (list->list contents) the-global-environment)
+        contents)))
+#+END_SRC
+
+Then re-run:
+#+BEGIN_SRC scheme
+(actual-value '(car '(a b c)) the-global-environment)
+
+;Unbound variable a
+#+END_SRC
+
+Now the problem is that =list->list= does not =quote= the element! Let's fix:
+#+BEGIN_SRC scheme
+(define (list->list lst)
+  (fold-right (lambda (item ->list)
+                `(cons ',item ,->list))
+              '(quote ())
+              lst))
+#+END_SRC
+
+Now it produces right result:
+#+BEGIN_SRC scheme
+(actual-value '(car '(a b c)) the-global-environment)
+
+;Value: a
+#+END_SRC
+*** Exercise 4.34
+To print the pair, we need to recognize whether given object is pair by =pair?=
+We can exploit the message passing paradigm:
+1. Then =(define (pair? x) (x 'pair?))=
+2. This will work if we request only to pair object; but predicate meant to
+   check whether given argument satisfy specific condition. So predicate should
+   not signal error unless it provided certain condition should be satisfied but
+   violated by user (although it is not appropriate to assume informal
+   contraction without verification).
+3. So we'd better to take another way: Make =cons=, =car=, =cdr= non-strict
+   primitive procedure; by including =pair?= as primitive (strict) procedure, we
+   got what we wanted.
+
+
+So we need to modify =apply= to cope with primitive non-strict application, and
+the new syntax procedure for non-strict primitive procedures, finally the
+=setup-environment=:
+#+BEGIN_SRC scheme
+ (define (apply procedure arguments env)
+  (cond ((primitive-procedure? procedure) ;strict primitive
+         (apply-primitive-procedure
+          procedure
+          (list-of-arg-values arguments env)))
+        ((non-strict-primitive-procedure? procedure) ;non-strict primitive
+         (apply-primitive-procedure
+          procedure
+          (list-of-delayed-args arguments env)))
+        ((compound-procedure? procedure)
+         (eval-sequence
+          (procedure-body procedure)
+          (extend-environment
+           (procedure-parameters procedure)
+           (list-of-delayed-args arguments env)
+           (procedure-environment procedure))))
+        (else
+         (error
+          "Unknown procedure type -- APPLY" procedure))))
+
+(define (non-strict-primitive-procedure? proc)
+  (tagged-list? proc 'non-strict))
+
+(define (non-strict-procedure-names)
+  (map car
+       non-strict-procedures))
+
+(define (non-strict-procedure-objects)
+  (map (lambda (proc) (list 'non-strict (cadr proc)))
+       non-strict-procedures))
+
+(define (setup-environment)
+  (let ((initial-env
+         (extend-environment
+          (non-strict-procedure-names)
+          (non-strict-procedure-objects)
+          (extend-environment (primitive-procedure-names)
+                              (primitive-procedure-objects)
+                              the-empty-environment))))
+    (define-variable! 'true true initial-env)
+    (define-variable! 'false false initial-env)
+    initial-env))
+;; initialize the startup environment
+(define primitive-procedures
+  (append (list
+           (list 'pair? (lambda (p) (tagged-list? p 'pair)))
+           (list 'car cadr)
+           (list 'cdr cddr))
+          primitive-procedures))
+
+(define non-strict-procedures
+  `((cons ,(lambda (x y) (cons 'pair (cons x y))))))
+#+END_SRC
+
+We need to make pair as tagged list to discern with other data structure. Also
+note that we made only =cons= non-strict; but not the =car= and =cdr= since
+there is no need to make those non-strict and further more, if we make them so,
+it only make the implementation complicate to select the part appropriately! You
+need to reason this by experimenting with non-strict =car= and =cdr=.
+
+Then test!
+#+BEGIN_SRC scheme
+(actual-value '(car (cons 2 4)) the-global-environment)
+
+;Value: 2
+
+(thunk? (eval '(car (cons 2 4)) the-global-environment))
+
+;Value: #t
+
+(eval '(pair? (cons 2 4)) the-global-environment)
+
+;Value: #t
+#+END_SRC
+
+Now we return to display the lazy pair appropriately. Here we used structural
+induction on object. For the pair object, we also used induction on depth
+combined with structural induction on =o2=. Finally for the choice of
+representation of thunk, we took that of stream:
+#+BEGIN_SRC scheme
+(define (represent-object o)
+  (cond ((compound-procedure? o)
+         (list 'compound-procedure
+                     (procedure-parameters o)
+                     (procedure-body o)
+                     '<procedure-env>))
+        ((thunk? o)
+         '...)
+        ((evaluated-thunk? o)
+         (represent-object (thunk-value o)))
+        ((tagged-list? o 'pair)
+         (represent-pair (cdr o)))
+        (else o)))
+
+(define (represent-pair p)
+  (let ((rep1 (represent-object (car p))) ;induction on depth
+        (o2 (cdr p)))
+    (cond ((thunk? o2)
+           (list rep1 (represent-object o2)))
+          ((evaluated-thunk? o2)
+           (cons rep1 (represent-object o2)))
+          ((tagged-list? o2 'pair)
+           (cons rep1 (represent-pair (cdr o2))))
+          (else                         ;atomic value
+           (cons rep1 (represent-object o2))))))
+#+END_SRC
+
+Then modify =user-print= as follows:
+#+BEGIN_SRC scheme
+(define (user-print object)
+  (display (represent-object object)))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+;;; L-Eval input:
+(define test-display (cons ((lambda (x) (+ 2 x)) 3) (cons 2 '())))
+
+;;; L-Eval value:
+ok
+
+;;; L-Eval input:
+test-display
+
+;;; L-Eval value:
+(... ...)
+
+;;; L-Eval input:
+(car (cdr test-display))
+
+;;; L-Eval value:
+2
+
+;;; L-Eval input:
+test-display
+
+;;; L-Eval value:
+(... 2 ...)
+
+;;; L-Eval input:
+(cdr (cdr test-display))
+
+;;; L-Eval value:
+()
+
+;;; L-Eval input:
+test-display
+
+;;; L-Eval value:
+(... 2)
+
+;;; L-Eval input:
+(car test-display)
+
+;;; L-Eval value:
+5
+
+;;; L-Eval input:
+test-display
+
+;;; L-Eval value:
+(5 2)
+
+#+END_SRC
+
+For the completeness, here I add to =user-print= additional feature, detect the
+shared structure in lazy pair:
+#+BEGIN_SRC scheme
+(define (pair?* o) (tagged-list? o 'pair))
+(define car* cadr)
+(define cdr* cddr)
+
+(define (extract-sharings object)
+  (let ((tracked '())
+        (sharings '()))
+    (define scan
+      (lambda (o)
+        (define (mutate-list! o not-tracked-op)
+          (if (memq o tracked)
+              (if (not (memq o sharings))
+                  (set! sharings (cons o sharings))
+                  'done)
+              (begin (set! tracked (cons o tracked))
+                     (not-tracked-op o))))
+        (cond ((evaluated-thunk? o)
+               (let ((contents (thunk-value o)))
+                 (if (pair?* contents)
+                     (mutate-list! contents (lambda (o) (scan o))))))
+              ((pair?* o)
+               (mutate-list!
+                o (lambda (o)
+                    (scan (car* o))
+                    (scan (cdr* o))))))))
+    (scan object)
+    sharings))
+
+(define (display-entry object)
+  (let ((sharings (extract-sharings object))
+        (issue-table '(*issue*)))       ;hash-table won't work!
+    (define (issued-number o)
+      (cond ((assq o (cdr issue-table)) => cadr)
+            (else #f)))
+    (define issue!
+      (let ((id 0))                     ;identification number
+        (lambda (o)
+          (let ((to-be-issued id))
+            (set-cdr! issue-table (cons (list o to-be-issued)
+                                        (cdr issue-table)))
+            (set! id (1+ id))
+            to-be-issued))))
+    (define (display-issued-object id)
+      (display "#")
+      (display id)
+      (display "#"))
+    (define (display-issuing id)
+      (display "#")
+      (display id)
+      (display "="))
+    (define (display-object o)
+      (cond ((compound-procedure? o)
+             (display (list 'compound-procedure
+                            (procedure-parameters o)
+                            (procedure-body o)
+                            '<procedure-env>)))
+            ((thunk? o)
+             (display '...))
+            ((evaluated-thunk? o)
+             (display-object (thunk-value o)))
+            ((pair?* o)
+             (display-pair o))
+            (else (display o))))
+    (define (display-pair p)
+      (define (display-pair-entry p)
+        (display "(")
+        (display-object (car* p))
+        (display-iter (cdr* p))
+        (display ")"))
+      (define (display-shared-or-default exp default-op pad1-op pad2-op)
+        (if (memq exp sharings)         ;it is shared structure
+            (let ((id (issued-number exp)))
+              (if id
+                  (begin (pad1-op)
+                         (display-issued-object id))
+                  (begin (pad2-op)
+                         (display-issuing (issue! exp))
+                         (display-pair-entry exp))))
+            (default-op exp)))
+      (define (display-iter exp)
+        (cond ((null? exp))
+              ((evaluated-thunk? exp)
+               (display-iter (thunk-value exp)))
+              ((pair?* exp)
+               (display-shared-or-default
+                exp
+                (lambda (p)
+                  (display " ")
+                  (display-object (car* p))
+                  (display-iter (cdr* p)))
+                (lambda () (display " . "))
+                (lambda () (display " "))))
+              ((thunk? exp)
+               (display " ")
+               (display-object exp))
+              (else
+               (display " . ")
+               (display-object exp))))
+      (display-shared-or-default
+       p (lambda (p) (display-pair-entry p))
+       (lambda () 'ignore)
+       (lambda () 'ignore)))
+    (display-object object)
+    (set-cdr! issue-table '())))        ;clear the cached
+#+END_SRC
+
+Then our =user-print= became
+#+BEGIN_SRC scheme
+(define (user-print object)
+  ;; (display (represent-object object))
+  (display-entry object))
+#+END_SRC
+
+Then test code:
+#+BEGIN_SRC scheme
+;;; L-Eval input:
+(define ones (cons 1 ones))
+
+;;; L-Eval value:
+ok
+
+;;; L-Eval input:
+ones
+
+;;; L-Eval value:
+(... ...)
+
+;;; L-Eval input:
+(car ones)
+
+;;; L-Eval value:
+1
+
+;;; L-Eval input:
+(cdr ones)
+
+;;; L-Eval value:
+#0=(1 . #0#)
+
+;;; L-Eval input:
+(define one (cons 1 two))               ;mutual recursive definition
+
+;;; L-Eval value:
+ok
+
+;;; L-Eval input:
+(define two (cons 2 one))
+
+;;; L-Eval value:
+ok
+
+;;; L-Eval input:
+(car one)
+
+;;; L-Eval value:
+1
+
+;;; L-Eval input:
+(cdr one)
+
+;;; L-Eval value:
+(... ...)
+
+;;; L-Eval input:
+(car two)
+
+;;; L-Eval value:
+2
+
+;;; L-Eval input:
+(cdr two)
+
+;;; L-Eval value:
+(1 #0=(2 1 . #0#))
+
+;;; L-Eval input:
+one
+
+;;; L-Eval value:
+(1 #0=(2 1 . #0#))
+
+;;; L-Eval input:
+two
+
+;;; L-Eval value:
+(2 #0=(1 2 . #0#))
+
+#+END_SRC
+* Variations on a Scheme -- Nondeterministic Computing
+** Amb and Search
+*** Exercise 4.35
+Note that this procedure should behave similar with =an-element-of=:
+#+BEGIN_SRC scheme
+(define (an-integer-between low high)
+  (require (<= low high))
+  (amb low (an-integer-between (1+ low) high)))
+#+END_SRC
+
+Then here is the test:
+#+BEGIN_SRC scheme
+;;; Amb-Eval input:
+(an-integer-between 1 10)
+
+;;; Starting a new problem
+;;; Amb-Eval value:
+1
+
+;;; Amb-Eval input:
+try-again
+
+;;; Amb-Eval value:
+2
+
+;;; Amb-Eval input:
+try-again
+
+;;; Amb-Eval value:
+3
+
+;;; Amb-Eval input:
+try-again
+
+;;; Amb-Eval value:
+4
+
+;;; Amb-Eval input:
+try-again
+
+;;; Amb-Eval value:
+5
+
+;;; Amb-Eval input:
+try-again
+
+;;; Amb-Eval value:
+6
+
+;;; Amb-Eval input:
+try-again
+
+;;; Amb-Eval value:
+7
+
+;;; Amb-Eval input:
+try-again
+
+;;; Amb-Eval value:
+8
+
+;;; Amb-Eval input:
+try-again
+
+;;; Amb-Eval value:
+9
+
+;;; Amb-Eval input:
+try-again
+
+;;; Amb-Eval value:
+10
+
+;;; Amb-Eval input:
+try-again
+
+;;; There are no more values of
+(an-integer-between 1 10)
+#+END_SRC

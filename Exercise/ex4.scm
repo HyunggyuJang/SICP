@@ -758,20 +758,42 @@
 
 ;; From section 4.1.7
 ;; (load "ch4-analyzingmceval")
-(load "ch4-leval")
+;; (load "ch4-leval")
+
+(define (non-strict-primitive-procedure? proc)
+  (tagged-list? proc 'non-strict))
+
+(define (non-strict-procedure-names)
+  (map car
+       non-strict-procedures))
+
+(define (non-strict-procedure-objects)
+  (map (lambda (proc) (list 'non-strict (cadr proc)))
+       non-strict-procedures))
+
+;; (define (setup-environment)
+;;   (let ((initial-env
+;;          (extend-environment
+;;           (non-strict-procedure-names)
+;;           (non-strict-procedure-objects)
+;;           (extend-environment (primitive-procedure-names)
+;;                               (primitive-procedure-objects)
+;;                               the-empty-environment))))
+;;     (define-variable! 'true true initial-env)
+;;     (define-variable! 'false false initial-env)
+;;     initial-env))
 ;; initialize the startup environment
-;; (define primitive-procedures
-;;   (append (list
-;;            (list '> >)
-;;            (list '< <)
-;;            (list '- -)
-;;            (list '= =)
-;;            (list '+ +)
-;;            (list '* *)
-;;            (list '-1+ -1+)
-;;            (list '1+ 1+))
-;;           primitive-procedures))
-(define the-global-environment (setup-environment))
+(define primitive-procedures
+  (append (list
+           (list 'pair? (lambda (p) (tagged-list? p 'pair)))
+           (list 'car cadr)
+           (list 'cdr cddr))
+          primitive-procedures))
+
+(define non-strict-procedures
+  `((cons ,(lambda (x y) (cons 'pair (cons x y))))))
+
+;; (define the-global-environment (setup-environment))
 
 (define (analyze exp)
   (cond ((self-evaluating? exp)
@@ -905,78 +927,78 @@
 ;; count
 
 ;; Exercise 4.31
-(define (apply procedure arguments env)
-  (cond ((primitive-procedure? procedure)
-         (apply-primitive-procedure
-          procedure
-          (list-of-arg-values arguments env))) ; changed
-        ((compound-procedure? procedure)
-         (eval-sequence
-          (procedure-body procedure)
-          (let ((params (procedure-parameters procedure)))
-            (extend-environment
-             (map param-name params)
-             (list-if-delayed-args
-              arguments (map param-type params) env) ; changed
-             (procedure-environment procedure)))))
-        (else
-         (error
-          "Unknown procedure type -- APPLY" procedure))))
+;; (define (apply procedure arguments env)
+;;   (cond ((primitive-procedure? procedure)
+;;          (apply-primitive-procedure
+;;           procedure
+;;           (list-of-arg-values arguments env))) ; changed
+;;         ((compound-procedure? procedure)
+;;          (eval-sequence
+;;           (procedure-body procedure)
+;;           (let ((params (procedure-parameters procedure)))
+;;             (extend-environment
+;;              (map param-name params)
+;;              (list-if-delayed-args
+;;               arguments (map param-type params) env) ; changed
+;;              (procedure-environment procedure)))))
+;;         (else
+;;          (error
+;;           "Unknown procedure type -- APPLY" procedure))))
 
 ;; param ADT
-(define (typed-param? param)
-  (and (pair? param)
-       (pair? (cdr param))))
-(define (param-type param)
-  (if (typed-param? param)
-      (cadr param)
-      'strict))
-(define (param-name param)
-  (if (typed-param? param)
-      (car param)
-      param))
+;; (define (typed-param? param)
+;;   (and (pair? param)
+;;        (pair? (cdr param))))
+;; (define (param-type param)
+;;   (if (typed-param? param)
+;;       (cadr param)
+;;       'strict))
+;; (define (param-name param)
+;;   (if (typed-param? param)
+;;       (car param)
+;;       param))
 
-(define (list-if-delayed-args exps types env)
-  (cond ((no-operands? exps) '())
-        ((null? types)
-         (error "the number of arguments do not agree with procedure"
-                ;; actually whether we should use more sophisticated error message
-                ;; or should delegate the error raise to extend-environment
-                ;; current error message is not informative enough to be useful.
-                exps))
-        (else
-         (cons
-          ((case (first types)
-             ((strict) actual-value)
-             ((lazy) delay-it)
-             ((lazy-memo) delay-memo-it)
-             (else (error "Unknown parameter type")))
-           (first-operand exps)
-           env)
-          (list-if-delayed-args (rest-operands exps)
-                                (cdr types)
-                                env)))))
+;; (define (list-if-delayed-args exps types env)
+;;   (cond ((no-operands? exps) '())
+;;         ((null? types)
+;;          (error "the number of arguments do not agree with procedure"
+;;                 ;; actually whether we should use more sophisticated error message
+;;                 ;; or should delegate the error raise to extend-environment
+;;                 ;; current error message is not informative enough to be useful.
+;;                 exps))
+;;         (else
+;;          (cons
+;;           ((case (first types)
+;;              ((strict) actual-value)
+;;              ((lazy) delay-it)
+;;              ((lazy-memo) delay-memo-it)
+;;              (else (error "Unknown parameter type")))
+;;            (first-operand exps)
+;;            env)
+;;           (list-if-delayed-args (rest-operands exps)
+;;                                 (cdr types)
+;;                                 env)))))
 
 ;; memo-thunk ADT
-(define (delay-memo-it exp env)
-  (list 'memo-thunk exp env))
-(define (memo-thunk? obj)
-  (tagged-list? obj 'memo-thunk))
+;; (define (delay-memo-it exp env)
+;;   (list 'memo-thunk exp env))
+;; (define (memo-thunk? obj)
+;;   (tagged-list? obj 'memo-thunk))
 
-(define (force-it obj)
-  (cond ((thunk? obj)
-         (actual-value (thunk-exp obj) (thunk-env obj)))
-        ((memo-thunk? obj)
-         (let ((result (actual-value
-                        (thunk-exp obj)
-                        (thunk-env obj))))
-           (set-car! obj 'evaluated-thunk)
-           (set-car! (cdr obj) result)  ; replace exp with its value
-           (set-cdr! (cdr obj) '())     ; forget unneeded env
-           result))
-        ((evaluated-thunk? obj)
-         (thunk-value obj))
-        (else obj)))
+;; (define (force-it obj)
+;;   (cond ((thunk? obj)
+;;          (actual-value (thunk-exp obj) (thunk-env obj)))
+;;         ((memo-thunk? obj)
+;;          (let ((result (actual-value
+;;                         (thunk-exp obj)
+;;                         (thunk-env obj))))
+;;            (set-car! obj 'evaluated-thunk)
+;;            (set-car! (cdr obj) result)  ; replace exp with its value
+;;            (set-cdr! (cdr obj) '())     ; forget unneeded env
+;;            result))
+;;         ((evaluated-thunk? obj)
+;;          (thunk-value obj))
+;;         (else obj)))
 
 ;; test for this extension
 ;; Here we use ex 4.29 for testing
@@ -997,3 +1019,261 @@
 ; count-memo
 ; (square-lazy (id-lazy 10))
 ; count
+
+;; Section 4.2.3
+(define cons-def
+  '(define (cons x y)
+     (lambda (m) (m x y))))
+(define car-def
+  '(define (car z)
+     (z (lambda (p q) p))))
+(define cdr-def
+  '(define (cdr z)
+     (z (lambda (p q) q))))
+
+;; Exercise 4.33
+(define (list->list lst)
+  (fold-right (lambda (item ->list)
+                `(cons ',item ,->list))
+              '(quote ())
+              lst))
+(define (text-of-quotation exp)
+  (let ((contents (cadr exp)))
+    (if (and (not (null? contents))
+             (list? contents))
+        (eval (list->list contents) the-global-environment)
+        contents)))
+
+;; Test for this modification
+;;; setup
+;; (eval cons-def the-global-environment)
+;; (eval car-def the-global-environment)
+;; (eval cdr-def the-global-environment)
+;;; test quotation
+;; (actual-value '(car '(a b c)) the-global-environment)
+
+;; Exercise 4.34
+(define (apply procedure arguments env)
+  (cond ((primitive-procedure? procedure) ;strict primitive
+         (apply-primitive-procedure
+          procedure
+          (list-of-arg-values arguments env)))
+        ((non-strict-primitive-procedure? procedure) ;non-strict primitive
+         (apply-primitive-procedure
+          procedure
+          (list-of-delayed-args arguments env)))
+        ((compound-procedure? procedure)
+         (eval-sequence
+          (procedure-body procedure)
+          (extend-environment
+           (procedure-parameters procedure)
+           (list-of-delayed-args arguments env)
+           (procedure-environment procedure))))
+        (else
+         (error
+          "Unknown procedure type -- APPLY" procedure))))
+;; test non-strict primitives
+;; (actual-value '(car (cons 2 4)) the-global-environment)
+
+;; ;Value: 2
+
+;; (thunk? (eval '(car (cons 2 4)) the-global-environment))
+
+;; ;Value: #t
+
+;; (eval '(pair? (cons 2 4)) the-global-environment)
+
+;; ;Value: #t
+
+;; print lazy pairs appropriately
+
+(define (represent-object o)
+  (cond ((compound-procedure? o)
+         (list 'compound-procedure
+                     (procedure-parameters o)
+                     (procedure-body o)
+                     '<procedure-env>))
+        ((thunk? o)
+         '...)
+        ((evaluated-thunk? o)
+         (represent-object (thunk-value o)))
+        ((tagged-list? o 'pair)
+         (represent-pair (cdr o)))
+        (else o)))
+
+(define (represent-pair p)
+  (let ((rep1 (represent-object (car p))) ;induction on depth
+        (o2 (cdr p)))
+    (cond ((thunk? o2)
+           (list rep1 (represent-object o2)))
+          ((evaluated-thunk? o2)
+           (cons rep1 (represent-object o2)))
+          ((tagged-list? o2 'pair)
+           (cons rep1 (represent-pair (cdr o2))))
+          (else                         ;atomic value
+           (cons rep1 (represent-object o2))))))
+
+(define (user-print object)
+  ;; (display (represent-object object))
+  (display-entry object))
+; (driver-loop)
+; (define test-display (cons ((lambda (x) (+ 2 x)) 3) (cons 2 '())))
+; (car test-display)
+; (car (cdr test-display))
+; (cdr (cdr test-display))
+; test-display
+
+(define (pair?* o) (tagged-list? o 'pair))
+(define car* cadr)
+(define cdr* cddr)
+
+(define (extract-sharings object)
+  (let ((tracked '())
+        (sharings '()))
+    (define scan
+      (lambda (o)
+        (define (mutate-list! o not-tracked-op)
+          (if (memq o tracked)
+              (if (not (memq o sharings))
+                  (set! sharings (cons o sharings))
+                  'done)
+              (begin (set! tracked (cons o tracked))
+                     (not-tracked-op o))))
+        (cond ((evaluated-thunk? o)
+               (let ((contents (thunk-value o)))
+                 (if (pair?* contents)
+                     (mutate-list! contents (lambda (o) (scan o))))))
+              ((pair?* o)
+               (mutate-list!
+                o (lambda (o)
+                    (scan (car* o))
+                    (scan (cdr* o))))))))
+    (scan object)
+    sharings))
+
+(define (display-entry object)
+  (let ((sharings (extract-sharings object))
+        (issue-table '(*issue*)))       ;hash-table won't work!
+    (define (issued-number o)
+      (cond ((assq o (cdr issue-table)) => cadr)
+            (else #f)))
+    (define issue!
+      (let ((id 0))                     ;identification number
+        (lambda (o)
+          (let ((to-be-issued id))
+            (set-cdr! issue-table (cons (list o to-be-issued)
+                                        (cdr issue-table)))
+            (set! id (1+ id))
+            to-be-issued))))
+    (define (display-issued-object id)
+      (display "#")
+      (display id)
+      (display "#"))
+    (define (display-issuing id)
+      (display "#")
+      (display id)
+      (display "="))
+    (define (display-object o)
+      (cond ((compound-procedure? o)
+             (display (list 'compound-procedure
+                            (procedure-parameters o)
+                            (procedure-body o)
+                            '<procedure-env>)))
+            ((thunk? o)
+             (display '...))
+            ((evaluated-thunk? o)
+             (display-object (thunk-value o)))
+            ((pair?* o)
+             (display-pair o))
+            (else (display o))))
+    (define (display-pair p)
+      (define (display-pair-entry p)
+        (display "(")
+        (display-object (car* p))
+        (display-iter (cdr* p))
+        (display ")"))
+      (define (display-shared-or-default exp default-op pad1-op pad2-op)
+        (if (memq exp sharings)         ;it is shared structure
+            (let ((id (issued-number exp)))
+              (if id
+                  (begin (pad1-op)
+                         (display-issued-object id))
+                  (begin (pad2-op)
+                         (display-issuing (issue! exp))
+                         (display-pair-entry exp))))
+            (default-op exp)))
+      (define (display-iter exp)
+        (cond ((null? exp))
+              ((evaluated-thunk? exp)
+               (display-iter (thunk-value exp)))
+              ((pair?* exp)
+               (display-shared-or-default
+                exp
+                (lambda (p)
+                  (display " ")
+                  (display-object (car* p))
+                  (display-iter (cdr* p)))
+                (lambda () (display " . "))
+                (lambda () (display " "))))
+              ((thunk? exp)
+               (display " ")
+               (display-object exp))
+              (else
+               (display " . ")
+               (display-object exp))))
+      (display-shared-or-default
+       p (lambda (p) (display-pair-entry p))
+       (lambda () 'ignore)
+       (lambda () 'ignore)))
+    (display-object object)
+    (set-cdr! issue-table '())))        ;clear the cached
+
+; Test for display-entry
+; (define ones (cons 1 ones))
+; ones
+; (car ones)
+; (cdr ones)
+; Test for mutual recursive definition
+; (define one (cons 1 two))
+; (define two (cons 2 one))
+; (car one)
+; (cdr one)
+; (car two)
+; (cdr two)
+; one
+; two
+
+;; (define test-object
+;;   (begin (eval '(define ones (cons 1 ones)) the-global-environment)
+;;          (actual-value '(car ones) the-global-environment)
+;;          (actual-value '(cdr ones) the-global-environment)
+;;          (eval 'ones the-global-environment)))
+
+;; Variations on a Scheme -- Nondeterministic Computing
+(load "ch4-ambeval")
+(define the-global-environment (setup-environment))
+(define require-def
+  '(define (require p)
+     (if (not p) (amb))))
+;;; Exercise 4.35
+(define an-integer-bewteen-def
+  '(define (an-integer-between low high)
+     (require (<= low high))
+     (amb low (an-integer-between (1+ low) high))))
+;;; Example usage in the text
+(define a-pythagorean-triple-between-def
+  '(define (a-pythagorean-triple-between low high)
+     (let ((i (an-integer-between low high)))
+       (let ((j (an-integer-between i high)))
+         (let ((k (an-integer-between j high)))
+           (require (= (+ (* i i) (* j j)) (* k k)))
+           (list i j k))))))
+;;; setup
+;; (ambeval require-def the-global-environment
+;;          (lambda (val fail) val) (lambda () 'ignore))
+;; (ambeval an-integer-bewteen-def the-global-environment
+;;          (lambda (val fail) val) (lambda () 'ignore))
+;; (ambeval a-pythagorean-triple-between-def the-global-environment
+;;          (lambda (val fail) val) (lambda () 'ignore))
+;; (ambeval '(a-pythagorean-triple-between 3 20) the-global-environment
+;;          (lambda (val fail) val) (lambda () 'ignore))
