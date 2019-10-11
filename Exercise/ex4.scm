@@ -1140,9 +1140,7 @@
               (begin (set! tracked (cons o tracked))
                      (not-tracked-op o))))
         (cond ((evaluated-thunk? o)
-               (let ((contents (thunk-value o)))
-                 (if (pair?* contents)
-                     (mutate-list! contents (lambda (o) (scan o))))))
+               (scan (thunk-value o)))
               ((pair?* o)
                (mutate-list!
                 o (lambda (o)
@@ -1250,8 +1248,8 @@
 ;;          (eval 'ones the-global-environment)))
 
 ;; Variations on a Scheme -- Nondeterministic Computing
-(load "ch4-ambeval")
-(define the-global-environment (setup-environment))
+;; (load "ch4-ambeval")
+;; (define the-global-environment (setup-environment))
 (define require-def
   '(define (require p)
      (if (not p) (amb))))

@@ -2469,9 +2469,7 @@ shared structure in lazy pair:
               (begin (set! tracked (cons o tracked))
                      (not-tracked-op o))))
         (cond ((evaluated-thunk? o)
-               (let ((contents (thunk-value o)))
-                 (if (pair?* contents)
-                     (mutate-list! contents (lambda (o) (scan o))))))
+               (scan (thunk-value o)))
               ((pair?* o)
                (mutate-list!
                 o (lambda (o)
@@ -2625,19 +2623,19 @@ ok
 (cdr two)
 
 ;;; L-Eval value:
-(1 #0=(2 1 . #0#))
+#0=(1 2 . #0#)
 
 ;;; L-Eval input:
 one
 
 ;;; L-Eval value:
-(1 #0=(2 1 . #0#))
+#0=(1 2 . #0#)
 
 ;;; L-Eval input:
 two
 
 ;;; L-Eval value:
-(2 #0=(1 2 . #0#))
+#0=(2 1 . #0#)
 
 #+END_SRC
 * Variations on a Scheme -- Nondeterministic Computing
