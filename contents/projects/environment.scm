@@ -19,14 +19,48 @@
 
 ; bindings
 (define (make-binding var val)
-  (list var val))
+  (list var (make-history val)))
 (define binding-variable car)
-(define binding-value cadr)
+(define (binding-value b) (current-value (cadr b)))
 (define binding-search (association-procedure eq? car))
 (define (set-binding-value! binding val)
-  (set-car! (cdr binding) val))
+  (update-value! (cadr binding) val))
+(define (unset-binding-value! binding)
+  (revert-value! (cadr binding)))
 
-; frames
+;; ;; Test for unset-binding-value!
+;; (define test-binding (make-binding 'x 4))
+;; (binding-value test-binding)
+;; ;Value: 4
+;; (set-binding-value! test-binding 5)
+;; (binding-value test-binding)
+;; ;Value: 5
+;; (set-binding-value! test-binding 6)
+;; (binding-value test-binding)
+;; ;Value: 6
+;; (unset-binding-value! test-binding)
+;; (binding-value test-binding)
+;; ;Value: 5
+;; (unset-binding-value! test-binding)
+;; (binding-value test-binding)
+;; ;Value: 4
+;; (unset-binding-value! test-binding)
+;; (binding-value test-binding)
+;; ;Value: 4
+
+;; history
+(define (make-history val) (list val val)) ;headed list
+(define current-value car)
+(define (update-value! hist v)
+  (set-car! hist v)
+  (set-cdr! hist (cons v (cdr hist))))
+(define (revert-value! hist)
+  (cond ((null? (cddr hist)) unspecific)
+        (else
+         (set-cdr! hist (cddr hist))
+         (set-car! hist (cadr hist)))))
+
+                                        ; frames
 (define (make-frame variables values)
   (cons 'frame (map make-binding variables values)))
 (define (frame-variables frame) (map binding-variable (cdr frame)))
@@ -58,13 +92,22 @@
   (if (eq? env the-empty-environment)
       (error "Unbound variable -- LOOKUP" var)
       (let* ((frame (first-frame env))
-	     (binding (find-in-frame var frame)))
-	(if binding
-	    (set-binding-value! binding val)
-	    (set-variable-value! var val (enclosing-environment env))))))
+             (binding (find-in-frame var frame)))
+        (if binding
+            (set-binding-value! binding val)
+            (set-variable-value! var val (enclosing-environment env))))))
+
+(define (unset-variable-value! var env)
+  (if (eq? env the-empty-environment)
+      (error "Unbound variable -- LOOKUP" var)
+      (let* ((frame (first-frame env))
+             (binding (find-in-frame var frame)))
+        (if binding
+            (unset-binding-value! binding)
+            (unset-variable-value! var (enclosing-environment env))))))
 
 (define (define-variable! var val env)
-  (warn-if-defined-in-regular-scheme var)
+  ;; (warn-if-defined-in-regular-scheme var)
   (let* ((frame (first-frame env))
 	 (binding (find-in-frame var frame)))
     (if binding
@@ -78,17 +121,26 @@
   (list (list 'car car)
         (list 'cdr cdr)
         (list 'cons cons)
-	(list 'set-car! set-car!)
-	(list 'set-cdr! set-cdr!)
+        (list 'set-car! set-car!)
+        (list 'set-cdr! set-cdr!)
         (list 'null? null?)
         (list '+ +)
-	(list '- -)
-	(list '< <)
+        (list '- -)
+        (list '< <)
         (list '> >)
         (list '= =)
-	(list 'display display)
-	(list 'not not)
-        ; ... more primitives
+        (list '* *)
+        (list 'display display)
+        (list 'not not)
+        ;; added ones
+        (list 'cadr cadr)
+        (list 'cddr cddr)
+        (list 'newline newline)
+        (list 'length length)
+        (list '<= <=)
+        (list 'list list)
+        (list 'eq? eq?)
+        ;; ... more primitives
         ))
 
 (define (primitive-procedure-names) (map car (primitive-procedures)))
@@ -104,11 +156,12 @@
   (let ((initial-env (extend-environment (primitive-procedure-names)
                                          (primitive-procedure-objects)
                                          the-empty-environment))
-	(oldwarn *meval-warn-define*))
-    (set! *meval-warn-define* #f)
+	;; (oldwarn *meval-warn-define*)
+        )
+    ;; (set! *meval-warn-define* #f)
     (define-variable! 'true #t initial-env)
     (define-variable! 'false #f initial-env)
-    (set! *meval-warn-define* oldwarn)
+    ;; (set! *meval-warn-define* oldwarn)
     initial-env))
 
 (define the-global-environment (setup-environment))

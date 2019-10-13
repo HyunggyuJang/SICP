@@ -7171,6 +7171,616 @@ An earth-shattering, soul-piercing scream is heard...
 
 
 Done!
+* Project 5 -- The Meta-Circular Evaluator
+** Computer Exercise 1: Exploring =Meval=.
+To do what we requested we need to modify the =primitive-procedures= procedure
+in =environment.scm=. Here we add the following primitives: =cadr=, =cddr=,
+=newline=
+#+BEGIN_SRC scheme
+(define (primitive-procedures)
+  (list (list 'car car)
+        (list 'cdr cdr)
+        (list 'cons cons)
+        (list 'set-car! set-car!)
+        (list 'set-cdr! set-cdr!)
+        (list 'null? null?)
+        (list '+ +)
+        (list '- -)
+        (list '< <)
+        (list '> >)
+        (list '= =)
+        (list 'display display)
+        (list 'not not)
+        ;; added ones
+        (list 'cadr cadr)
+        (list 'cddr cddr)
+        (list 'newline newline)
+        ;; ... more primitives
+        ))
+#+END_SRC
+
+Then let's test it:
+#+BEGIN_SRC scheme
+(m-eval '(begin (define x '(1 2 3)) (cadr x)) the-global-environment)
+
+;Value: 2
+
+(m-eval '(cddr x) the-global-environment)
+
+;Value: (3)
+
+(m-eval '(begin (newline) (display x)) the-global-environment)
+
+(1 2 3)
+;Unspecified return value
+#+END_SRC
+** Computer Exercise 2: Changing style.
+Here is the experiment:
+#+BEGIN_SRC scheme
+(m-eval '(define x 5) the-global-environment)
+(m-eval '(if (= x 0)
+             (set! x 0.000001))
+        the-global-environment)
+
+;The object (), passed as an argument to safe-car, is not the correct type.
+;To continue, call RESTART with an option number:
+; (RESTART 1) => Return to read-eval-print level 1.
+#+END_SRC
+
+As the current evaluator does not allows =if= special form to lack its
+/alternative/ part, it signal error as above. To fix this behavior, that is to
+allow the alternative part to be lack, we need to modify =eval-if= procedure; or
+we could just modify the selector -- =if-alternative= -- to return =#f= whenever
+=if= expression lack or its alternative part:
+#+BEGIN_SRC scheme
+(define (if-alternative exp) (if (null? (cdddr exp))
+                                 'false
+                                 (cadddr exp)))
+#+END_SRC
+
+Then the last test clause becomes
+#+BEGIN_SRC scheme
+(m-eval '(if (= x 0)
+             (set! x 0.000001))
+        the-global-environment)
+
+;Value: #f
+#+END_SRC
+** Computer Exercise 3: Adding a special form.
+*** Create a data abstraction for handling =do ... while= loops
+Here is the code with test:
+#+BEGIN_SRC scheme
+;; do while syntax procedures
+;; test expression
+(define syntax-do-while
+  '(do <exp1>
+       <exp2>
+       ...
+       <expN> while <test>))
+;;; detector
+(define (do-while? expr) (tagged-list? expr 'do))
+;; Test for do-while?
+;; (do-while? syntax-do-while)
+;; ;Value: #t
+
+;;; selectors
+(define (do-while-exprs expr)
+  (let take-until-while ((exps (cdr expr)))
+    (if (eq? (car exps) 'while)
+        '()
+        (cons (car exps) (take-until-while (cdr exps))))))
+;; Test for do-while-exprs
+;; (do-while-exprs syntax-do-while)
+;; ;Value: (<exp1> <exp2> ... <expn>)
+
+(define (do-while-test expr)
+  (car (last-pair expr)))
+;; Test for do-while-test
+;; (do-while-test syntax-do-while)
+;; ;Value: <test>
+#+END_SRC
+*** Add a dispatch clause to the right part of m-eval
+Just uncomment that!
+*** Write the procedure(s) that handle the actual evaluation of the =do ... while= loop.
+Here is the simple code with test:
+#+BEGIN_SRC scheme
+(define (eval-do-while exp env)
+  (let loop ()
+    (for-each (lambda (exp) (m-eval exp env))
+              (do-while-exprs exp))
+    (if (m-eval (do-while-test exp) env)
+        (loop)
+        'done)))
+#+END_SRC
+
+#+BEGIN_SRC scheme
+(m-eval
+ '(let ((x '()))
+    (do (set! x (cons '* x))
+        (display x)
+      (newline)
+      while (< (length x) 3)))
+ the-global-environment)
+
+(*)
+(* *)
+(* * *)
+;Value: done
+
+;;; M-Eval input:
+(let ((x '()))
+    (do (set! x (cons '* x))
+        (display x)
+      (newline)
+      while (< (length x) 3)))
+(*)
+(* *)
+(* * *)
+
+;;; M-Eval value:
+done
+#+END_SRC
+** Computer Exercise 4: The let* special form
+*** Create syntax procedures to extract out the parts of a =let*=
+#+BEGIN_SRC scheme
+;;; We just lend the syntax procedures for let
+(define (let*? expr) (tagged-list? expr 'let*))
+(define let*-bound-variables let-bound-variables)
+(define let*-bound-values let-bound-values)
+(define let*-body let-body)
+#+END_SRC
+*** Add a dispatch clause to =m-eval= to handle =let*= expressions
+#+BEGIN_SRC scheme
+,*** in m-eval
+        ((let? exp) (m-eval (let->application exp) env))
+        ((let*? exp) (eval-let* exp env))
+#+END_SRC
+*** Create procedure(s) to handle the evaluation of the =let*=
+Simple code with tests:
+#+BEGIN_SRC scheme
+(define (eval-let* exp env)
+  (eval-sequence (let*-body exp)
+                 (fold-left
+                  (lambda (env var val)
+                    (extend-environment
+                     (list var) (list (m-eval val env)) env))
+                  env
+                  (let*-bound-variables exp)
+                  (let*-bound-values exp))))
+#+END_SRC
+
+#+BEGIN_SRC scheme
+;;; M-Eval input:
+(let* ((i 3)
+       (j (factorial i)))
+  (list i j))
+
+;;; M-Eval value:
+(3 6)
+#+END_SRC
+** Computer Exercise 5:
+*** Create syntax procedures to extract out the parts of a =unset!= expression
+#+BEGIN_SRC scheme
+;; Test syntax
+(define syntax-unset '(unset! x))
+
+;;; detector
+(define (undo-assignment? expr) (tagged-list? expr 'unset!))
+;; test for dectector
+;; (undo-assignment? syntax-unset)
+;; ;Value: #t
+;
+;;; selector
+(define (undo-var expr) (cadr expr))
+;; test for selector
+;; (undo-var syntax-unset)
+;; ;Value: x
+#+END_SRC
+*** Add a dispatch clause to =m-eval= to handle =unset!= expressions
+#+BEGIN_SRC scheme
+,*** in m-eval
+        ((undo-assignment? exp) (eval-unset! exp env))
+#+END_SRC
+*** Modify the binding abstraction to support the =unset-binding-value!=
+Here we make new ADT as backbone for =binding='s value:
+#+BEGIN_SRC scheme
+;; history
+(define (make-history val) (list val val)) ;headed list
+(define current-value car)
+(define (update-value! hist v)
+  (set-car! hist v)
+  (set-cdr! hist (cons v (cdr hist))))
+(define (revert-value! hist)
+  (cond ((null? (cddr hist)) unspecific)
+        (else
+         (set-cdr! hist (cddr hist))
+         (set-car! hist (cadr hist)))))
+#+END_SRC
+
+Then our binding ADT become
+#+BEGIN_SRC scheme
+; bindings
+(define (make-binding var val)
+  (list var (make-history val)))
+(define binding-variable car)
+(define (binding-value b) (current-value (cadr b)))
+(define binding-search (association-procedure eq? car))
+(define (set-binding-value! binding val)
+  (update-value! (cadr binding) val))
+(define (unset-binding-value! binding)
+  (revert-value! (cadr binding)))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+;; Test for unset-binding-value!
+(define test-binding (make-binding 'x 4))
+(binding-value test-binding)
+;Value: 4
+(set-binding-value! test-binding 5)
+(binding-value test-binding)
+;Value: 5
+(set-binding-value! test-binding 6)
+(binding-value test-binding)
+;Value: 6
+(unset-binding-value! test-binding)
+(binding-value test-binding)
+;Value: 5
+(unset-binding-value! test-binding)
+(binding-value test-binding)
+;Value: 4
+(unset-binding-value! test-binding)
+(binding-value test-binding)
+;Value: 4
+#+END_SRC
+*** Write =eval-unset!=, which undoes the last =set!= to the variable
+We need lower level procedure that is analogous to =set-variable-value!=:
+#+BEGIN_SRC scheme
+(define (unset-variable-value! var env)
+  (if (eq? env the-empty-environment)
+      (error "Unbound variable -- LOOKUP" var)
+      (let* ((frame (first-frame env))
+             (binding (find-in-frame var frame)))
+        (if binding
+            (unset-binding-value! binding)
+            (unset-variable-value! var (enclosing-environment env))))))
+#+END_SRC
+
+Then,
+#+BEGIN_SRC scheme
+(define (eval-unset! exp env)
+  (unset-variable-value! (undo-var exp) env))
+#+END_SRC
+
+Now we test the whole new feature:
+#+BEGIN_SRC scheme
+;;; M-Eval input:
+(define x 4)
+
+;;; M-Eval value:
+#!unspecific
+
+;;; M-Eval input:
+x
+
+;;; M-Eval value:
+4
+
+;;; M-Eval input:
+(set! x 5)
+
+;;; M-Eval value:
+#!unspecific
+
+;;; M-Eval input:
+x
+
+;;; M-Eval value:
+5
+
+;;; M-Eval input:
+(set! x 6)
+
+;;; M-Eval value:
+#!unspecific
+
+;;; M-Eval input:
+x
+
+;;; M-Eval value:
+6
+
+;;; M-Eval input:
+(unset! x)
+
+;;; M-Eval value:
+#!unspecific
+
+;;; M-Eval input:
+x
+
+;;; M-Eval value:
+5
+
+;;; M-Eval input:
+(unset! x)
+
+;;; M-Eval value:
+#!unspecific
+
+;;; M-Eval input:
+x
+
+;;; M-Eval value:
+4
+
+;;; M-Eval input:
+(unset! x)
+
+;;; M-Eval value:
+#!unspecific
+
+;;; M-Eval input:
+x
+
+;;; M-Eval value:
+4
+#+END_SRC
+** Computer Exercise 6: Let's desugar for a =while=.
+Here is the simple transformation procedure, =do-while->transformed=:
+#+BEGIN_SRC scheme
+(define (do-while->transformed exp)
+  `(begin ,@(do-while-exprs exp)
+          (if ,(do-while-test exp)
+              ,exp 'done)))
+#+END_SRC
+, which exploit the idea behind the fixed point solution of lambda calculus (see
+[[youtube:aAlR3cezPJg?list=PLE18841CABEA24090][lecture 7A]]). Then our dispatch clause becomes
+#+BEGIN_SRC scheme
+,*** in m-eval
+        ((do-while? exp) (m-eval (do-while->transformed exp) env))
+#+END_SRC
+
+Then test!
+#+BEGIN_SRC scheme
+;;; M-Eval input:
+(let ((x '()))
+    (do (set! x (cons '* x))
+        (display x)
+      (newline)
+      while (< (length x) 3)))
+(*)
+(* *)
+(* * *)
+
+;;; M-Eval value:
+done
+
+#+END_SRC
+** Computer Exercise 7: Transforming boolean combinations
+I've done with the derived the version, which has "name capture" problem in it.
+Here we actually implement the version requested in the [[Exercise 10: Avoiding Name Capture][last exercise problem]].
+
+As we are provided already the syntax procedures for =and= and =or=, all we need
+to do is add the relevant clauses in =m-eval= and implement the procedure
+required to derive that form:
+#+BEGIN_SRC scheme
+,*** in m-eval
+        ((and? exp) (m-eval (and->transformed exp) env))
+        ((or? exp) (e-eval (or->transformed exp) env))
+#+END_SRC
+
+Then the transforming codes:
+#+BEGIN_SRC scheme
+(define (and->transformed exp)
+  (cond ((null? (and-exprs exp)) 'true)
+        ((last-exp? (and-exprs exp))
+         (first-exp (and-exprs exp)))
+        (else `(and ,@(rest-exps (and-exprs exp))))))
+
+(define (or->transformed exp)
+  (cond ((null? (or-exprs exp)) 'false)
+        ((last-exp? (or-exprs exp))
+         (first-exp (or-exprs exp)))
+        (else `(let ((x ,(first-exp (or-exprs exp))))
+                 (if x x
+                     (or ,@(rest-exps (or-exprs exp))))))))
+#+END_SRC
+
+It works normally:
+#+BEGIN_SRC scheme
+;;; M-Eval input:
+(or (begin (display "once ") #f)
+    (begin (display "and ") #f)
+    (begin (display "only ") 'done)
+    (begin (display "adbmal") #t))
+once and only
+;;; M-Eval value:
+done
+
+;;; M-Eval input:
+(and (begin (display "a ") (> 6 5))
+     (begin (display "b ") (< 6 5))
+     (begin (display "c ") (+ 6 5)))
+a b
+;;; M-Eval value:
+#f
+#+END_SRC
+
+Unfortunately, having name capture problem as normal too:
+#+BEGIN_SRC scheme
+;;; M-Eval input:
+(or (begin (display x) #f)
+    (begin (display x) #t))
+0#f
+;;; M-Eval value:
+#t
+#+END_SRC
+
+Let we inspect what is the problem:
+#+BEGIN_SRC scheme
+(pretty-print
+ (or->transformed '(or (begin (display x) #f)
+                       (begin (display x) #t))))
+(let ((x (begin (display x) #f)))
+  (if x
+      x
+      (or (begin (display x) #t))))
+                                        ;Unspecified return value
+#+END_SRC
+
+The problem was the subsequent =or= expression executed in the =let=
+environment. To deal with this problem, we can try following alternatives:
+1. Avoid using name:
+   We need to reference the value more than one time -- test and return that
+   value, the only way we know to accomplish this task is to =define= or use
+   =let=. We can not avoid using name in this situation.
+2. Use unique name space:
+   Let we design the environment diagram, in which we can get unique name space.
+   Actually I've done this with my digital paper, and that diagram can be coded
+   using =lambda= as it captures the environment when it got evaluated; so by
+   capturing the subsequent expression before entering the frame made by =let=,
+   we can treat the newly made frame as unique name space.
+
+
+Here is the result code and test:
+#+BEGIN_SRC scheme
+(define (or->transformed exp)
+  (cond ((null? (or-exprs exp)) 'false)
+        ((last-exp? (or-exprs exp))
+         (first-exp (or-exprs exp)))
+        (else `(let ((x ,(first-exp (or-exprs exp)))
+                     (rest (lambda () (or ,@(rest-exps (or-exprs exp))))))
+                 (if x x (rest))))))
+
+;;; M-Eval input:
+(or (begin (display x) #f)
+    (begin (display x) #t))
+00
+;;; M-Eval value:
+#t
+#+END_SRC
+
+We can apply this technique to the version of =or= that transformed to =if= with
+=let=:
+#+BEGIN_SRC scheme
+(define (or->transformed exp)
+  (let transformer ((subs (or-exprs exp)))
+    (cond ((null? subs) 'false)
+          ((last-exp? subs) (first-exp subs))
+          (else `(let ((first ,(first-exp subs))
+                       (rest
+                        (lambda () ,(transformer (rest-exps subs)))))
+                   (if first first (rest)))))))
+#+END_SRC
+** Computer Exercise 8: Desugaring =case=.
+*** Create syntax procedures to extract parts from =case=
+It is analogous to =cond= syntax procedures:
+#+BEGIN_SRC scheme
+(define (case? exp) (tagged-list? exp 'case))
+(define (case-message exp) (cadr exp))
+(define (case-clauses exp) (cddr exp))
+(define first-case-clause car)
+(define rest-case-clauses cdr)
+(define (make-case msg seq) (cons 'case (cons msg seq)))
+#+END_SRC
+*** Add dispatch clause to =m-eval= clause:
+#+BEGIN_SRC scheme
+,*** in m-eval
+        ((case? exp) (m-eval (case->if exp) env))
+#+END_SRC
+*** Write desugaring procedure, =case->if=
+This is also analogous to =cond->if=:
+#+BEGIN_SRC scheme
+(define (case->if expr)
+  (let ((message (case-message expr))
+        (clauses (case-clauses expr)))
+    (if (null? clauses)
+        #f
+        (if (eq? (car (first-case-clause clauses)) 'else)
+            (make-begin (cdr (first-case-clause clauses)))
+            (make-if `(eq? ,message
+                           ',(caar (first-case-clause clauses)))
+                     (make-begin (cdr (first-case-clause clauses)))
+                     (make-case message (rest-case-clauses clauses)))))))
+#+END_SRC
+
+Then test!
+#+BEGIN_SRC scheme
+;;; M-Eval input
+(define (test-case msg)
+  (case msg
+    ((TYPE) 'do-something-if-message-is-type)
+    ((FOO) 'do-something-if-message-is-foo)
+    (else 'do-something-further-if-nothing-matches)))
+
+;;; M-Eval value:
+#!unspecific
+
+;;; M-Eval input:
+(test-case 'foo)
+
+;;; M-Eval value:
+do-something-if-message-is-foo
+
+;;; M-Eval input:
+(test-case 'type)
+
+;;; M-Eval value:
+do-something-if-message-is-type
+
+;;; M-Eval input:
+(test-case 'something-else)
+
+;;; M-Eval value:
+do-something-further-if-nothing-matches
+
+#+END_SRC
+** Computer Exercise 9: Name Capture and Static Analysis
+This procedure's algorithm works as structural induction on =eval= clauses:
+#+BEGIN_SRC scheme
+(define (names-used-in exp)
+  (cond ((self-evaluating? exp) (no-names))
+        ((variable? exp) (single-name exp))
+        ((quoted? exp) (no-names))
+        ((assignment? exp)
+         (merge-names (names-used-in (assignment-variable exp))
+                      (names-used-in (assignment-value exp))))
+        ((unassignment? exp)
+         (names-used-in (undo-var exp)))
+        ((definition? exp)
+         (merge-names (names-used-in (definition-variable exp))
+                      (names-used-in (definition-value exp))))
+        ((if? exp)
+         (merge-names (names-used-in (if-predicate exp))
+                      (merge-names (names-used-in (if-consequent exp))
+                                   (names-used-in (if-alternative exp)))))
+        ((lambda? exp)
+         (merge-names (used-in-sequence (lambda-parameters exp))
+                      (used-in-sequence (lambda-body exp))))
+        ((begin? exp) (used-in-sequence (cdr exp)))
+        ((cond? exp) (names-used-in (cond->if exp)))
+        ((let? exp) (names-used-in (let->application exp)))
+        ((let*? exp)
+         (merge-names (used-in-sequence (let*-bound-variables exp))
+                      (merge-names (used-in-sequence (let*-bound-values exp))
+                                   (used-in-sequence (let*-body exp)))))
+        ((and? exp)
+         (names-used-in (and->transformed exp)))
+        ((or? exp)
+         (names-used-in (or->transformed exp)))
+        ((do-while? exp)
+         (merge-names (names-used-in (do-while-test exp))
+                      (used-in-sequence (do-while-exprs exp))))
+        ((case? exp) (names-used-in (case->if exp)))
+        ((application? exp)
+         (merge-names (names-used-in (operator exp))
+                      (used-in-sequence (operands exp))))
+        (else (error "Unknown expression type -- NAMES-USED-IN" exp))))
+#+END_SRC
+** Computer Exercise 10: Avoiding Name Capture
+I've already solved this in [[Computer Exercise 7: Transforming boolean combinations][previous exercise]].
+
 * Footnotes
 
 [fn:5] We can ask only the objects -- instances -- to request the method;

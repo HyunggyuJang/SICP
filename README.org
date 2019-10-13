@@ -2717,3 +2717,689 @@ try-again
 ;;; There are no more values of
 (an-integer-between 1 10)
 #+END_SRC
+*** Exercise 4.36
+The specified idea coded as
+#+BEGIN_SRC scheme
+(define (a-pythagorean-triple-from low high)
+     (let ((i (an-integer-starting-from low)))
+       (let ((j (an-integer-starting-from i)))
+         (let ((k (an-integer-starting-from j)))
+           (require (= (+ (* i i) (* j j)) (* k k)))
+           (list i j k)))))
+#+END_SRC
+Unfortunately the last =let= expression doesn't end; it tries all the integers
+higher than =j=. So it will never tries other than =i= equals =low=, =j= equals =low=.
+
+So we need to constrain =k= using following rules -- the triangle inequality:
+- $i^{2}+j^{2} \ge k^{2} \iff i+j > k$ for $i,j \ge 1$
+
+
+This also would not work since now =i= is fixed to =low=; this kind problem is
+exactly same as before, when we tried to produce stream of pairs from two
+input streams. We need to ensure arbitrary element should appear in the
+resulting stream after finite number of =cdr= ing down.
+
+Can we fix current problem using the analogous strategy from stream's? Or can we
+come up with nondeterminism specific algorithm?
+
+Here we try the latter approach using the observation from
+=a-pythagorean-triple-between=; in that procedure, it uses strategy of
+elimination -- at any stage of computation, it removes the cases where =i= lower
+than current =i=, e.g. if it started from ~low = 2~ and current =i= is 4 then
+it is provided that every case where =low= \le =i= \le 4; similar argument
+applied to =j= and =k= --, we can apply that strategy to this problem as =k= to
+be the first stage of computation.
+
+Here is the code:
+#+BEGIN_SRC scheme
+(define (a-pythagorean-triple-from low)
+     (let ((k (an-integer-starting-from low)))
+       (let ((i (an-integer-between low k)))
+         (let ((j (an-integer-between i k)))
+           (require (= (+ (* i i) (* j j)) (* k k)))
+           (list i j k)))))
+#+END_SRC
+
+And test:
+#+BEGIN_SRC scheme
+;;; Amb-Eval input:
+(a-pythagorean-triple-from 1)
+
+;;; Starting a new problem
+;;; Amb-Eval value:
+(3 4 5)
+
+...
+
+;;; Amb-Eval input:
+try-again
+
+;;; Amb-Eval value:
+(12 16 20)
+
+;;; Amb-Eval input:
+try-again
+
+;;; Amb-Eval value:
+(7 24 25)
+#+END_SRC
+
+From this exercise, we learned our =amb= evaluator can be thought of as
+/generator/ in python as long as it traverse the /choice/ tree in depth-first.
+So until now, =amb= evaluator allowed us to loop over infinite range, like
+=stream= allowed to process infinite list. Is this observation is general enough
+to characterize =amb= evaluator? To answer with this question, we need to
+explore following examples with this mind.
+*** Exercise 4.37
+Yes since the number of cases to try out is different in asymptotic complexity.
+
+The former one is \Theta(n^{3}) and this one is \Theta(n^{2}), where n is the
+number of element in the given range -- [low, high].
+
+So as long as same in both are asymptotic complexities of computation in each
+step.
+
+The difference in computation of both is the use of =sqrt=. From this
+[[https://en.wikipedia.org/wiki/Computational_complexity_of_mathematical_operations][source]], =sqrt='s complexity same as the multiplication.
+
+So consequently this Ben's version is efficient in asymptotic order.
+** Examples of Nondeterministic Programs
+*** Exercise 4.38
+Here is the result:
+#+BEGIN_SRC scheme
+;;; Amb-Eval input:
+(multiple-dwelling)
+
+;;; Starting a new problem
+;;; Amb-Eval value:
+((baker 1) (cooper 2) (fletcher 4) (miller 3) (smith 5))
+
+;;; Amb-Eval input:
+try-again
+
+;;; Amb-Eval value:
+((baker 1) (cooper 2) (fletcher 4) (miller 5) (smith 3))
+
+;;; Amb-Eval input:
+try-again
+
+;;; Amb-Eval value:
+((baker 1) (cooper 4) (fletcher 2) (miller 5) (smith 3))
+
+;;; Amb-Eval input:
+try-again
+
+;;; Amb-Eval value:
+((baker 3) (cooper 2) (fletcher 4) (miller 5) (smith 1))
+
+;;; Amb-Eval input:
+try-again
+
+;;; Amb-Eval value:
+((baker 3) (cooper 4) (fletcher 2) (miller 5) (smith 1))
+
+;;; Amb-Eval input:
+try-again
+
+;;; There are no more values of
+(multiple-dwelling)
+
+#+END_SRC
+
+So, 4 more answers!
+*** Exercise 4.39
+Yes, it matter. We can manage to reduce the average number of tests to get aborted or
+succeed. Let we think about the possibilities that each branches passes the
+specific requirement. Then reorder the restrictions in the increasing order
+of this "weight." After that, we obtain minimum number of tests needed to get answer.
+
+Here is the reordering:
+#+BEGIN_SRC scheme
+(define (multiple-dwelling)
+  (let ((baker (amb 1 2 3 4 5))
+        (cooper (amb 1 2 3 4 5))
+        (fletcher (amb 1 2 3 4 5))
+        (miller (amb 1 2 3 4 5))
+        (smith (amb 1 2 3 4 5)))
+    (require
+     (distinct? (list baker cooper fletcher miller smith)))
+    (require (> miller cooper))
+    (require (not (= (abs (- smith fletcher)) 1)))
+    (require (not (= (abs (- fletcher cooper)) 1)))
+    (require (not (= baker 5)))
+    (require (not (= cooper 1)))
+    (require (not (= fletcher 5)))
+    (require (not (= fletcher 1)))
+    (list (list 'baker baker)
+          (list 'cooper cooper)
+          (list 'fletcher fletcher)
+          (list 'miller miller)
+          (list 'smith smith))))
+#+END_SRC
+
+Then compare the time consumed:
+#+BEGIN_SRC scheme
+;; original version
+(timed (lambda ()
+         (ambeval '(multiple-dwelling) the-global-environment
+                  (lambda (val fail) val) (lambda () 'ignore))))
+
+time expended: .86
+;Value: ((baker 3) (cooper 2) (fletcher 4) (miller 5) (smith 1))
+
+;;modified definition
+(timed (lambda ()
+         (ambeval '(multiple-dwelling-modified) the-global-environment
+                  (lambda (val fail) val) (lambda () 'ignore))))
+
+time expended: .77
+;Value: ((baker 3) (cooper 2) (fletcher 4) (miller 5) (smith 1))
+#+END_SRC
+*** Exercise 4.40
+Like we did when we transit from list processing to stream processing, let we
+interleave construction with filtering along with the criterion as before --
+ordering the requirement in "weight".
+
+Let we first inspect the result and then discuss what caused that difference.
+
+Here is the code:
+#+BEGIN_SRC scheme
+(define (multiple-dwelling-optimized)
+     (let ((fletcher (amb 1 2 3 4 5)))
+       (require (not (= fletcher 5)))
+       (require (not (= fletcher 1)))
+       (let ((cooper (amb 1 2 3 4 5)))
+         (require (not (= cooper 1)))
+         (require (not (= (abs (- fletcher cooper)) 1)))
+         (let ((miller (amb 1 2 3 4 5)))
+           (require (> miller cooper))
+           (let ((baker (amb 1 2 3 4 5)))
+             (require (not (= baker 5)))
+             (let ((smith (amb 1 2 3 4 5)))
+               (require (not (= (abs (- smith fletcher)) 1)))
+               (require
+                (distinct? (list baker cooper fletcher miller smith)))
+               (list (list 'baker baker)
+                     (list 'cooper cooper)
+                     (list 'fletcher fletcher)
+                     (list 'miller miller)
+                     (list 'smith smith))))))))
+#+END_SRC
+
+Then compare the time it consumed!
+#+BEGIN_SRC scheme
+(timed (lambda ()
+         (ambeval '(multiple-dwelling-optimized) the-global-environment
+                  (lambda (val fail) val) (lambda () 'ignore))))
+
+time expended: .14000000000000057
+;Value: ((baker 3) (cooper 2) (fletcher 4) (miller 5) (smith 1))
+#+END_SRC
+
+Huge improvement! We could make this optimization since we made that in each
+filtering step the difference of the number of branches, between before and after that
+step, minimum. As the number of remaining branches should be only one, it means
+we traverse the minimum number of branches at the very beginning.
+*** Exercise 4.41
+As we noted before, the =amb= evaluator has a lot of analogy with programming
+with iterative process. So here we implement requested task using loop.
+
+The typical imperative style coding:
+#+BEGIN_SRC scheme
+(define (multiple-dwelling)
+  (let baker-loop ((baker 1))
+    (let cooper-loop ((cooper 1))
+      (let fletcher-loop ((fletcher 1))
+        (let miller-loop ((miller 1))
+          (let smith-loop ((smith 1))
+            (if (and (distinct? (list baker cooper fletcher miller smith))
+                     (not (= baker 5))
+                     (not (= cooper 1))
+                     (not (= fletcher 5))
+                     (not (= fletcher 1))
+                     (> miller cooper)
+                     (not (= (abs (- smith fletcher)) 1))
+                     (not (= (abs (- fletcher cooper)) 1)))
+                (list (list 'baker baker)
+                      (list 'cooper cooper)
+                      (list 'fletcher fletcher)
+                      (list 'miller miller)
+                      (list 'smith smith))
+                (cond ((< smith 5) (smith-loop (1+ smith)))
+                      ((< miller 5) (miller-loop (1+ miller)))
+                      ((< fletcher 5) (fletcher-loop (1+ fletcher)))
+                      ((< cooper 5) (cooper-loop (1+ cooper)))
+                      ((< baker 5) (baker-loop (1+ baker)))
+                      (else 'failed!)))))))))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+(multiple-dwelling)
+
+;Value: ((baker 3) (cooper 2) (fletcher 4) (miller 5) (smith 1))
+#+END_SRC
+
+Just for curiosity, here we also implement the functional version -- stream
+version:
+#+BEGIN_SRC scheme
+(define (multiple-dwelling-stream)
+  (stream-filter
+   (lambda (result) result)
+   (stream-append-map
+    (lambda (baker)
+      (stream-append-map
+       (lambda (cooper)
+         (stream-append-map
+          (lambda (fletcher)
+            (stream-append-map
+             (lambda (miller)
+               (stream-map
+                (lambda (smith)
+                  (and (distinct? (list baker cooper fletcher miller smith))
+                       (not (= baker 5))
+                       (not (= cooper 1))
+                       (not (= fletcher 5))
+                       (not (= fletcher 1))
+                       (> miller cooper)
+                       (not (= (abs (- smith fletcher)) 1))
+                       (not (= (abs (- fletcher cooper)) 1))
+                       (list (list 'baker baker) ;return if all the previous test passed
+                             (list 'cooper cooper)
+                             (list 'fletcher fletcher)
+                             (list 'miller miller)
+                             (list 'smith smith))))
+                (stream-enumerate-interval 1 5)))
+             (stream-enumerate-interval 1 5)))
+          (stream-enumerate-interval 1 5)))
+       (stream-enumerate-interval 1 5)))
+    (stream-enumerate-interval 1 5))))
+#+END_SRC
+
+Actually this pattern appears frequently when we try to emulate loop in
+functional world! So in Scala, by default, =for= loop desugared into above
+flat-map map combination.
+
+Test!
+#+BEGIN_SRC scheme
+(multiple-dwelling-stream)
+
+;Value: {((baker 3) (cooper 2) (fletcher 4) (miller 5) (smith 1)) ...}
+#+END_SRC
+*** Exercise 4.42
+It is just brain stretching exercise:
+#+BEGIN_SRC scheme
+(define (either p1 p2)
+  (or (and p1 (not p2))
+      (and (not p1) p2)))
+
+(define (solve-Liars)
+  (let ((Betty (amb 1 2 3 4 5))
+        (Ethel (amb 1 2 3 4 5))
+        (Joan (amb 1 2 3 4 5))
+        (Kitty (amb 1 2 3 4 5))
+        (Mary (amb 1 2 3 4 5)))
+    (require (distinct? (list Kitty Betty Ethel Joan Mary)))
+    (require (either (= Kitty 2) (= Betty 3)))
+    (require (either (= Ethel 1) (= Joan 2)))
+    (require (either (= Joan 3) (= Ethel 5)))
+    (require (either (= Kitty 2) (= Mary 4)))
+    (require (either (= Mary 4) (= Betty 1)))
+    (list (list 'Betty Betty)
+          (list 'Ethel Ethel)
+          (list 'Joan Joan)
+          (list 'Kitty Kitty)
+          (list 'Mary Mary))))
+#+END_SRC
+
+#+BEGIN_SRC scheme
+;;; Amb-Eval input:
+(solve-Liars)
+
+;;; Starting a new problem
+;;; Amb-Eval value:
+((betty 3) (ethel 5) (joan 2) (kitty 1) (mary 4))
+
+;;; Amb-Eval input:
+try-again
+
+;;; There are no more values of
+(solve-liars)
+
+#+END_SRC
+
+To support =or= and =and=, using which we defined =either=, we need to modify
+our analyzer:
+#+BEGIN_SRC scheme
+,*** in analyze
+        ((and? exp) (analyze (and->transformed exp)))
+        ((or? exp) (analyze (or->transformed exp)))
+#+END_SRC
+
+For the implementation of those transformation please visit [[org:../MEGAsync/MIT Challenge/6.001/2004/Projects.org][my other project]].
+
+*** Exercise 4.43
+As our =amb= evaluator does not support the multi-directional computation, we
+need to capture the relationship in one direction. After some experiment, I've
+come to realize that let the fathers /has/ a /daughter/ and a /yacht/ would make
+our task concise.
+
+Here is (inefficient but) concise problem definition:
+#+BEGIN_SRC scheme
+(define (solve-daughter-and-yacht)
+  ;; underlying relation ADT
+  (define yacht cdr)
+  (define daughter car)
+  (define has-daughter-and-yacht cons)
+  (define (has-daughter? father daugh)
+    (eq? (daughter father) daugh))
+  (define (has-yacht? owner yac)
+    (eq? (yacht owner) yac))
+  (define (assign-daughter-and-yachts daughters yachts)
+    (has-daughter-and-yacht (an-element-of daughters)
+                            (an-element-of yachts)))
+  (let ((daughters '(Mary Lorna Rosalind Gabrielle Melissa)))
+    (let ((yachts daughters))
+      (let ((moore (assign-daughter-and-yachts daughters yachts))
+            (hall (assign-daughter-and-yachts daughters yachts))
+            (barnacle (assign-daughter-and-yachts daughters yachts))
+            (parker (assign-daughter-and-yachts daughters yachts))
+            (colonel (assign-daughter-and-yachts daughters yachts)))
+        (require (has-daughter? moore 'Mary))
+        (require (has-yacht? moore 'Lorna))
+        (require (has-yacht? hall 'Rosalind))
+        (require (has-yacht? barnacle 'Gabrielle))
+        (require (has-daughter? barnacle 'Melissa))
+        (require (has-yacht? colonel 'Melissa))
+        (let ((Gabrielle-father (amb moore hall barnacle parker colonel)))
+          (require (has-daughter? Gabrielle-father 'Gabrielle)
+                   (has-yacht? Gabrielle-father (daughter parker))))
+        (list (list 'Moore moore)
+              (list 'Hall hall)
+              (list 'Barnacle barnacle)
+              (list 'Parker parker)
+              (list 'Colonel colonel))))))
+#+END_SRC
+
+Yet, this won't work; more precisely, it is hard to wait until it spit the answer.
+
+So let's optimize as we did before:
+#+BEGIN_SRC scheme
+(define (solve-daughter-and-yacht)
+  ;; underlying relation ADT
+  (define yacht cdr)
+  (define daughter car)
+  (define has-daughter-and-yacht cons)
+  (define (has-daughter? father daugh)
+    (eq? (daughter father) daugh))
+  (define (has-yacht? owner yac)
+    (eq? (yacht owner) yac))
+  (define (assign-daughter-and-yachts daughters yachts)
+    (has-daughter-and-yacht (an-element-of daughters)
+                            (an-element-of yachts)))
+  (let ((daughters '(Mary Lorna Rosalind Gabrielle Melissa)))
+    (let ((yachts daughters))
+      (let ((moore (assign-daughter-and-yachts daughters yachts)))
+        (require (has-daughter? moore 'Mary))
+        (require (has-yacht? moore 'Lorna))
+        (let ((barnacle (assign-daughter-and-yachts daughters yachts)))
+          (require (has-yacht? barnacle 'Gabrielle))
+          (require (has-daughter? barnacle 'Melissa))
+          (let ((hall (assign-daughter-and-yachts daughters yachts)))
+            (require (has-yacht? hall 'Rosalind))
+            (let ((colonel (assign-daughter-and-yachts daughters yachts)))
+              (require (has-yacht? colonel 'Melissa))
+              (let ((parker (assign-daughter-and-yachts daughters yachts)))
+                (let ((fathers (list moore barnacle hall colonel parker)))
+                  (require (distinct? (map daughter fathers)))
+                  (require (distinct? (map yacht fathers)))
+                  (let ((Gabrielle-father (an-element-of fathers)))
+                    (require (has-daughter? Gabrielle-father 'Gabrielle))
+                    (require (has-yacht? Gabrielle-father (daughter parker))))
+                  (list (list 'Moore moore)
+                        (list 'Hall hall)
+                        (list 'Barnacle barnacle)
+                        (list 'Parker parker)
+                        (list 'Colonel colonel)))))))))))
+#+END_SRC
+
+Then now it response.
+#+BEGIN_SRC scheme
+;;; Amb-Eval input:
+(solve-daughter-and-yacht)
+
+;;; Starting a new problem
+;;; Amb-Eval value:
+((moore (mary . lorna)) (hall (gabrielle . rosalind)) (barnacle (melissa . gabrielle)) (parker (rosalind . mary)) (colonel (lorna . melissa)))
+
+;;; Amb-Eval input:
+try-again
+
+;;; There are no more values of
+(solve-daughter-and-yacht)
+
+#+END_SRC
+
+So Lorna's father is Colonel Downing.
+*** Exercise 4.44
+Here is the straight forward transformation:
+#+BEGIN_SRC scheme
+(define (solve-queens board-size)
+  (define empty-board '())
+  (define (adjoin-position new-row rest-of-queens)
+    (cons new-row rest-of-queens))
+  (define (safe? positions)
+    (define (not-equal-to? nr rest)
+      (or (null? rest)
+          (and (not (= nr (car rest)))
+               (not-equal-to? nr (cdr rest)))))
+    (define (pm-i-not-equal-to? nr i rest)
+      (or (null? rest)
+          (and (not (or (= (+ nr i) (car rest))
+                        (= (- nr i) (car rest))))
+               (pm-i-not-equal-to? nr (1+ i) (cdr rest)))))
+    (let ((new-row (car positions))
+          (rest-queens (cdr positions)))
+      (and (not-equal-to? new-row rest-queens) ;provided that positions not empty
+           (pm-i-not-equal-to? new-row 1 rest-queens))))
+  (define (queens-cols k)
+    (if (= k 0)
+        empty-board
+        (let ((positions
+               (adjoin-position
+                (an-integer-between 1 board-size)
+                (queens-cols (- k 1)))))
+          (require (safe? positions))
+          positions)))
+  (queens-cols board-size))
+#+END_SRC
+
+It works
+#+BEGIN_SRC scheme
+;;; Amb-Eval input:
+(solve-queens 6)
+
+;;; Starting a new problem
+;;; Amb-Eval value:
+(2 4 6 1 3 5)
+
+#+END_SRC
+
+Unfortunately, this algorithm in nondeterministic programming is way too slow.
+It is due to the order of recursive calling and branching:
+#+BEGIN_SRC scheme
+(define (solve-queens board-size)
+...
+  (define (queens-cols k)
+    (if (= k 0)
+        empty-board
+        (let ((rest-queens (queens-cols (- k 1)))) ;the only change
+          (let ((positions (adjoin-position
+                            (an-integer-between 1 board-size)
+                            rest-queens)))
+            (require (safe? positions))
+            positions))))
+  (queens-cols board-size))
+#+END_SRC
+
+By forcing the recursion before branching -- =an-integer-between= -- our program
+got way more fast:
+#+BEGIN_SRC scheme
+;;; Amb-Eval input:
+(solve-queens 10)
+
+;;; Starting a new problem
+;;; Amb-Eval value:
+(7 4 2 9 5 10 8 6 3 1)
+
+;;; Amb-Eval input:
+try-again
+
+;;; Amb-Eval value:
+(8 5 2 4 10 7 9 6 3 1)
+
+#+END_SRC
+
+Conclusion: Computation order impact hugely on efficiency!
+*** Exercise 4.45
+Input and output:
+#+BEGIN_SRC scheme
+(parse '(The professor lectures to the student in the class with the cat))
+
+;; output
+(sentence
+ (simple-noun-phrase (article the) (noun professor))
+ (verb-phrase
+  (verb-phrase (verb-phrase (verb lectures) (prep-phrase (prep to) (simple-noun-phrase (article the) (noun student)))) (prep-phrase (prep in) (simple-noun-phrase (article the) (noun class))))
+  (prep-phrase (prep with) (simple-noun-phrase (article the) (noun cat)))))
+
+(sentence
+ (simple-noun-phrase (article the) (noun professor))
+ (verb-phrase (verb-phrase (verb lectures) (prep-phrase (prep to) (simple-noun-phrase (article the) (noun student))))
+              (prep-phrase (prep in) (noun-phrase (simple-noun-phrase (article the) (noun class)) (prep-phrase (prep with) (simple-noun-phrase (article the) (noun cat)))))))
+
+(sentence
+ (simple-noun-phrase (article the) (noun professor))
+ (verb-phrase
+  (verb-phrase (verb lectures) (prep-phrase (prep to) (noun-phrase (simple-noun-phrase (article the) (noun student)) (prep-phrase (prep in) (simple-noun-phrase (article the) (noun class))))))
+  (prep-phrase (prep with) (simple-noun-phrase (article the) (noun cat)))))
+
+(sentence
+ (simple-noun-phrase (article the) (noun professor))
+ (verb-phrase
+  (verb lectures)
+  (prep-phrase
+   (prep to)
+   (noun-phrase (noun-phrase (simple-noun-phrase (article the) (noun student)) (prep-phrase (prep in) (simple-noun-phrase (article the) (noun class))))
+                (prep-phrase (prep with) (simple-noun-phrase (article the) (noun cat)))))))
+
+(sentence
+ (simple-noun-phrase (article the) (noun professor))
+ (verb-phrase
+  (verb lectures)
+  (prep-phrase
+   (prep to)
+   (noun-phrase (simple-noun-phrase (article the) (noun student))
+                (prep-phrase (prep in) (noun-phrase (simple-noun-phrase (article the) (noun class)) (prep-phrase (prep with) (simple-noun-phrase (article the) (noun cat)))))))))
+#+END_SRC
+
+Interpretation:
+1. First output means "the professor is with the cat" and "lectures in the class"
+   to student.
+2. Second means the professor is in "the class with the cat" and lectures to student.
+3. Third means "the professor is with the cat" and lectures to "student in the class."
+4. Forth means the professor lectures to "student in the class" with the cat.
+5. Last means the professor lectures to student in "the class with the cat."
+*** Exercise 4.46
+Note that =parse-prepositional-phrase= and =parse-noun-phrase= procedure is
+mutually recursive. If the evaluator evaluate in different order than now,
+evaluating =parse-prepositional-phrase= leads to =parse-noun-phrase= without
+consuming =preposition= and which in turn consume =simple-noun-phrase= and then
+execute =parse-prepositional-phrase=. Which is not the one we wanted.
+*** Exercise 4.47
+This version did not store the checkered point; so as long as there is answer it
+can consume it will work as expected. Otherwise, it falls into the infinite
+loop. You can understand this situation easily by drawing the tree structure it
+branches.
+
+If we interchange the expression order, it even won't work if we try
+=(parse '(The professor))=. It just run forever without spitting anything.
+*** Exercise 4.48
+Here we try to include the clause; now we can parse compound sentence. Here is
+the design with the code:
+#+BEGIN_SRC scheme
+(define subordinates '(subord when if))
+
+;; Subordinate-clause := Subordinate + Sentence
+(define (parse-subordinate-clause)
+  (list 'subordinate-clause
+        (parse-word subordinates)
+        (parse-sentence)))
+
+;; Setence := Simple-sentence | Sentence + Subordinate-clause
+(define (parse-sentence)
+  (define (maybe-extend sentence)
+    (amb sentence
+         (maybe-extend (list 'compound-sentence
+                             sentence
+                             (parse-subordinate-clause)))))
+  (maybe-extend (parse-simple-sentence)))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+;;; Amb-Eval input:
+(parse '(the professor lectures to the student in the class when the cat eats))
+
+;;; Starting a new problem
+;;; Amb-Eval value:
+(compound-sentence
+ (simple-sentence
+  (simple-noun-phrase (article the) (noun professor))
+  (verb-phrase (verb-phrase (verb lectures) (prep-phrase (prep to) (simple-noun-phrase (article the) (noun student)))) (prep-phrase (prep in) (simple-noun-phrase (article the) (noun class)))))
+ (subordinate-clause (subord when) (simple-sentence (simple-noun-phrase (article the) (noun cat)) (verb eats))))
+
+#+END_SRC
+*** Exercise 4.49
+To support =generate= we make following changes:
+#+BEGIN_SRC scheme
+(define (parse-word word-list)
+  ;; (require (not (null? *unparsed*)))
+  ;; (require (memq (car *unparsed*) (cdr word-list)))
+  (let ((found-word (an-element-of (cdr word-list))))
+    ;; (set! *unparsed* (cdr *unparsed*))
+    (list (car word-list) found-word)))
+
+(define (generate)
+  (parse '()))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+;;; Amb-Eval input:
+(generate)
+
+;;; Starting a new problem
+;;; Amb-Eval value:
+(simple-sentence (simple-noun-phrase (article the) (noun student)) (verb studies))
+
+;;; Amb-Eval input:
+try-again
+
+;;; Amb-Eval value:
+(compound-sentence (simple-sentence (simple-noun-phrase (article the) (noun student)) (verb studies))
+                   (subordinate-clause (subord when) (simple-sentence (simple-noun-phrase (article the) (noun student)) (verb studies))))
+
+;;; Amb-Eval input:
+try-again
+
+;;; Amb-Eval value:
+(compound-sentence
+ (compound-sentence (simple-sentence (simple-noun-phrase (article the) (noun student)) (verb studies))
+                    (subordinate-clause (subord when) (simple-sentence (simple-noun-phrase (article the) (noun student)) (verb studies))))
+ (subordinate-clause (subord when) (simple-sentence (simple-noun-phrase (article the) (noun student)) (verb studies))))
+
+#+END_SRC
+
+As implied, it is not interesting; just repeat the sentence "the student
+studies" using the =when= subordinate adjunct.

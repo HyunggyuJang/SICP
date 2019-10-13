@@ -49,7 +49,9 @@
         ((begin? exp) (analyze-sequence (begin-actions exp)))
         ((cond? exp) (analyze (cond->if exp)))
         ((let? exp) (analyze (let->combination exp))) ;**
-        ((amb? exp) (analyze-amb exp))                ;**
+        ((and? exp) (analyze (and->transformed exp)))
+        ((or? exp) (analyze (or->transformed exp)))
+        ((amb? exp) (analyze-amb exp))  ;**
         ((application? exp) (analyze-application exp))
         (else
          (error "Unknown expression type -- ANALYZE" exp))))
@@ -259,7 +261,30 @@
     (make-combination (make-lambda (map let-var bindings)
                                    (let-body exp))
                       (map let-val bindings))))
-                     
+
+(define (and? expr) (tagged-list? expr 'and))
+(define and-exprs cdr)
+(define (make-and exprs) (cons 'and exprs))
+(define (or? expr) (tagged-list? expr 'or))
+(define or-exprs cdr)
+(define (make-or exprs) (cons 'or exprs))
+
+(define (or->transformed exp)
+  (let transformer ((subs (or-exprs exp)))
+    (cond ((null? subs) 'false)
+          ((last-exp? subs) (first-exp subs))
+          (else `(let ((first ,(first-exp subs))
+                       (rest
+                        (lambda () ,(transformer (rest-exps subs)))))
+                   (if first first (rest)))))))
+
+(define (and->transformed exp)
+  (cond ((null? (and-exprs exp)) 'true)
+        ((last-exp? (and-exprs exp))
+         (first-exp (and-exprs exp)))
+        (else `(if ,(first-exp (and-exprs exp))
+                   (and ,@(rest-exps (and-exprs exp)))
+                   false))))
 
 
 ;; A longer list of primitives -- suitable for running everything in 4.3
