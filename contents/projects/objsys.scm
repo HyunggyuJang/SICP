@@ -236,7 +236,7 @@
   (filter (lambda (x) (ask x 'IS-A type))
           (ask source 'THINGS)))
 
-(define (delq item lst)
+(define (delq item () lst)
   (cond ((null? lst) '())
         ((eq? item (car lst)) (delq item (cdr lst)))
         (else (cons (car lst) (delq item (cdr lst))))))

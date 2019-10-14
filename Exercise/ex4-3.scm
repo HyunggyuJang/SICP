@@ -374,9 +374,13 @@
 (define (parse-word word-list)
   ;; (require (not (null? *unparsed*)))
   ;; (require (memq (car *unparsed*) (cdr word-list)))
-  (let ((found-word (an-element-of (cdr word-list))))
+  (let ((found-word (choose-randomly (cdr word-list))))
     ;; (set! *unparsed* (cdr *unparsed*))
     (list (car word-list) found-word)))
+
+(define (choose-randomly lst)
+  (require (not (null? lst)))
+  (ramb (car lst) (choose-randomly (cdr lst))))
 
 (define *unparsed* '())
 
@@ -386,6 +390,8 @@
     (require (null? *unparsed*))
     sent))
 
+(define (generate)
+  (parse '()))
 
 ;: (parse '(the cat eats))
 ;; ;; output of parse
@@ -527,3 +533,5 @@
 ;;              (parse-verb-phrase)
 ;;              (parse-prepositional-phrase))
 ;;        (parse-word verbs)))
+
+;; Exercise 4.50

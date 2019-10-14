@@ -3403,3 +3403,712 @@ try-again
 
 As implied, it is not interesting; just repeat the sentence "the student
 studies" using the =when= subordinate adjunct.
+** Implementing the =Amb= Evaluator
+*** Exercise 4.50
+Here is the implementation. Design should be done in prior, in my case I've done
+in my digital paper. And here is the resulting code:
+#+BEGIN_SRC scheme
+;; ramb syntax procedure
+
+(define (ramb? exp) (tagged-list? exp 'ramb))
+(define ramb-choices amb-choices)
+#+END_SRC
+
+#+BEGIN_SRC scheme
+,*** in analyze
+        ((ramb? exp) (analyze-ramb exp))
+#+END_SRC
+
+#+BEGIN_SRC scheme
+(define (analyze-ramb exp)
+  (let ((cprocs (map analyze (amb-choices exp))))
+    (lambda (env succeed fail)
+      (define (try-rand choices)
+        (let ((chosen (pick-random choices)))
+          (if chosen
+              (chosen
+               env succeed
+               (lambda ()
+                 (try-rand (filter (lambda (choice) (not (eq? choice chosen)))
+                                   choices))))
+                (fail))))
+      (try-rand cprocs))))
+#+END_SRC
+
+Then here is modification:
+#+BEGIN_SRC scheme
+(define (parse-word word-list)
+  ;; (require (not (null? *unparsed*)))
+  ;; (require (memq (car *unparsed*) (cdr word-list)))
+  (let ((found-word (choose-randomly (cdr word-list))))
+    ;; (set! *unparsed* (cdr *unparsed*))
+    (list (car word-list) found-word)))
+
+(define (choose-randomly lst)
+  (require (not (null? lst)))
+  (ramb (car lst) (choose-randomly (cdr lst))))
+#+END_SRC
+
+Then the result from =generate=:
+#+BEGIN_SRC scheme
+;;; Amb-Eval input:
+(generate)
+
+;;; Starting a new problem
+;;; Amb-Eval value:
+(simple-sentence (simple-noun-phrase (article a) (noun professor)) (verb studies))
+
+;;; Amb-Eval input:
+try-again
+
+;;; Amb-Eval value:
+(compound-sentence (simple-sentence (simple-noun-phrase (article a) (noun professor)) (verb studies))
+                   (subordinate-clause (subord if) (simple-sentence (simple-noun-phrase (article the) (noun cat)) (verb studies))))
+
+;;; Amb-Eval input:
+try-again
+
+;;; Amb-Eval value:
+(compound-sentence (compound-sentence (simple-sentence (simple-noun-phrase (article a) (noun professor)) (verb studies))
+                                      (subordinate-clause (subord if) (simple-sentence (simple-noun-phrase (article the) (noun cat)) (verb studies))))
+                   (subordinate-clause (subord when) (simple-sentence (simple-noun-phrase (article the) (noun professor)) (verb studies))))
+
+;;; Amb-Eval input:
+(generate)
+
+;;; Starting a new problem
+;;; Amb-Eval value:
+(simple-sentence (simple-noun-phrase (article the) (noun professor)) (verb sleeps))
+
+;;; Amb-Eval input:
+try-again
+
+;;; Amb-Eval value:
+(compound-sentence (simple-sentence (simple-noun-phrase (article the) (noun professor)) (verb sleeps))
+                   (subordinate-clause (subord when) (simple-sentence (simple-noun-phrase (article a) (noun cat)) (verb eats))))
+
+
+#+END_SRC
+
+Quite interesting!
+*** Exercise 4.51
+To make assignment permanently, we just remove the undo steps in
+=analyze-assignment=:
+#+BEGIN_SRC scheme
+(define (analyze-permanent-assignment exp)
+  (let ((var (assignment-variable exp))
+        (vproc (analyze (assignment-value exp))))
+    (lambda (env succeed fail)
+      (vproc env
+             (lambda (val fail2)
+               (set-variable-value! var val env)
+               (succeed 'ok fail2))
+             fail))))
+#+END_SRC
+
+Then detector (we just reuse the selectors from =assignment=):
+#+BEGIN_SRC scheme
+(define (permanent-assignment? exp)
+  (tagged-list? exp 'permanent-set!))
+#+END_SRC
+
+Then test!
+#+BEGIN_SRC scheme
+;;; Amb-Eval input:
+
+(define count 0)
+(let ((x (an-element-of '(a b c)))
+      (y (an-element-of '(a b c))))
+  (permanent-set! count (+ count 1))
+  (require (not (eq? x y)))
+  (list x y count))
+
+;;; Starting a new problem
+;;; Amb-Eval value:
+ok
+
+;;; Amb-Eval input:
+
+;;; Starting a new problem
+;;; Amb-Eval value:
+(a b 2)
+
+;;; Amb-Eval input:
+try-again
+
+;;; Amb-Eval value:
+(a c 3)
+
+#+END_SRC
+
+If we used =set!= instead =permanent-set!=, then the =count= always be 1 since
+it =set!= after branching so the undoing step is done in prior of backtracking.
+*** Exercise 4.52
+You should design that is analogous to =if=:
+#+BEGIN_SRC scheme
+(define (analyze-if-fail exp)
+  (let ((try (analyze (if-fail-try exp)))
+        (failed (analyze (if-fail-failed exp))))
+    (lambda (env succeed fail)
+      (try env succeed
+           (lambda () (failed env succeed fail))))))
+
+(define (if-fail? exp) (tagged-list? exp 'if-fail))
+(define (if-fail-try exp) (cadr exp))
+(define (if-fail-failed exp) (caddr exp))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+;;; Amb-Eval input:
+(if-fail (let ((x (an-element-of '(1 3 5))))
+           (require (even? x))
+           x)
+         'all-odd)
+
+;;; Starting a new problem
+;;; Amb-Eval value:
+all-odd
+
+;;; Amb-Eval input:
+(if-fail (let ((x (an-element-of '(1 3 5 8))))
+           (require (even? x))
+           x)
+         'all-odd)
+
+;;; Starting a new problem
+;;; Amb-Eval value:
+8
+
+#+END_SRC
+*** Exercise 4.53
+The result would be the list of all the possible =prime-sum-pair= s! You can
+reason this about by keeping track of the time tree it makes or it would be more
+convicing that you see the result in your eyes:
+#+BEGIN_SRC scheme
+;;; Amb-Eval input:
+(let ((pairs '()))
+  (if-fail (let ((p (prime-sum-pair '(1 3 5 8) '(20 35 110))))
+             (permanent-set! pairs (cons p pairs))
+             (amb))
+           pairs))
+
+;;; Starting a new problem
+;;; Amb-Eval value:
+((8 35) (3 110) (3 20))
+
+#+END_SRC
+*** Exercise 4.54
+It is easy:
+#+BEGIN_SRC scheme
+(define (require? exp) (tagged-list? exp 'require))
+(define (require-predicate exp) (cadr exp))
+
+(define (analyze-require exp)
+  (let ((pproc (analyze (require-predicate exp))))
+    (lambda (env succeed fail)
+      (pproc env
+             (lambda (pred-value fail2)
+               (if (false? pred-value)
+                   (fail2)
+                   (succeed 'ok fail2)))
+             fail))))
+#+END_SRC
+* Logic Programming
+** Deductive Information Retrieval
+*** Exercise 4.55
+**** a.
+#+BEGIN_SRC scheme
+;;; Query input:
+(supervisor ?x (Bitdiddle Ben))
+
+;;; Query results:
+(supervisor (tweakit lem e) (bitdiddle ben))
+(supervisor (fect cy d) (bitdiddle ben))
+(supervisor (hacker alyssa p) (bitdiddle ben))
+
+#+END_SRC
+**** b.
+#+BEGIN_SRC scheme
+;;; Query input:
+(job ?x (accounting . ?y))
+
+;;; Query results:
+(job (cratchet robert) (accounting scrivener))
+(job (scrooge eben) (accounting chief accountant))
+
+#+END_SRC
+**** c.
+#+BEGIN_SRC scheme
+;;; Query input:
+(address ?x (Slumerville . ?rest))
+
+;;; Query results:
+(address (aull dewitt) (slumerville (onion square) 5))
+(address (reasoner louis) (slumerville (pine tree road) 80))
+(address (bitdiddle ben) (slumerville (ridge road) 10))
+
+#+END_SRC
+*** Exercise 4.56
+**** a.
+#+BEGIN_SRC scheme
+;;; Query input:
+(and (supervisor ?person (Bitdiddle Ben))
+     (address ?person ?where))
+
+;;; Query results:
+(and (supervisor (tweakit lem e) (bitdiddle ben))
+     (address (tweakit lem e) (boston (bay state road) 22)))
+(and (supervisor (fect cy d) (bitdiddle ben))
+     (address (fect cy d) (cambridge (ames street) 3)))
+(and (supervisor (hacker alyssa p) (bitdiddle ben))
+     (address (hacker alyssa p) (cambridge (mass ave) 78)))
+#+END_SRC
+**** b.
+#+BEGIN_SRC scheme
+;;; Query input:
+(and (salary (Bitdiddle Ben) ?Ben-amount)
+     (salary ?person ?amount)
+     (lisp-value < ?amount ?Ben-amount))
+
+;;; Query results:
+(and (salary (bitdiddle ben) 60000)
+     (salary (aull dewitt) 25000)
+     (lisp-value < 25000 60000))
+(and (salary (bitdiddle ben) 60000)
+     (salary (cratchet robert) 18000)
+     (lisp-value < 18000 60000))
+(and (salary (bitdiddle ben) 60000)
+     (salary (reasoner louis) 30000)
+     (lisp-value < 30000 60000))
+(and (salary (bitdiddle ben) 60000)
+     (salary (tweakit lem e) 25000)
+     (lisp-value < 25000 60000))
+(and (salary (bitdiddle ben) 60000)
+     (salary (fect cy d) 35000)
+     (lisp-value < 35000 60000))
+(and (salary (bitdiddle ben) 60000)
+     (salary (hacker alyssa p) 40000)
+     (lisp-value < 40000 60000))
+#+END_SRC
+**** c.
+#+BEGIN_SRC scheme
+;;; Query input:
+(and (supervisor ?person ?someone)
+     (not (job ?someone (computer . ?any)))
+     (job ?someone ?his-job))
+
+;;; Query results:
+(and (supervisor (aull dewitt) (warbucks oliver))
+     (not (job (warbucks oliver) (computer . ?any)))
+     (job (warbucks oliver) (administration big wheel)))
+(and (supervisor (cratchet robert) (scrooge eben))
+     (not (job (scrooge eben) (computer . ?any)))
+     (job (scrooge eben) (accounting chief accountant)))
+(and (supervisor (scrooge eben) (warbucks oliver))
+     (not (job (warbucks oliver) (computer . ?any)))
+     (job (warbucks oliver) (administration big wheel)))
+(and (supervisor (bitdiddle ben) (warbucks oliver))
+     (not (job (warbucks oliver) (computer . ?any)))
+     (job (warbucks oliver) (administration big wheel)))
+#+END_SRC
+*** Exercise 4.57
+#+BEGIN_SRC scheme
+(rule (can-be-replaced-by ?p1 ?p2)
+      (and (job ?p1 ?job1) (job ?p2 ?job2)
+           (or (same ?job1 ?job2)
+               (can-do-job ?job2 ?job1))
+           (not (same ?p1 ?p2))))
+#+END_SRC
+**** a.
+#+BEGIN_SRC scheme
+;;; Query input:
+(can-be-replaced-by (Fect Cy D) ?whom)
+
+;;; Query results:
+(can-be-replaced-by (fect cy d) (bitdiddle ben))
+(can-be-replaced-by (fect cy d) (hacker alyssa p))
+
+#+END_SRC
+**** b.
+#+BEGIN_SRC scheme
+;;; Query input:
+(and (can-be-replaced-by ?p1 ?p2)
+     (salary ?p1 ?a1) (salary ?p2 ?a2)
+     (lisp-value > ?a1 ?a2))
+
+;;; Query results:
+(and (can-be-replaced-by (warbucks oliver) (aull dewitt)) (salary (warbucks oliver) 150000) (salary (aull dewitt) 25000) (lisp-value > 150000 25000))
+(and (can-be-replaced-by (hacker alyssa p) (fect cy d)) (salary (hacker alyssa p) 40000) (salary (fect cy d) 35000) (lisp-value > 40000 35000))
+#+END_SRC
+*** Exercise 4.58
+Here is the definition:
+#+BEGIN_SRC scheme
+(rule (big-shot ?p)
+      (and (job ?p (?div . ?rest))
+           (not (and (supervisor ?p ?boss) ;not have a boss who work in the same division
+                     (job ?boss (?div2 . ?rest2))
+                     (same ?div ?div2)))))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+;;; Query input:
+(big-shot ?who)
+
+;;; Query results:
+(big-shot (scrooge eben))
+(big-shot (warbucks oliver))
+(big-shot (bitdiddle ben))
+
+#+END_SRC
+*** Exercise 4.59
+**** a.
+#+BEGIN_SRC scheme
+;;; Query input:
+(meeting ?division (Friday ?time))
+
+;;; Query results:
+(meeting administration (friday |1pm|))
+
+#+END_SRC
+**** b.
+Here is the resulting code:
+#+BEGIN_SRC scheme
+(rule (meeting-time ?person ?day-and-time)
+      (or (meeting whole-company ?day-and-time)
+          (and (job ?person (?division . ?subtitle))
+               (meeting ?division ?day-and-time))))
+#+END_SRC
+**** c.
+#+BEGIN_SRC scheme
+;;; Query input:
+(meeting-time (Hacker Alyssa P) (Wednesday ?time))
+
+;;; Query results:
+(meeting-time (hacker alyssa p) (wednesday |4pm|))
+(meeting-time (hacker alyssa p) (wednesday |3pm|))
+#+END_SRC
+*** Exercise 4.60
+Since the rule is symmetry: If =(lives-near p1 p2)= then also =(lives-near p2
+p1)=. To make the requested happen, we need query with non-symmetric relation
+by imposing order in persons. The most canonical way of doing this is
+lexicographical ordering:
+#+BEGIN_SRC scheme
+(define (name<? s-lst1 s-lst2)
+  (symbol<? (fold-right symbol-append '|| s-lst1)
+            (fold-right symbol-append '|| s-lst2)))
+#+END_SRC
+
+Then we can query as
+#+BEGIN_SRC scheme
+;;; Query input:
+(and (lives-near ?person-1 ?person-2) (lisp-value name<? ?person-1 ?person-2))
+
+;;; Query results:
+(and (lives-near (aull dewitt) (reasoner louis)) (lisp-value name<? (aull dewitt) (reasoner louis)))
+(and (lives-near (aull dewitt) (bitdiddle ben)) (lisp-value name<? (aull dewitt) (bitdiddle ben)))
+(and (lives-near (fect cy d) (hacker alyssa p)) (lisp-value name<? (fect cy d) (hacker alyssa p)))
+(and (lives-near (bitdiddle ben) (reasoner louis)) (lisp-value name<? (bitdiddle ben) (reasoner louis)))
+#+END_SRC
+*** Exercise 4.61
+#+BEGIN_SRC scheme
+(?x next-to ?y in (1 (2 3) 4))
+#+END_SRC
+would results in
+#+BEGIN_SRC scheme
+?x = 1,		?y = (2 3)                  ;by applying base case
+?x = (2 3),	?y = 4                      ;by applying recursive case and then base
+#+END_SRC
+
+And the
+#+BEGIN_SRC scheme
+(?x next-to 1 in (2 1 3 1))
+#+END_SRC
+would spit out
+#+BEGIN_SRC scheme
+?x = 2                                  ;by applying base case
+?x = 3                                  ;by applying recursive case twice and then base
+#+END_SRC
+
+And verification:
+#+BEGIN_SRC scheme
+;;; Query input:
+(?x next-to ?y in (1 (2 3) 4))
+
+;;; Query results:
+(1 next-to (2 3) in (1 (2 3) 4))
+((2 3) next-to 4 in (1 (2 3) 4))
+
+;;; Query input:
+(?x next-to 1 in (2 1 3 1))
+
+;;; Query results:
+(2 next-to 1 in (2 1 3 1))
+(3 next-to 1 in (2 1 3 1))
+#+END_SRC
+
+This exercise shows we are not limited to the prefix notation, which is used in
+underlying Scheme evaluator, in query language.
+*** Exercise 4.62
+Here is the straight forward transformation:
+#+BEGIN_SRC scheme
+(rule (last-pair (?x) (?x)))            ;base case
+(rule (last-pair (?head . ?tail) ?x)    ;recursive case
+      (last-pair ?tail ?x))
+#+END_SRC
+
+Here you should be careful in =assert!= order: You should =assert!= recursive
+rule first and then base rule. It might sound counterintuitive; it is due to the
+implementation details of data base where the assertions and rules stored.
+
+Then test!
+#+BEGIN_SRC scheme
+;;; Query input:
+(last-pair (3) ?x)
+
+;;; Query results:
+(last-pair (3) (3))
+
+;;; Query input:
+(last-pair (2 ?x) (3))
+
+;;; Query results:
+(last-pair (2 3) (3))
+
+#+END_SRC
+
+Then the last unfolding case:
+#+BEGIN_SRC scheme
+;;; Query input:
+(last-pair ?x (3))
+
+;;; Query results:
+(last-pair (3) (3))
+(last-pair (?head-181 3) (3))
+(last-pair (?head-181 ?head-185 3) (3))
+(last-pair (?head-181 ?head-185 ?head-189 3) (3))
+(last-pair (?head-181 ?head-185 ?head-189 ?head-193 3) (3))
+(last-pair (?head-181 ?head-185 ?head-189 ?head-193 ?head-197 3) (3))
+(last-pair (?head-181 ?head-185 ?head-189 ?head-193 ?head-197 ?head-201 3) (3))
+(last-pair (?head-181 ?head-185 ?head-189 ?head-193 ?head-197 ?head-201 ?head-205 3) (3))
+...
+#+END_SRC
+
+It is reasonable since the revert is right!
+#+BEGIN_SRC scheme
+;;; Query input:
+(last-pair (?head-181 ?head-185 ?head-189 ?head-193 ?head-197 3) (3))
+
+;;; Query results:
+(last-pair (?head-304 ?head-306 ?head-308 ?head-310 ?head-312 3) (3))
+
+#+END_SRC
+And as =?head-...= is free variable the result assert (infinite number of) facts
+that for any assignment to =?head-...= the given statements are satisfied.
+
+And also note that the number appended to the variable name like 181 in
+=?head-181= is due to the implementation detail.
+*** Exercise 4.63
+#+BEGIN_SRC scheme
+(rule (grandson ?g ?s)
+      (and (son ?f ?s) (son ?g ?f)))
+(rule (son ?m ?s)
+      (and (wife ?m ?w) (son ?w ?s)))
+#+END_SRC
+
+Then test!
+#+BEGIN_SRC scheme
+;;; Query input:
+(grandson Cain ?who)
+
+;;; Query results:
+(grandson cain irad)
+
+;;; Query input:
+(son Lamech ?son)
+
+;;; Query results:
+(son lamech jubal)
+(son lamech jabal)
+
+;;; Query input:
+(grandson Methushael ?who)
+
+;;; Query results:
+(grandson methushael jubal)
+(grandson methushael jabal)
+
+#+END_SRC
+** How the Query System Works
+** Is Logic Programming Mathematical Logic?
+*** Exercise 4.64
+By the high level specification of this logic language, we can trace the
+query =(outranked-by (Bitdiddle Ben) ?who)= as follows:
+1. =?staff-person= is bound to =(Bitdiddle Ben)= and =?who= is bound to =?boss=
+   (since after this point by using the body of rule they are going to bind
+   =?boss=; so we need to bind =?who= here to propagate the subsequent bindings).
+2. Depending on the implementation details, whether it spits out the first
+   output of =(supervisor ?staff-person ?boss)= or =(and (outranked-by
+   ?middle-manager) (supervisor ?staff-person ?middle-manager))=
+3. Here let we assume the case =or= consume the latter one first. Then by the
+   specification of =and= it first query =(outranked-by ?middle-manager ?boss)=
+   with the input frame, which is extended from *1.* but has no bindings for
+   =?middle-manager= and =?boss=.
+4. By the same arguments from *1.* to *3.* it infinitely process =(outranked-by
+   ?middle-manager ?boss)= without bindings for those.
+5. Now let we consider other way around: =or= first process the former one. Then
+   it now extend frame with binding for =?boss=; so it spits out possible
+   answers but to find more it should consume the latter one. It follows to the
+   reasoning we did in the above case but spitting out each answer it encounters
+  , after that, falling into infinite loops.
+
+
+Let's experiment with our evaluator to verify what path our evaluator proceed:
+#+BEGIN_SRC scheme
+;;; Query input:
+(outranked-by (Bitdiddle Ben) ?who)
+
+;;; Query results:
+(outranked-by (bitdiddle ben) (warbucks oliver))
+(outranked-by (bitdiddle ben) (warbucks oliver))  C-c C-c
+;Quit!
+#+END_SRC
+
+Yes the rather one is what our evaluator chose.
+*** Exercise 4.65
+Since there is four different frames satisfying Oliver to be wheel:
+#+BEGIN_SRC scheme
+?middle-manager		?x
+Bitdiddle Ben		Hacker Alyssa P
+Bitdiddle Ben		Fect Cy D
+Bitdiddle Ben		Tweakit Lem E
+Scrooge Eben			Cartchet Robert
+#+END_SRC
+*** Exercise 4.66
+Think about the following request:
+#+BEGIN_SRC scheme
+(sum ?amount
+     (and (wheel? ?x)
+          (salary ?x ?amount)))
+#+END_SRC
+to find out the total salaries of all the wheels in the Microshaft company. But
+as we seen before Oliver counted forth times. What we wanted! We wanted to count
+once for each wheel without duplication.
+
+To deal with this malfunction, he need to remove the duplicate frames from the
+output stream of query. Here we need to define what is duplicate frames
+rigorously:
+1. Extract the pattern variables used in =<query pattern>= from each output frames;
+2. Take the first frame in the output frame stream and then filtering the rest
+   of output stream based on the values bound to extracted variables, that is,
+   to remove frames that has the same set of values with the first frame from
+   the rest ones.
+*** Exercise 4.67
+This situation is similar with the designing the detector of cycle in the
+section 3 in the text; but got more complicated.
+
+The key point is that in what situation we know that we came to the "same" query
+that processed before in this query chain. If the variable names are same as
+before in frame should be that case? Certainly not since rule application is
+recursive in their nature as we have seen in previous exercises
+(=append-to-form= or =last-pair= and so on).
+
+And it is also important to recognize in what situation we possibly falls into
+infinite loop? We can reason about this question by thinking the cycle case or
+all the other programs that results in infinite loops: The means of abstraction
+allows us to program which can leads to infinite loop. So the rule application
+is the main region we should consider.
+
+Combining the preceding two paragraph, we can conclude that if we trace what
+rule application we have used so far in this query chain with the values of the
+variables in rule conclusion with which the body of that rule application
+executed, we can detect whether we are going to loop infinitely:
+- If we the same rule application with the same values -- same values is means
+  either the values of two variables is bound to the equal value (for the case
+  the value also contains variables, it recursively walk the tree structure to
+  find out whether the two variables bound to same value) or both variables are
+  unbound -- it should signal that we are now in the loop.
+*** Exercise 4.68
+To make the rule work in both way, we need to the recursive rule conclusion to
+be decomposed in both argument. Here we try to accomplish this restriction using
+=append-to-form= since it decompose the input arguments in multi-directional
+way:
+#+BEGIN_SRC scheme
+(rule (reverse () ()))                  ;base case
+(rule (reverse (?x . ?xs) ?y)           ;recursive case
+      (and (append-to-form ?rs (?x) ?y)
+           (reverse ?xs ?rs)))
+#+END_SRC
+
+But this works in unidirectional way:
+#+BEGIN_SRC scheme
+;;; Query input:
+(reverse ?x (1 2 3))
+
+;;; Query results:
+(reverse (3 2 1) (1 2 3))
+
+;;; Query input:
+(reverse (1 2 3) ?x)
+
+;;; Query results:
+(reverse (1 2 3) (3 2 1))  C-c C-c
+;Quit!
+
+#+END_SRC
+
+To resolve this situation, we need to think it falls into the infinite loop
+after spitting out the answer.
+
+After some experimenting or reasoning we can reach to think it is due to
+unfortunate of =append-to-form=:
+#+BEGIN_SRC scheme
+;;; Query input:
+(append-to-form ?x (1) ?y)
+
+;;; Query results:
+(append-to-form () (1) (1))
+(append-to-form (?u-397) (1) (?u-397 1))
+(append-to-form (?u-397 ?u-399) (1) (?u-397 ?u-399 1))
+(append-to-form (?u-397 ?u-399 ?u-401) (1) (?u-397 ?u-399 ?u-401 1))
+(append-to-form (?u-397 ?u-399 ?u-401 ?u-403) (1) (?u-397 ?u-399 ?u-401 ?u-403 1))
+#+END_SRC
+
+This stream of frames passed to =(reverse ?xs ?rs)= when we try to execute
+=(reverse (1 2 3) ?x)=; no limit in this unfolding. So if we can limit this
+infinite unfolding, then we got what we wanted!
+
+Here is the deal:
+#+BEGIN_SRC scheme
+(assert! (rule (same-length () ())))
+(assert! (rule (same-length (?x . ?xs) (?y . ?ys))
+               (same-length ?xs ?ys)))
+#+END_SRC
+
+Then restrict our unfolding using above rule!
+#+BEGIN_SRC scheme
+(assert! (rule (reverse () ())))
+(assert! (rule (reverse (?x . ?xs) ?y)
+               (and (same-length (?x . ?xs) ?y)
+                    (append-to-form ?rs (?x) ?y)
+                    (reverse ?xs ?rs))))
+#+END_SRC
+
+Now try our new =reverse=
+#+BEGIN_SRC scheme
+;;; Query input:
+(reverse (1 2 3) ?x)
+
+;;; Query results:
+(reverse (1 2 3) (3 2 1))
+
+;;; Query input:
+(reverse ?x (1 2 3))
+
+;;; Query results:
+(reverse (3 2 1) (1 2 3))
+
+#+END_SRC
+
+Now it works in multi-direction.

@@ -35,6 +35,25 @@
 (define (amb? exp) (tagged-list? exp 'amb))
 (define (amb-choices exp) (cdr exp))
 
+;; ramb syntax procedure
+
+(define (ramb? exp) (tagged-list? exp 'ramb))
+(define ramb-choices amb-choices)
+
+;; Exercise 4.54
+(define (require? exp) (tagged-list? exp 'require))
+(define (require-predicate exp) (cadr exp))
+
+(define (analyze-require exp)
+  (let ((pproc (analyze (require-predicate exp))))
+    (lambda (env succeed fail)
+      (pproc env
+             (lambda (pred-value fail2)
+               (if (false? pred-value)
+                   (fail2)
+                   (succeed 'ok fail2)))
+             fail))))
+
 ;; analyze from 4.1.6, with clause from 4.3.3 added
 ;; and also support for Let
 (define (analyze exp)
@@ -43,8 +62,10 @@
         ((quoted? exp) (analyze-quoted exp))
         ((variable? exp) (analyze-variable exp))
         ((assignment? exp) (analyze-assignment exp))
+        ((permanent-assignment? exp) (analyze-permanent-assignment exp))
         ((definition? exp) (analyze-definition exp))
         ((if? exp) (analyze-if exp))
+        ((if-fail? exp) (analyze-if-fail exp))
         ((lambda? exp) (analyze-lambda exp))
         ((begin? exp) (analyze-sequence (begin-actions exp)))
         ((cond? exp) (analyze (cond->if exp)))
@@ -52,6 +73,8 @@
         ((and? exp) (analyze (and->transformed exp)))
         ((or? exp) (analyze (or->transformed exp)))
         ((amb? exp) (analyze-amb exp))  ;**
+        ((ramb? exp) (analyze-ramb exp))
+        ((require? exp) (analyze-require exp))
         ((application? exp) (analyze-application exp))
         (else
          (error "Unknown expression type -- ANALYZE" exp))))
@@ -147,6 +170,47 @@
                             (fail2)))))
              fail))))
 
+;; Exercise 4.51
+;;; Permanent-set!
+(define (analyze-permanent-assignment exp)
+  (let ((var (assignment-variable exp))
+        (vproc (analyze (assignment-value exp))))
+    (lambda (env succeed fail)
+      (vproc env
+             (lambda (val fail2)
+               (set-variable-value! var val env)
+               (succeed 'ok fail2))
+             fail))))
+
+(define (permanent-assignment? exp)
+  (tagged-list? exp 'permanent-set!))
+
+;;; test for permanent-set!
+;; (define count 0)
+;; (let ((x (an-element-of '(a b c)))
+;;       (y (an-element-of '(a b c))))
+;;   (permanent-set! count (+ count 1))
+;;   (require (not (eq? x y)))
+;;   (list x y count))
+
+;; Exercise 4.52
+(define (analyze-if-fail exp)
+  (let ((try (analyze (if-fail-try exp)))
+        (failed (analyze (if-fail-failed exp))))
+    (lambda (env succeed fail)
+      (try env succeed
+           (lambda () (failed env succeed fail))))))
+
+(define (if-fail? exp) (tagged-list? exp 'if-fail))
+(define (if-fail-try exp) (cadr exp))
+(define (if-fail-failed exp) (caddr exp))
+
+;;; Test for if-fail
+;; (if-fail (let ((x (an-element-of '(1 3 5 8))))
+;;            (require (even? x))
+;;            x)
+;;          'all-odd)
+
 ;;;Procedure applications
 
 (define (analyze-application exp)
@@ -208,6 +272,27 @@
                            (lambda ()
                              (try-next (cdr choices))))))
       (try-next cprocs))))
+
+;; Exercise 4.50 ramb
+
+(define (analyze-ramb exp)
+  (let ((cprocs (map analyze (amb-choices exp))))
+    (lambda (env succeed fail)
+      (define (try-rand choices)
+        (let ((chosen (pick-random choices)))
+          (if chosen
+              (chosen
+               env succeed
+               (lambda ()
+                 (try-rand (filter (lambda (choice) (not (eq? choice chosen)))
+                                   choices))))
+                (fail))))
+      (try-rand cprocs))))
+
+(define (pick-random lst)
+  (if (null? lst)
+      #F
+      (list-ref lst (random (length lst)))))
 
 ;;;Driver loop
 
@@ -316,6 +401,7 @@
         (list '<= <=)
         (list '1+ 1+)
         (list '-1+ -1+)
+        (list 'even? even?)
         ;;      more primitives
         ))
 
