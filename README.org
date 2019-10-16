@@ -4112,3 +4112,1268 @@ Now try our new =reverse=
 #+END_SRC
 
 Now it works in multi-direction.
+
+The lesson from this exercise: We can restrict the pattern variable like we did
+in the nondeterministic programming; but in more confined way. We can limit the
+variable via confining the relations but not in a direct way such as =if= or like
+that control stuff.
+*** Exercise 4.69
+Here is the first task: Write rule that determine if a list ends in the word
+=grandson=
+#+BEGIN_SRC scheme
+(rule (end-with-grandson ?rel)
+      (last-pair ?rel (grandson)))
+#+END_SRC
+
+Then the main tasks:
+#+BEGIN_SRC scheme
+(rule ((grandson) ?x ?y)
+      (grandson ?x ?y))
+(rule ((great . ?rel) ?x ?y)
+      (and (son ?x ?g)
+           (?rel ?g ?y)
+           (end-with-grandson ?rel)))
+#+END_SRC
+
+The first clause of above rules is needed since our recursive rule definition
+only reduced to =(grandson)=. So we need to connect from =(grandson)= to
+=grandson=.
+
+Then test:
+#+BEGIN_SRC scheme
+;;; Query input:
+((great grandson) ?g ?ggs)
+
+;;; Query results:
+((great grandson) mehujael jubal)
+((great grandson) irad lamech)
+((great grandson) mehujael jabal)
+((great grandson) enoch methushael)
+((great grandson) cain mehujael)
+((great grandson) adam irad)
+
+;;; Query input:
+(?relationship Adam Irad)
+
+;;; Query results:
+((great grandson) adam irad)
+
+;;; Query input:
+((great great great great grandson) ?g ?gggggs)
+
+;;; Query results:
+((great great great great grandson) cain jubal)
+((great great great great grandson) adam lamech)
+((great great great great grandson) cain jabal)
+
+#+END_SRC
+** Implementing the Query System
+*** Exercise 4.70
+Note that we have combined assignment with lazy evaluation, which normally what
+we shouldn't do if we can escape.
+
+Here we expect to mutate using what I get if we lookup the environment in this
+state -- =THE-ASSERTIONS=; however since the =cdr= part of =cons-stream= delayed
+implicitly, we don't know which "version" we actually mutate when the evaluation
+being made in computer.
+
+In this specific situation, we know what the result would be: The infinite
+stream of one element, newly added =assertion= like =ones=.
+*** Exercise 4.71
+To answer this question we need to simulate what our evaluator does.
+
+For the first situation -- =simple-query= if it uses delayed append:
+1. From the entry point (by user input in the driver loop or that of subsequent
+   query) =simple-query= is called by data directed dispatch.
+2. The body of =simple-query= is evaluated:
+   1. =stream-flatmap=
+   2. =lambda= expression
+   3. =frame-stream=
+3. The body of =stream-flatmap= is evaluated. Before =stream-append='s body
+   being evaluated, =find-assertions= is evaluated but =apply-rules= since it is
+   delayed.
+4. After =find-assertions= terminates with the returning stream of frames, the
+   body of =stream-append-delayed= is evaluated.
+5. Only if that stream is empty =stream-append-delayed= force the evaluation of
+   =apply-rules=; otherwise the body of =stream-flatmap= is evaluated.
+6. As the result, the body of =stream-flatmap= is halted with returning output stream.
+
+If =simple-query= uses =stream-append= instead delayed version of that:
+1. Until *2.* the evaluations are same as above.
+2. Now =stream-flatmap='s body being evaluated. =apply-rules= being evaluated
+   as well as =find-assertions= before the body of =stream-append=.
+3. By the same arguments as preceding ones, =apply-rules= in turn calls
+   =apply-a-rule= that evaluate the body of given rule with the frame.
+4. In =apply-rules=, =apply-a-rule= is evaluated until find the rule that matched
+   with the query or exhausted the rules to be tested with.
+5. If found one that is matched then the matched rule's body is evaluated.
+6. Note that so far we have not processed any frame completely. We just chained
+   the evaluation of argument.
+7. However rule can call recursively itself.
+8. Normally recursive rule meant to reduce the given problem into more simpler
+   problem; so if the recursive rule calling ended with base case rule -- the
+   rule has empty body, then it halted as normally.
+9. It is possible that the base case depends on the assertions not the rule
+   with empty body. In this case, also halted as normally since there is no rule
+   that can be applied to this query.
+
+
+So the logic program that would halt in one version, also halt in another
+version. Although here we showed this assertion using the evaluation process in
+both evaluator, we can think this in more abstract manner: Delay or stream can
+only mutate the evaluation order not the result if we don't mix the assignment.
+This observation should be familiar with us; in situation where substitution
+model can be applied, the evaluation order can not alter the result.
+
+So two different =simple-query= can not make any change at all for the program
+which halted; it only make difference in non-halting program: run forever of
+signaling an error. We can inspect this assertion using following examples:
+
+#+BEGIN_SRC scheme
+(assert! (rule (infinite ?x)
+               (infinite ?x)))
+(assert! (infinite answer))
+#+END_SRC
+
+First the test with original =simple-query=:
+#+BEGIN_SRC scheme
+;;; Query input:
+(infinite ?x)
+
+;;; Query results:
+(infinite answer)
+(infinite answer)
+(infinite answer)
+(infinite answer)
+...
+(infinite answer)
+(infinite answer)
+(infinite answer)  C-c C-c
+;Quit!
+
+#+END_SRC
+
+Then the =simple-query= without append delayed:
+#+BEGIN_SRC scheme
+;;; Query input:
+(infinite ?x)
+
+;;; Query results:  C-c C-c
+;Quit!
+#+END_SRC
+
+So the difference became apparent: One finds all the possible answers yet run
+forever; other one just run forever without find any.
+
+Let's do the same kind of argument to the second question. It is almost same as
+the first one -- =simple-query= case.
+
+The preceding observation applies here too. So here we just show the example
+that embodies the difference.
+
+For that example here we use the one from [[Exercise 4.64][ex 4.64]]:
+#+BEGIN_SRC scheme
+(outranked-by (Bitdiddle Ben) ?who)
+#+END_SRC
+with the ill-defined rule definition:
+#+BEGIN_SRC scheme
+(rule (outranked-by ?staff-person ?boss)
+      (or (supervisor ?staff-person ?boss)
+          (and (outranked-by ?middle-manager ?boss)
+               (supervisor ?staff-person ?middle-manager))))
+#+END_SRC
+
+In previous exercise, it would spit out all the possible answers and then run
+forever. But with modified =disjoin= we got
+#+BEGIN_SRC scheme
+;;; Query input:
+(outranked-by (Bitdiddle Ben) ?who)
+
+;;; Query results:  C-c C-c
+;Quit!
+#+END_SRC
+
+If we revert the modification in =disjoin=, we got
+#+BEGIN_SRC scheme
+;;; Query input:
+(outranked-by (Bitdiddle Ben) ?who)
+
+;;; Query results:
+(outranked-by (bitdiddle ben) (warbucks oliver))
+(outranked-by (bitdiddle ben) (warbucks oliver))  C-c C-c
+;Quit!
+#+END_SRC
+as expected (the reason we got the same answer duplicated is that we asserted
+two =outranked-by= -- one for proper definition and one for ill-definition).
+*** Exercise 4.72
+We used =interleave= in section 3.5.3 for dealing with =pair=, the stream of
+pairs from two (possibly infinite) streams; we needed that since we wanted to
+make sure that each pair element appear in the resulting stream in finite step
+of =cdr= ing down that stream.
+
+Here is also the same situation in abstract viewpoint: even if there is infinite
+stream in one of arguments, we want to the program find all the answers from the
+other arguments that has finite (or infinite) stream of frames.
+
+Here is the simple example describes above idea:
+If we make =disjoin= as
+#+BEGIN_SRC scheme
+(define (disjoin disjuncts frame-stream)
+  (if (empty-disjunction? disjuncts)
+      the-empty-stream
+      (stream-append-delayed
+       (qeval (first-disjunct disjuncts) frame-stream)
+       (delay (disjoin (rest-disjuncts disjuncts)
+                       frame-stream)))))
+#+END_SRC
+
+Then the (stupid) query makes the evaluator fall into infinite loop without
+answering:
+#+BEGIN_SRC scheme
+;;; Query input:
+(or (infinite ?x)
+    (outranked-by ?who (Bitdiddle Ben)))
+
+;;; Query results:
+(or (infinite answer) (outranked-by ?who (bitdiddle ben)))
+...
+(or (infinite answer) (outranked-by ?who (bitdiddle ben)))
+(or (infinite answer) (outranked-by ?who (bitdiddle ben)))  C-c C-c
+;Quit!
+#+END_SRC
+
+With original one:
+#+BEGIN_SRC scheme
+;;; Query input:
+(or (infinite ?x)
+    (outranked-by ?who (Bitdiddle Ben)))
+
+;;; Query results:
+(or (infinite answer) (outranked-by ?who (bitdiddle ben)))
+(or (infinite ?x) (outranked-by (tweakit lem e) (bitdiddle ben)))
+(or (infinite answer) (outranked-by ?who (bitdiddle ben)))
+(or (infinite ?x) (outranked-by (reasoner louis) (bitdiddle ben)))
+(or (infinite answer) (outranked-by ?who (bitdiddle ben)))
+(or (infinite ?x) (outranked-by (fect cy d) (bitdiddle ben)))
+(or (infinite answer) (outranked-by ?who (bitdiddle ben)))
+(or (infinite ?x) (outranked-by (hacker alyssa p) (bitdiddle ben)))
+(or (infinite answer) (outranked-by ?who (bitdiddle ben)))
+...
+(or (infinite answer) (outranked-by ?who (bitdiddle ben)))  C-c C-c
+#+END_SRC
+
+For the =stream-flatmap=, we can apply the same observation to this. We can
+illustrate the need by showing following examples:
+First let's setup this assertions should be added in initialized data base. The
+purpose of following definitions is to show the affection of modified
+=stream-flatmap= on =apply-rules=; that is, one of the following rule
+application can produce infinite stream of frames, others not.
+#+BEGIN_SRC scheme
+(assert! (rule (infinite ?x)))
+(assert! (rule (infinite ?x)
+               (infinite ?x)))
+(assert! (infinite answer))
+#+END_SRC
+
+Modified =stream-flatmap= with following definition:
+#+BEGIN_SRC scheme
+(define (flatten-stream stream)
+  (if (stream-null? stream)
+      the-empty-stream
+      (stream-append-delayed
+       (stream-car stream)
+       (delay (flatten-stream (stream-cdr stream))))))
+#+END_SRC
+
+Then run in the original version:
+#+BEGIN_SRC scheme
+;;; Query input:
+(infinite ?x)
+
+;;; Query results:
+(infinite answer)                       ;assertion
+(infinite answer)                       ;infinite rule application
+(infinite ?x-98763)                     ;base case rule application
+(infinite answer)
+(infinite ?x-98765)
+(infinite answer)
+(infinite ?x-98767)
+(infinite answer)
+(infinite ?x-98769)
+...
+(infinite answer)  C-c C-c
+#+END_SRC
+
+And the modified one:
+#+BEGIN_SRC scheme
+;;; Query input:
+(infinite ?x)
+
+;;; Query results:
+(infinite answer)                       ;inifinite rule application with find-assertions
+(infinite answer)
+(infinite answer)
+...
+(infinite answer)
+#+END_SRC
+
+The original version produces all the possible answers but the modified one does
+not as expected.
+*** Exercise 4.73
+The modified version implicitly forces all the element of given stream until it
+encountered with =the-empty-stream=:
+1. Evaluate =flatten-stream= with given argument stream;
+2. evaluate =stream-cdr= of given stream and evaluate =flatten-stream= with
+   resulting =stream=;
+3. ... if the subsequent =flatten-stream= calls encountered with
+   =the-empty-stream= then calls return the control to the caller.
+4. finally the *1.* is get the value from subsequent calls and then return the
+   control to the caller.
+
+
+By above reasoning,
+1. without delaying, =flatten-stream= violates what we meant to stream at the
+   first place -- deferring the evaluation until it is really needed;
+2. even more, =stream=, with which =flatten-stream= called with, can possess
+   infinite number of elements. In this case, =flatten-stream= run forever
+   without returning the control to the caller.
+
+
+In this discourse, we used /caller/ and /callee/ concept explicitly since
+without this notation reader get easy to confuse with result given process can
+produce (infinite stream) with step of evolution (infinite loop).
+*** Exercise 4.74
+**** a.
+By the type constraint, we can fill the slots as
+#+BEGIN_SRC scheme
+(define (simple-flatten stream)
+  (stream-map stream-car
+              (stream-filter
+               (lambda (s) (not (stream-null? s)))
+               stream)))
+#+END_SRC
+**** b.
+No, since in those cases, both result in same stream. We can prove this
+assertion by structure induction on =negate=, =lisp-value=, =find-assertions=
+combined with induction on length of stream.
+
+More specifically we need to show
+1. In both implementation, the resulting stream has same element in same order.
+2. If one of the resulting stream is delayed in some part then the other one
+   should result the stream with delayed in corresponding part.
+
+
+As above implementation satisfies given contracts, the behavior of both should
+be same.
+*** Exercise 4.75
+It is analogous to =not=:
+#+BEGIN_SRC scheme
+(define (uniquely-asserted operand frame-stream)
+  (stream-flatmap
+   (lambda (frame)
+     (let ((output-frames
+            (qeval (unique-query operand)
+                   (singleton-stream frame))))
+       (if (and (not (stream-null? output-frames))
+                (stream-null? (stream-cdr output-frames)))
+           output-frames
+           the-empty-stream)))
+   frame-stream))
+
+(define (unique-query operand) (car operand))
+#+END_SRC
+
+And install on =qeval=:
+#+BEGIN_SRC scheme
+,*** in initialize-data-base
+  (put 'unique 'qeval uniquely-asserted)
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+;;; Query input:
+(unique (job ?x (computer wizard)))
+
+;;; Query results:
+(unique (job (bitdiddle ben) (computer wizard)))
+
+;;; Query input:
+(unique (job ?x (computer programmer)))
+
+;;; Query results:
+
+;;; Query input:
+(and (job ?x ?j) (unique (job ?anyone ?j)))
+
+;;; Query results:
+(and (job (aull dewitt) (administration secretary)) (unique (job (aull dewitt) (administration secretary))))
+(and (job (cratchet robert) (accounting scrivener)) (unique (job (cratchet robert) (accounting scrivener))))
+(and (job (scrooge eben) (accounting chief accountant)) (unique (job (scrooge eben) (accounting chief accountant))))
+(and (job (warbucks oliver) (administration big wheel)) (unique (job (warbucks oliver) (administration big wheel))))
+(and (job (reasoner louis) (computer programmer trainee)) (unique (job (reasoner louis) (computer programmer trainee))))
+(and (job (tweakit lem e) (computer technician)) (unique (job (tweakit lem e) (computer technician))))
+(and (job (bitdiddle ben) (computer wizard)) (unique (job (bitdiddle ben) (computer wizard))))
+
+#+END_SRC
+*** Exercise 4.76
+After some experimenting with this new strategy, we can come up algorithm do the
+right things as follows:
+1. Assume that we have =unify-frames=, that is,
+   - =(unify-frames <frame1> <frame2>)= ::
+     takes two frames and produces output frame that contains all the variables
+     in both frames with unified value if the frames are compatible with each
+     other otherwise symbol ='failed=.
+2. Takes two input streams which produced by each conjunct in =and=, then for
+   each frame (say =<frame1>=) in the first argument stream, for each frame (say
+   =<frame2>=) in the second argument, stream produce =(unify-frames <frame1>
+   <frame2>)=.
+3. So far we just dealt with binary operation; we can implement n-ary conjoin
+   operation using induction on =n= based with above binary operation.
+
+
+Here is the codes for the =unify-frames=:
+#+BEGIN_SRC scheme
+(define (unify-frames frame1 frame2)
+  (unify-bindings (frame->binding-list frame1) frame2))
+
+(define (unify-bindings bindings frame)
+  (cond ((eq? frame 'failed) 'failed)
+        ((null? bindings) frame)
+        (else
+         (unify-bindings
+          (cdr bindings)
+          (let ((binding (car bindings)))
+            (extend-if-possible (binding-variable binding)
+                                (binding-value binding)
+                                frame))))))
+
+;; ADT for frame, tranforming the type
+;; Frame -> List<Binding>
+(define (frame->binding-list frame) frame)
+#+END_SRC
+
+And following is the code for doing the second specification:
+#+BEGIN_SRC scheme
+;; Frame -> (Query, Query -> Stream<Frame>)
+(define (conjoin-from-frame frame)
+  (lambda (conjunct1 conjunct2)
+    (stream-filter
+     (lambda (frame)
+       (not (eq? frame 'failed)))
+     (stream-append-map
+      (lambda (frame1)
+        (stream-map
+         (lambda (frame2)
+           (unify-frames frame1 frame2))
+         (qeval conjunct2 (singleton-stream frame))))
+      (qeval conjunct1 (singleton-stream frame))))))
+#+END_SRC
+
+Then the code for third one:
+#+BEGIN_SRC scheme
+;; Frame -> (Conjuncts -> Stream<Frame>)
+(define (conjoin-from-frame frame)
+  (define (conjoiner conjuncts)
+    (if (empty-conjunction? (rest-conjuncts conjuncts))
+        (first-conjunct conjuncts)
+        (stream-filter
+         (lambda (frame)
+           (not (eq? frame 'failed)))
+         (stream-append-map
+          (lambda (frame1)
+            (stream-map
+             (lambda (frame2)
+               (unify-frames frame1 frame2))
+             (conjoiner (rest-conjuncts conjuncts))))
+          (qeval (first-conjunct conjuncts)
+                 (singleton-stream frame))))))
+  (lambda (conjuncts)
+    (if (empty-conjunction? conjuncts)
+        (singleton-stream frame)
+        (conjoiner conjuncts))))
+#+END_SRC
+It uses the algorithm that is analogous to binary operation.
+
+Or iterative process:
+#+BEGIN_SRC scheme
+(define (conjoin-from-frame frame)
+  (define (conjoiner conjuncts conjoined)
+    (if (empty-conjunction? conjuncts)
+        conjoined
+        (conjoiner
+         (rest-conjuncts conjuncts)
+         (stream-filter
+          (lambda (frame)
+            (not (eq? frame 'failed)))
+          (stream-append-map
+           (lambda (frame1)
+             (stream-map
+              (lambda (frame2)
+                (unify-frames frame1 frame2))
+              conjoined))
+           (qeval (first-conjunct conjuncts)
+                  (singleton-stream frame)))))))
+  (lambda (conjuncts)
+    (if (empty-conjunction? conjuncts)
+        (singleton-stream frame)
+        (conjoiner (rest-conjuncts conjuncts)
+                   (qeval (first-conjunct conjuncts)
+                          (singleton-stream frame))))))
+#+END_SRC
+
+Then the entry point becomes
+#+BEGIN_SRC scheme
+(define (conjoin conjuncts frame-stream)
+  (stream-flatmap
+   (lambda (frame)
+     ((conjoin-from-frame frame) conjuncts))
+   frame-stream))
+#+END_SRC
+
+
+Then let's test:
+#+BEGIN_SRC scheme
+;;; Query input:
+(and (supervisor ?x ?boss) (supervisor ?y ?x) (supervisor ?z ?y))
+
+;;; Query results:
+(and (supervisor (bitdiddle ben) (warbucks oliver)) (supervisor (hacker alyssa p) (bitdiddle ben)) (supervisor (reasoner louis) (hacker alyssa p)))
+
+;;; Query input:
+(and (wheel ?who) (job ?who ?j))
+
+;;; Query results:
+(and (wheel (warbucks oliver)) (job (warbucks oliver) (administration big wheel)))
+(and (wheel (warbucks oliver)) (job (warbucks oliver) (administration big wheel)))
+(and (wheel (warbucks oliver)) (job (warbucks oliver) (administration big wheel)))
+(and (wheel (warbucks oliver)) (job (warbucks oliver) (administration big wheel)))
+(and (wheel (bitdiddle ben)) (job (bitdiddle ben) (computer wizard)))
+
+#+END_SRC
+
+It works on "simple" compound queries; however not work on the recursive rule
+application:
+#+BEGIN_SRC scheme
+;;; Query input:
+(outranked-by ?x (Bitdiddle Ben))
+
+;;; Query results:
+(outranked-by (tweakit lem e) (bitdiddle ben))  C-c C-c
+;Quit!
+#+END_SRC
+
+Or even not work on seemingly quite simple compound query:
+#+BEGIN_SRC scheme
+;;; Query input:
+(grandson ?g ?gs)
+
+;;; Query results:  C-c C-c
+;Quit!
+#+END_SRC
+
+Actually this malfunction is due to (hidden) recursive rule:
+#+BEGIN_SRC scheme
+(assert! (rule (son ?m ?s)
+       (and (wife ?m ?w) (son ?w ?s))))
+#+END_SRC
+
+Without this rule definition, our =conjoin= works as expected:
+#+BEGIN_SRC scheme
+;;; Query input:
+(grandson ?x ?y)
+
+;;; Query results:
+(grandson mehujael lamech)
+(grandson irad methushael)
+(grandson enoch mehujael)
+(grandson cain irad)
+(grandson adam enoch)
+#+END_SRC
+
+Even fails in this simple query:
+#+BEGIN_SRC scheme
+;;; Query input:
+(lives-near (Bitdiddle Ben) ?who)
+
+;;; Query results:
+
+#+END_SRC
+
+Now let's think about the cases where our new =conjoin= fails to halt. The
+commonalities among them are
+- it involve recursive rule application in addition to =and= in their body;
+- if we change the order of conjuncts with the original =cojoin=, it will fail
+  to halt also.
+
+
+Actually the latter condition is crucial; thinking about why we failed in the
+latter condition even with the original one, we can notice that the
+"malfunction" is not due to our "ill-defined" procedure but its own limitation:
+We have meant to evaluate the conjuncts at the same time from the same frame,
+/and then/ check their compatibility.
+
+So, the rules fail in our new =conjoin= if those would fail with our original
+one why not works if we change their order.
+
+It implies that we need the original =conjoin= even with this new =conjoin= but
+in a different syntax or explicit syntax --  =andthen=. The order of clauses are
+matter in original =conjoin= but the name of syntax of that does not implies
+that or even confuse us to think it would work independently with the order of
+its clauses. Now our new =conjoin= works independently with the order as the
+name, =and=, implies; but we can embody the idea we have implemented with
+original =conjoin= so far.
+
+So let us rename original =conjoin= as =conjoin-in-order= and the syntax as
+=andthen=:
+#+BEGIN_SRC scheme
+(define (conjoin-in-order conjuncts frame-stream)
+  (if (empty-conjunction? conjuncts)
+      frame-stream
+      (conjoin-in-order (rest-conjuncts conjuncts)
+               (qeval (first-conjunct conjuncts)
+                      frame-stream))))
+
+,*** in initialize-data-base
+  (put 'andthen 'qeval conjoin-in-order)
+#+END_SRC
+
+Then let's test with:
+#+BEGIN_SRC scheme
+,*** microshaft-data-base
+(rule (lives-near ?person-1 ?person-2)
+      (andthen (and (address ?person-1 (?town . ?rest-1))
+                    (address ?person-2 (?town . ?rest-2)))
+               (not (same ?person-1 ?person-2))))
+
+(rule (outranked-by ?staff-person ?boss)
+      (or (supervisor ?staff-person ?boss)
+          (andthen (supervisor ?staff-person ?middle-manager)
+               (outranked-by ?middle-manager ?boss))))
+#+END_SRC
+
+Now =lives-near= works:
+#+BEGIN_SRC scheme
+;;; Query input:
+(lives-near ?who ?neighbor)
+
+;;; Query results:
+(lives-near (reasoner louis) (aull dewitt))
+(lives-near (aull dewitt) (reasoner louis))
+(lives-near (bitdiddle ben) (aull dewitt))
+(lives-near (aull dewitt) (bitdiddle ben))
+(lives-near (bitdiddle ben) (reasoner louis))
+(lives-near (hacker alyssa p) (fect cy d))
+(lives-near (reasoner louis) (bitdiddle ben))
+(lives-near (fect cy d) (hacker alyssa p))
+
+#+END_SRC
+And also recursive rule:
+#+BEGIN_SRC scheme
+;;; Query input:
+(outranked-by ?who (Bitdiddle Ben))
+
+;;; Query results:
+(outranked-by (tweakit lem e) (bitdiddle ben))
+(outranked-by (reasoner louis) (bitdiddle ben))
+(outranked-by (fect cy d) (bitdiddle ben))
+(outranked-by (hacker alyssa p) (bitdiddle ben))
+
+#+END_SRC
+*** Exercise 4.77
+We need to change the representation of frame. So far we used alist as our
+frame. Since we used ADT for frame, we can easily change the representation
+without dramatical change of code.
+
+Then we need to specify what features our frame should have. As we are going to
+support the "promise" to filter /this/ frame if the condition satisfied; also we
+should have to support that if and only if some prior condition, let we call
+this as /trigger/ condition, is satisfied the /promised/ filter operation being
+tried.
+
+These specification is quite familiar with us; it indicates /event-driven/
+programming, that is, to check whether given object's the condition has changed
+and it satisfy specified /trigger/ condition, call the stored procedures or in
+other terms take an /action/.
+
+So our frame should work as /wire/ in the digital simulator language or
+/connector/ is constraint based arithmetic language in section 3.
+
+So our frame has to store /callback list/ to be called whenever some program
+extend the given frame; /callback/ function should return either frame of symbol
+=failed=. We can implement the filtering function by let the /callback/ function
+return =failed= whenever the given condition is satisfied.
+
+Also whenever we add new /callback/ function to our frame we should call given
+function with respect to current given frame since it may already have satisfied
+the /trigger/ condition.
+
+And it may necessary to make our /callback/ work one time only; that is whenever
+it once triggered, it should not be called anymore since our frame structure
+does not mutate existing bindings.
+
+So as summary to the /callback/ function, it should meet following format:
+1. It should specify the /trigger/ condition which take frame as argument.
+2. It should specify the /action/ procedure which take frame and return frame or
+   symbol =failed=.
+
+
+For the frame,
+1. It should store /callback/ function list to activate whenever it extended.
+2. In that activating process, it should remove the callback function from the
+   callback list after calling its action procedure whenever its /trigger/
+   condition meets.
+
+
+Now we can rebuild the ADT of frame as follows:
+- Constructors
+  - =empty-frame= :: empty frame structure.
+  - =(make-frame <bindings> <callbacks>)= :: return frame structure with
+    =<bindings>= and =<callbacks>= as its part.
+- Selectors
+  - =(bindings <frame>)= :: returns binding list of given =<frame>=.
+  - =(callbacks <frame>)= :: returns callback list of given =<frame>=.
+- Operations
+  - =(binding-in-frame <variable> <frame>)= :: returns /binding/ in the =<frame>= that
+    has =<variable>= as its variable part.
+
+  - =(extend <variable> <value> <frame>)= :: returns extended frame with the given
+    =<variable>= =<value>= binding or symbol =failed=.
+
+    It call =activate-callbacks= with respect to the extended frame and return its
+    result.
+  - =(add-callback <callback> <frame>)= :: returns frame with extended callback
+    list or symbol =failed=.
+
+    It activate given =<callback>= with respect to given =<frame>= then if the
+    =<callback>='s trigger condition doesn't meet return the extended frame or
+    return the result of =<callback>='s action application with respect to
+    =<frame>=.
+
+
+Then the ADT for callback function:
+- Constructors
+  - =(make-callback <trigger> <action>)= :: returns callback function with given
+    =<trigger>= function and =<action>= function.
+- Selectors
+  - =(trigger <callback>)= :: returns trigger function of given =<callback>=.
+  - =(action <callback>)= :: returns action function of given =<callback>=.
+
+
+Then here is the code implementing above specifications with auxiliary
+procedures:
+#+BEGIN_SRC scheme
+;;;; Frame ADT
+(define (binding-in-frame variable frame)
+  (assoc variable (bindings frame)))
+
+(define (extend variable value frame)
+  (activate-callbacks
+   (make-frame (cons (make-binding variable value) (bindings frame))
+               (callbacks frame))))
+
+;; Callback -> Frame | failed
+(define (add-callback callback frame)
+  (if ((trigger callback) frame)
+      ((action callback) frame)
+      (make-frame (bindings frame)
+                  (cons-callback
+                   callback (callbacks frame)))))
+
+;; Frame -> Frame | failed
+(define (activate-callbacks frame)
+  ;; Callback-list, Callback-list, Frame -> Frame | failed
+  (define (loop wait-callbacks activateds frame)
+    (cond ((eq? frame 'failed) 'failed)
+          ((empty-callbacks? wait-callbacks)
+           (make-frame (bindings frame)
+                       activateds))
+          (else
+           (let ((callback (first-callback wait-callbacks))
+                 (rests (rest-callbacks wait-callbacks)))
+             (if ((trigger callback) frame)
+                 (loop rests
+                       activateds
+                       ((action callback) frame))
+                 (loop rests
+                       (cons-callback callback activateds)
+                       frame))))))
+  (loop (callbacks frame) empty-callbacks frame))
+
+;; Frame -> List<Binding>
+(define (bindings frame)
+  (car frame))
+
+;; Frame -> Callback-list
+(define (callbacks frame)
+  (cadr frame))
+
+;; List<Binding>, Callback-list -> Frame
+(define (make-frame bindings callbacks)
+  (list bindings callbacks))
+
+(define empty-frame
+  (make-frame empty-bindings empty-callbacks))
+
+;;;; Callback list ADT
+(define empty-callbacks '())
+(define empty-callbacks? null?)
+(define rest-callbacks cdr)
+(define first-callback car)
+(define cons-callback cons)
+
+;;;; Callback ADT
+;; Trigger := Frame -> boolean
+;; Action := Frame -> Frame | failed
+;; Trigger, Action -> Callback
+(define (make-callback trigger-op action-op)
+  (list trigger-op action-op))
+
+;; Callback -> Trigger
+(define (trigger callback)
+  (car callback))
+
+;; Callback -> Action
+(define (action callback)
+  (cadr callback))
+
+#+END_SRC
+
+Then we are going to design procedure that would be cinch to defining trigger
+operation:
+- =(has-constant? <variable> <frame>)= :: returns true if the given =<variable>=
+  has constant value in =<frame>= otherwise false.
+- =(has-constants? <variable list> <frame>)= :: take as input the list of
+  variable and return true only if all the variables in the given list
+  =has-constant?= in the given =<frame>=.
+- =(extract-vars <pattern>)= :: extract list of variables in the given =<pattern>=.
+ 
+  In usual case, =<pattern>= is query.
+
+
+Here is the codes of above specifications:
+#+BEGIN_SRC scheme
+;; Variable, Frame -> boolean
+(define (has-constant? val frame)
+  (cond ((var? val)
+         (let ((binding (binding-in-frame val frame)))
+           (if binding
+               (has-constant? val frame)
+               false)))
+        ((pair? val)
+         (and (has-constant? (car val) frame)
+              (has-constant? (cdr val) frame)))
+        (else
+         ;; constant
+         true)))
+
+;; List<Variable>, Frame -> boolean
+(define (has-constants? vars frame)
+  (if (null? vars) true
+      (and (has-constant? (car vars) frame)
+           (has-constants? (cdr vars) frame))))
+
+(define (extract-vars pattern)
+  ;; Pattern, List<Variable> -> List<Variable>
+  (define (tree-walk exp extracteds)
+    (cond ((var? exp)
+           (cons exp extracteds))
+          ((pair? exp)
+           (tree-walk (cdr exp)
+                      (tree-walk (car exp)
+                                 extracteds)))
+          (else extracteds)))
+  (tree-walk pattern '()))
+
+#+END_SRC
+
+Then the =negate= becomes
+#+BEGIN_SRC scheme
+(define (negate operands frame-stream)
+  (define callback
+    (let ((vars (extract-vars (negated-query operands))))
+      (make-callback
+       (lambda (frame)
+         (has-constants? vars frame))
+       (lambda (frame)
+         (if (stream-null? (qeval (negated-query operands)
+                                  (singleton-stream frame)))
+             frame
+             'failed)))))
+  (stream-filter
+   (lambda (frame)
+     (not (eq? frame 'failed)))
+   (stream-map
+    (lambda (frame)
+      (add-callback callback frame))
+    frame-stream)))
+#+END_SRC
+
+Similarly =lisp-value=:
+#+BEGIN_SRC scheme
+(define (lisp-value call frame-stream)
+  (define callback
+    (let ((vars (extract-vars call)))
+      (make-callback
+       (lambda (frame)
+         (has-constants? vars frame))
+       (lambda (frame)
+         (if (execute
+              (instantiate
+               call
+               frame
+               (lambda (v f)
+                 (error "Unknown pat var -- LISP-VALUE" v))))
+             frame
+             'failed)))))
+  (stream-filter
+   (lambda (frame)
+     (not (eq? frame 'failed)))
+   (stream-map
+    (lambda (frame)
+      (add-callback callback frame))
+    frame-stream)))
+#+END_SRC
+
+We need to modify =unify-frames= to combine the callbacks of both frame:
+#+BEGIN_SRC scheme
+(define (unify-frames frame1 frame2)
+  (unify-bindings
+   (frame->binding-list frame1)
+   (fold-left                           ;add all the callbacks of frame1 to frame2
+    (lambda (frame callback)
+      (if (eq? frame 'failed)
+          'failed                       ;propagate failed
+          (add-callback callback frame)))
+    frame2
+    (callbacks frame1))))
+#+END_SRC
+
+Let's test!
+#+BEGIN_SRC scheme
+;;; Query input:
+(not (job (Bitdiddle Ben) (computer)))
+
+;;; Query results:
+(not (job (bitdiddle ben) (computer)))
+
+;;; Query input:
+(not (job (Bitdiddle Ben) (computer wizard)))
+
+;;; Query results:
+
+;;; Query input:
+(lisp-value < 1 2)
+
+;;; Query results:
+(lisp-value < 1 2)
+
+;;; Query input:
+(lives-near ?person ?neighbor)
+
+;;; Query results:  C-c C-c
+;Quit!
+
+#+END_SRC
+
+It works for the simple compound query but not the recursive one; run forever.
+
+This is time for debug. Here we are going to use binary search method with
+=display=:
+#+BEGIN_SRC scheme
+(define (negate operands frame-stream)
+  (define callback
+    (let ((vars (extract-vars (negated-query operands))))
+      (make-callback
+       (lambda (frame)
+         (newline)
+         (display "Variables:\t")
+         (display vars)
+         (display "\tin frame \t:")
+         (display frame)
+         (has-constants? vars frame))
+       (lambda (frame)
+         (newline)
+         (display "action procedure")
+         (if (stream-null? (qeval (negated-query operands)
+                                  (singleton-stream frame)))
+             frame
+             'failed)))))
+  (stream-filter
+   (lambda (frame)
+     (not (eq? frame 'failed)))
+   (stream-map
+    (lambda (frame)
+      (add-callback callback frame))
+    frame-stream)))
+#+END_SRC
+
+Then query:
+#+BEGIN_SRC scheme
+;;; Query input:
+(lives-near ?person ?neighbor)
+
+;;; Query results:
+Variables:	((? 25 person-2) (? 25 person-1))	in frame 	:((((? 25 person-2) aull dewitt) ((? 25 rest-2) (onion square) 5) ((? 25 rest-1) (onion square) 5) ((? 25 town) . slumerville) ((? 25 person-1) aull dewitt) ((? neighbor) ? 25 person-2) ((? person) ? 25 person-1)) ())  C-c C-c
+;Quit!
+#+END_SRC
+
+From this test, we can realize our =extract-vars= works as expected; the
+/trigger/ function called once but never the /action/ function of =callback=. It
+implies our =has-constants?= has problem in it:
+#+BEGIN_SRC scheme
+(define (has-constant? val frame)
+  (cond ((var? val)
+         (let ((binding (binding-in-frame val frame)))
+           (if binding
+               (has-constant?
+                ;; val
+                (binding-value binding)
+                frame)
+               false)))
+        ((pair? val)
+         (and (has-constant? (car val) frame)
+              (has-constant? (cdr val) frame)))
+        (else
+         ;; constant
+         true)))
+#+END_SRC
+
+We have modified the argument of recursive call from =val= into =(binding-value
+binding)=. This was the bug after fixing as above, let's re-run the test:
+#+BEGIN_SRC scheme
+;;; Query input:
+(lives-near ?person ?neighbor)
+
+;;; Query results:
+(lives-near (reasoner louis) (aull dewitt))
+(lives-near (aull dewitt) (reasoner louis))
+(lives-near (bitdiddle ben) (aull dewitt))
+(lives-near (aull dewitt) (bitdiddle ben))
+(lives-near (bitdiddle ben) (reasoner louis))
+(lives-near (hacker alyssa p) (fect cy d))
+(lives-near (reasoner louis) (bitdiddle ben))
+(lives-near (fect cy d) (hacker alyssa p))
+
+#+END_SRC
+
+Now works as expected.
+
+Do more tests:
+#+BEGIN_SRC scheme
+;;; Query input:
+(assert! (rule (can-be-replaced-by ?p1 ?p2)
+               (and (job ?p1 ?job1) (job ?p2 ?job2)
+                    (or (same ?job1 ?job2)
+                        (can-do-job ?job2 ?job1))
+                    (not (same ?p1 ?p2)))))
+
+Assertion added to data base.
+
+;;; Query input:
+(can-be-replaced-by (Fect Cy D) ?whom)
+
+;;; Query results:
+(can-be-replaced-by (fect cy d) (hacker alyssa p))
+(can-be-replaced-by (fect cy d) (bitdiddle ben))
+
+#+END_SRC
+works as expected and if we change the order of =not= in the body, it should
+works as before:
+#+BEGIN_SRC scheme
+;;; Query input:
+(assert! (rule (can-be-replaced-by ?p1 ?p2)
+               (and (not (same ?p1 ?p2)) (job ?p1 ?job1)
+                    (job ?p2 ?job2)
+                    (or (same ?job1 ?job2)
+                        (can-do-job ?job2 ?job1)))))
+
+Assertion added to data base.
+
+;;; Query input:
+(can-be-replaced-by (Fect Cy D) ?whom)
+
+;;; Query results:  C-c C-c
+;Quit!
+#+END_SRC
+But it isn't. We can progress with our binary search debug:
+#+BEGIN_SRC scheme
+,*** in action procedure
+(if (stream-null? (qeval (negated-query operands)
+                                  (singleton-stream frame)))
+             (begin
+               (newline)
+               (display "frame worked! with result:\t")
+               (display frame)
+               frame)
+             (begin (newline) (display "failed worked!") 'failed))
+#+END_SRC
+
+Then the response:
+#+BEGIN_SRC scheme
+;;; Query input:
+(can-be-replaced-by (Fect Cy D) ?whom)
+
+;;; Query results:
+Variables:	((? 7395 p2) (? 7395 p1))	in frame 	:((((? whom) ? 7395 p2) ((? 7395 p1) fect cy d)) ())
+Variables:	((? 7395 p2) (? 7395 p1))	in frame 	:((((? 7395 job1) computer programmer) ((? whom) ? 7395 p2) ((? 7395 p1) fect cy d)) ((#[compound-procedure 13] #[compound-procedure 14])))
+Variables:	((? 7395 p2) (? 7395 p1))	in frame 	:((((? 7395 job2) administration secretary) ((? 7395 job1) computer programmer) ((? whom) ? 7395 p2) ((? 7395 p1) fect cy d)) ((#[compound-procedure 13] #[compound-procedure 14])))
+Variables:	((? 7395 p2) (? 7395 p1))	in frame 	:((((? 7395 p2) aull dewitt) ((? 7395 job2) administration secretary) ((? 7395 job1) computer programmer) ((? whom) ? 7395 p2) ((? 7395 p1) fect cy d)) ((#[compound-procedure 13] #[compound-procedure 14])))
+action procedure with frame:	((((? 7395 p2) aull dewitt) ((? 7395 job2) administration secretary) ((? 7395 job1) computer programmer) ((? whom) ? 7395 p2) ((? 7395 p1) fect cy d)) ((#[compound-procedure 13] #[compound-procedure 14])))
+...
+C-c C-c
+;Quit!
+#+END_SRC
+
+But none of the branches of /action/ procedure have been passed. Now we know
+where is the bug: the predicate part of =if=. Let's put more =display= in that
+part:
+#+BEGIN_SRC scheme
+,*** in action procedure
+         (if (stream-null?
+              (begin
+                (newline)
+                (display "the negated-query\t")
+                (display (negated-query operands))
+                (newline)
+                (display "With frame:\t")
+                (display frame)
+                (qeval (negated-query operands)
+                       (singleton-stream frame))))
+             ...)
+#+END_SRC
+
+Then we can run the specific case in manually:
+#+BEGIN_SRC scheme
+
+;;; Query input:
+(can-be-replaced-by (Fect Cy D) ?whom)
+
+;;; Query results:
+the negated-query	(same (? 27833 p1) (? 27833 p2))
+With frame:	((((? 27833 p2) aull dewitt) ((? 27833 job2) administration secretary) ((? 27833 job1) computer programmer) ((? whom) ? 27833 p2) ((? 27833 p1) fect cy d)) ((#[compound-procedure 15] #[compound-procedure 16])))
+...
+#+END_SRC
+as
+#+BEGIN_SRC scheme
+(define query '(same (? 27833 p1) (? 27833 p2)))
+(define frame
+  `((((? 27833 p2) aull dewitt)
+     ((? 27833 job2) administration secretary)
+     ((? 27833 job1) computer programmer)
+     ((? whom) ? 27833 p2)
+     ((? 27833 p1) fect cy d))
+    ((,#@15 ,#@16))))
+#+END_SRC
+
+Then:
+#+BEGIN_SRC scheme
+(qeval query (singleton-stream frame))
+
+the negated-query	(same (? 27833 p1) (? 27833 p2))
+With frame:	((((? 27873 x) fect cy d) ((? 27833 p2) aull dewitt) ((? 27833 job2) administration secretary) ((? 27833 job1) computer programmer) ((? whom) ? 27833 p2) ((? 27833 p1) fect cy d)) ((#[compound-procedure 15] #[compound-procedure 16])))
+the negated-query	(same (? 27833 p1) (? 27833 p2))
+...
+#+END_SRC
+
+This result is quite complicated mess. Here what we should expect from the above
+execution was just
+#+BEGIN_SRC scheme
+(qeval query (singleton-stream frame))
+
+;Value: ()
+#+END_SRC
+not calling the callback action recursively, which led into infinite loop.
+
+After some reasoning, we can understand that it is due to the =unify-match=
+calling in the =apply-a-rule=, which in turn called when we process the =same=
+query above. =Unify-match= calls =extend-if-possible= in processing the body of
+it, and it led to call =extend=; that now calls the /action/ procedure with
+which all the process started.
+
+To fix this, all we need to do is just remove all the callbacks from the frame
+, with which the predicate part of =if= processed, which in turn led all of
+these mass.
+
+
+The followings do what specified above:
+#+BEGIN_SRC scheme
+(define (remove-callbacks frame)
+  (make-frame (bindings frame)
+              empty-callbacks))
+#+END_SRC
+
+#+BEGIN_SRC scheme
+,*** in negate
+  (define callback
+    (let ((vars (extract-vars (negated-query operands))))
+      (make-callback
+       (lambda (frame)
+         (has-constants? vars frame))
+       (lambda (frame)
+         (if (stream-null?
+              (qeval (negated-query operands)
+                     (singleton-stream (remove-callbacks frame))))
+             frame
+             'failed)))))
+#+END_SRC
+
+Now it works:
+#+BEGIN_SRC scheme
+;;; Query input:
+(assert! (rule (can-be-replaced-by ?p1 ?p2)
+               (and (not (same ?p1 ?p2)) (job ?p1 ?job1)
+                    (job ?p2 ?job2)
+                    (or (same ?job1 ?job2)
+                        (can-do-job ?job2 ?job1)))))
+
+Assertion added to data base.
+
+;;; Query input:
+(can-be-replaced-by (Fect Cy D) ?whom)
+
+;;; Query results:
+(can-be-replaced-by (fect cy d) (hacker alyssa p))
+(can-be-replaced-by (fect cy d) (bitdiddle ben))
+
+#+END_SRC
+
+Or like this (variation of [[Exercise 4.56][Exercise 4.56]] c.):
+#+BEGIN_SRC scheme
+;;; Query input:
+(and (lisp-value > ?a1 ?a2)
+     (can-be-replaced-by ?p1 ?p2) (salary ?p1 ?a1)
+     (salary ?p2 ?a2))
+
+;;; Query results:
+(and (lisp-value > 150000 25000) (can-be-replaced-by (warbucks oliver) (aull dewitt)) (salary (warbucks oliver) 150000) (salary (aull dewitt) 25000))
+(and (lisp-value > 40000 35000) (can-be-replaced-by (hacker alyssa p) (fect cy d)) (salary (hacker alyssa p) 40000) (salary (fect cy d) 35000))
+
+#+END_SRC
+
+With this, our =lives-near= rule has not use =andthen=, just =and=:
+#+BEGIN_SRC scheme
+(rule (lives-near ?person-1 ?person-2)
+      ;; (andthen (and (address ?person-1 (?town . ?rest-1))
+      ;;               (address ?person-2 (?town . ?rest-2)))
+      ;;          (not (same ?person-1 ?person-2)))
+      (and (not (same ?person-1 ?person-2))
+           (address ?person-1 (?town . ?rest-1))
+           (address ?person-2 (?town . ?rest-2))))
+#+END_SRC
+
+Then
+#+BEGIN_SRC scheme
+;;; Query input:
+(lives-near ?who ?neighbor)
+
+;;; Query results:
+(lives-near (reasoner louis) (aull dewitt))
+(lives-near (aull dewitt) (reasoner louis))
+(lives-near (bitdiddle ben) (aull dewitt))
+(lives-near (aull dewitt) (bitdiddle ben))
+(lives-near (bitdiddle ben) (reasoner louis))
+(lives-near (hacker alyssa p) (fect cy d))
+(lives-near (reasoner louis) (bitdiddle ben))
+(lives-near (fect cy d) (hacker alyssa p))
+
+#+END_SRC

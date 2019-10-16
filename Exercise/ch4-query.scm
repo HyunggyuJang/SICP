@@ -38,7 +38,7 @@
                             frame
                             (lambda (v f)
                               (contract-question-mark v))))
-             (qeval q (singleton-stream '()))))
+             (qeval q (singleton-stream empty-frame))))
            (query-driver-loop)))))
 
 (define (instantiate exp frame unbound-var-handler)
@@ -75,12 +75,69 @@
 
 ;;;Compound queries
 
-(define (conjoin conjuncts frame-stream)
+(define (conjoin-in-order conjuncts frame-stream)
   (if (empty-conjunction? conjuncts)
       frame-stream
-      (conjoin (rest-conjuncts conjuncts)
+      (conjoin-in-order (rest-conjuncts conjuncts)
                (qeval (first-conjunct conjuncts)
                       frame-stream))))
+
+(define (conjoin conjuncts frame-stream)
+  (stream-flatmap
+   (lambda (frame)
+     ((conjoin-from-frame frame) conjuncts))
+   frame-stream))
+
+;; Frame -> (Conjuncts -> Stream<Frame>)
+(define (conjoin-from-frame frame)
+  (define (conjoiner conjuncts conjoined)
+    (if (empty-conjunction? conjuncts)
+        conjoined
+        (conjoiner
+         (rest-conjuncts conjuncts)
+         (stream-filter
+          (lambda (frame)
+            (not (eq? frame 'failed)))
+          (stream-flatmap
+           (lambda (frame1)
+             (stream-map
+              (lambda (frame2)
+                (unify-frames frame1 frame2))
+              conjoined))
+           (qeval (first-conjunct conjuncts)
+                  (singleton-stream frame)))))))
+  (lambda (conjuncts)
+    (if (empty-conjunction? conjuncts)
+        (singleton-stream frame)
+        (conjoiner (rest-conjuncts conjuncts)
+                   (qeval (first-conjunct conjuncts)
+                          (singleton-stream frame))))))
+
+(define (unify-frames frame1 frame2)
+  (unify-bindings
+   (frame->binding-list frame1)
+   (fold-left                           ;add all the callbacks of frame1 to frame2
+    (lambda (frame callback)
+      (if (eq? frame 'failed)
+          'failed                       ;propagate failed
+          (add-callback callback frame)))
+    frame2
+    (callbacks frame1))))
+
+(define (unify-bindings bindings frame)
+  (cond ((eq? frame 'failed) 'failed)
+        ((null? bindings) frame)
+        (else
+         (unify-bindings
+          (cdr bindings)
+          (let ((binding (car bindings)))
+            (extend-if-possible (binding-variable binding)
+                                (binding-value binding)
+                                frame))))))
+
+;; ADT for frame, tranforming the type
+;; Frame -> List<Binding>
+(define (frame->binding-list frame) (bindings frame))
 
 ;;(put 'and 'qeval conjoin)
 
@@ -98,28 +155,70 @@
 ;;;Filters
 
 (define (negate operands frame-stream)
+  (define callback
+    (let ((vars (extract-vars (negated-query operands))))
+      (make-callback
+       (lambda (frame)
+         (has-constants? vars frame))
+       (lambda (frame)
+         (if (stream-null?
+              (qeval (negated-query operands)
+                     (singleton-stream (remove-callbacks frame))))
+             frame
+             'failed)))))
+  (stream-filter
+   (lambda (frame)
+     (not (eq? frame 'failed)))
+   (stream-map
+    (lambda (frame)
+      (add-callback callback frame))
+    frame-stream)))
+
+(define (uniquely-asserted operand frame-stream)
   (stream-flatmap
    (lambda (frame)
-     (if (stream-null? (qeval (negated-query operands)
-                              (singleton-stream frame)))
-         (singleton-stream frame)
-         the-empty-stream))
+     (let ((output-frames
+            (qeval (unique-query operand)
+                   (singleton-stream frame))))
+       (if (and (not (stream-null? output-frames))
+                (stream-null? (stream-cdr output-frames)))
+           output-frames
+           the-empty-stream)))
    frame-stream))
+
+(define (unique-query operand) (car operand))
+
+;; Test for unique
+;; (unique (job ?x (computer wizard)))
+
+;; (unique (job ?x (computer programmer)))
+
+;; (and (job ?x ?j) (unique (job ?anyone ?j)))
 
 ;;(put 'not 'qeval negate)
 
 (define (lisp-value call frame-stream)
-  (stream-flatmap
+  (define callback
+    (let ((vars (extract-vars call)))
+      (make-callback
+       (lambda (frame)
+         (has-constants? vars frame))
+       (lambda (frame)
+         (if (execute
+              (instantiate
+               call
+               frame
+               (lambda (v f)
+                 (error "Unknown pat var -- LISP-VALUE" v))))
+             frame
+             'failed)))))
+  (stream-filter
    (lambda (frame)
-     (if (execute
-          (instantiate
-           call
-           frame
-           (lambda (v f)
-             (error "Unknown pat var -- LISP-VALUE" v))))
-         (singleton-stream frame)
-         the-empty-stream))
-   frame-stream))
+     (not (eq? frame 'failed)))
+   (stream-map
+    (lambda (frame)
+      (add-callback callback frame))
+    frame-stream)))
 
 ;;(put 'lisp-value 'qeval lisp-value)
 
@@ -440,8 +539,11 @@
 
 ;;;SECTION 4.4.4.8
 ;;;Frames and bindings
+;;;; binding ADT
 (define (make-binding variable value)
   (cons variable value))
+
+(define empty-bindings '())
 
 (define (binding-variable binding)
   (car binding))
@@ -449,13 +551,115 @@
 (define (binding-value binding)
   (cdr binding))
 
+;;;; Callback list ADT
+(define empty-callbacks '())
+(define empty-callbacks? null?)
+(define rest-callbacks cdr)
+(define first-callback car)
+(define cons-callback cons)
 
+;;;; Frame ADT
 (define (binding-in-frame variable frame)
-  (assoc variable frame))
+  (assoc variable (bindings frame)))
 
 (define (extend variable value frame)
-  (cons (make-binding variable value) frame))
-
+  (activate-callbacks
+   (make-frame (cons (make-binding variable value) (bindings frame))
+               (callbacks frame))))
+
+(define (remove-callbacks frame)
+  (make-frame (bindings frame)
+              empty-callbacks))
+
+;; Callback -> Frame | failed
+(define (add-callback callback frame)
+  (if ((trigger callback) frame)
+      ((action callback) frame)
+      (make-frame (bindings frame)
+                  (cons-callback
+                   callback (callbacks frame)))))
+
+;; Frame -> Frame | failed
+(define (activate-callbacks frame)
+  ;; Callback-list, Callback-list, Frame -> Frame | failed
+  (define (loop wait-callbacks activateds frame)
+    (cond ((eq? frame 'failed) 'failed)
+          ((empty-callbacks? wait-callbacks)
+           (make-frame (bindings frame)
+                       activateds))
+          (else
+           (let ((callback (first-callback wait-callbacks))
+                 (rests (rest-callbacks wait-callbacks)))
+             (if ((trigger callback) frame)
+                 (loop rests
+                       activateds
+                       ((action callback) frame))
+                 (loop rests
+                       (cons-callback callback activateds)
+                       frame))))))
+  (loop (callbacks frame) empty-callbacks frame))
+
+;; Frame -> List<Binding>
+(define (bindings frame)
+  (car frame))
+
+;; Frame -> Callback-list
+(define (callbacks frame)
+  (cadr frame))
+
+;; List<Binding>, Callback-list -> Frame
+(define (make-frame bindings callbacks)
+  (list bindings callbacks))
+
+(define empty-frame
+  (make-frame empty-bindings empty-callbacks))
+
+;;;; Callback ADT
+;; Trigger := Frame -> boolean
+;; Action := Frame -> Frame | failed
+;; Trigger, Action -> Callback
+(define (make-callback trigger-op action-op)
+  (list trigger-op action-op))
+
+;; Callback -> Trigger
+(define (trigger callback)
+  (car callback))
+
+;; Callback -> Action
+(define (action callback)
+  (cadr callback))
+
+;; Variable, Frame -> boolean
+(define (has-constant? val frame)
+  (cond ((var? val)
+         (let ((binding (binding-in-frame val frame)))
+           (if binding
+               (has-constant? (binding-value binding) frame)
+               false)))
+        ((pair? val)
+         (and (has-constant? (car val) frame)
+              (has-constant? (cdr val) frame)))
+        (else
+         ;; constant
+         true)))
+
+;; List<Variable>, Frame -> boolean
+(define (has-constants? vars frame)
+  (if (null? vars) true
+      (and (has-constant? (car vars) frame)
+           (has-constants? (cdr vars) frame))))
+
+(define (extract-vars pattern)
+  ;; Pattern, List<Variable> -> List<Variable>
+  (define (tree-walk exp extracteds)
+    (cond ((var? exp)
+           (cons exp extracteds))
+          ((pair? exp)
+           (tree-walk (cdr exp)
+                      (tree-walk (car exp)
+                                 extracteds)))
+          (else extracteds)))
+  (tree-walk pattern '()))
 
 ;;;;From Section 4.1
 
@@ -568,10 +772,13 @@
     (set! get (operation-table 'lookup-proc))
     (set! put (operation-table 'insert-proc!)))
   (put 'and 'qeval conjoin)
+  (put 'andthen 'qeval conjoin-in-order)
   (put 'or 'qeval disjoin)
   (put 'not 'qeval negate)
   (put 'lisp-value 'qeval lisp-value)
   (put 'always-true 'qeval always-true)
+  ;; Exercise 4.75
+  (put 'unique 'qeval uniquely-asserted)
   (deal-out rules-and-assertions '() '()))
 
 ;; Do following to reinit the data base from microshaft-data-base
@@ -636,9 +843,12 @@
             (administration big wheel))
 
 (rule (lives-near ?person-1 ?person-2)
-      (and (address ?person-1 (?town . ?rest-1))
-           (address ?person-2 (?town . ?rest-2))
-           (not (same ?person-1 ?person-2))))
+      ;; (andthen (and (address ?person-1 (?town . ?rest-1))
+      ;;               (address ?person-2 (?town . ?rest-2)))
+      ;;          (not (same ?person-1 ?person-2)))
+      (and (not (same ?person-1 ?person-2))
+           (address ?person-1 (?town . ?rest-1))
+           (address ?person-2 (?town . ?rest-2))))
 
 (rule (same ?x ?x))
 
@@ -648,6 +858,6 @@
 
 (rule (outranked-by ?staff-person ?boss)
       (or (supervisor ?staff-person ?boss)
-          (and (supervisor ?staff-person ?middle-manager)
+          (andthen (supervisor ?staff-person ?middle-manager)
                (outranked-by ?middle-manager ?boss))))
 ))
