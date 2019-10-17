@@ -4320,7 +4320,7 @@ If we make =disjoin= as
 #+BEGIN_SRC scheme
 (define (disjoin disjuncts frame-stream)
   (if (empty-disjunction? disjuncts)
-      the-empty-stream
+      (amb)
       (stream-append-delayed
        (qeval (first-disjunct disjuncts) frame-stream)
        (delay (disjoin (rest-disjuncts disjuncts)
@@ -5377,3 +5377,400 @@ Then
 (lives-near (fect cy d) (hacker alyssa p))
 
 #+END_SRC
+*** Exercise 4.78
+We need to map from frames as stream representation to frames as time branches.
+We don't need to change all of the procedures from the scratch. Actually we can
+re-use all of the procedures that is not specific to the stream representation.
+
+So our pattern matcher and unifier works as before in this new scheme. Even for
+the stream specific implementation, the mapping is quite straightforward. That
+is, where we processed with stream of frames, we are good to map it to just one
+frame instance; where we used =the-empty-stream= to abort current frame, we need
+to make that frame fail -- call =(amb)=.
+
+The problem is =disjoin=. What is the counterpart of =interleave-delayed= in
+=amb= evaluator? We need to reason about the relationship between the input
+streams and the output stream; it produce the stream as if it searched the input
+streams in breadth first manner. However, as our =amb= evaluator chose
+chronological search order -- so called the /depth first search/ -- it cause
+quite huge modification from the very scratch to emulate this BFS (Breadth First
+Search) in our =amb= evaluator.
+
+So, here we just =ramb= to implement =disjoin= in our situation. The reasons why
+we chose this are
+1. If we just used =amb= instead of =ramb= to combine =disjuncts=, it would be
+   equivalent for stream version to use =stream-append-delayed= in combining them.
+2. It is still true that in =amb= evaluator we can not emulate BFS even with
+   =ramb=; however we are able to produce all the answers if the user type
+   =try-again= enough times in theory. While, if we stick with =amb=, then the
+   probabilities it going to happen goes to 0.
+
+
+So we better off with =ramb= in =disjoin=.
+
+For the =negate=, we need control structure to "try out" the given frame with
+the =nagated-query= of given =operands=. As we postulated above,
+=the-empty-stream= is equivalent =(amb)= in =amb= evaluator. So what we need
+here is to check whether the given evaluation is going to fail, if so, do
+something, else do others. This is exactly what =if-fail= does:
+#+BEGIN_SRC scheme
+(define (negate operands frame)
+  (define callback
+    (let ((vars (extract-vars (negated-query operands))))
+      (make-callback
+       (lambda (frame)
+         (has-constants? vars frame))
+       (lambda (frame)
+         (if-fail
+          (begin
+            (qeval (negated-query operands)
+                   (remove-callbacks frame))
+            'failed)
+          frame)))))
+  (filter-failed (add-callback callback frame)))
+#+END_SRC
+Unfortunately, the above implementation would blindly pass =frame= whether or
+not we have given =negated-query= fails or not:
+#+BEGIN_SRC scheme
+;; Test negate
+(define (simulate-negate-action)
+  (if-fail
+   (begin (amb 1 2 3 4)
+          'failed)
+   'bilndly-pass-through))
+(filter-failed (simulate-negate-action))
+#+END_SRC
+
+Then (for the definition of =filter-failed=, please reference the whole code
+will appear below):
+#+BEGIN_SRC scheme
+;;; Amb-Eval input:
+(filter-failed (simulate-negate-action))
+
+;;; Starting a new problem
+;;; Amb-Eval value:
+bilndly-pass-through
+#+END_SRC
+
+It is due to mainly our deficiency in the behavior we expect from =negate=. We
+need to specify the behavior of =negate= abstractly enough to be implemented in
+any programming language framework.
+
+After some reasoning we can deduce abstract behavior of =negate= in =amb=
+language:
+1. The frame branches of =qeval= part in =negate= should be empty.
+2. Need to traverse the time branches caused by =qeval= part then if it success
+   ever, then it should signal this fact to the caller of =qeval=.
+
+
+For the implementation details, we can achieve the second behavior of above
+using assignment; however with the same argument as =disjoin=, we can not /fast
+escape/ in =amb= language as we did in stream version. That is to abort as soon
+as it found that the produced frames are not empty, it quits to evaluate
+subsequent frames otherwise it would produced.
+
+The reason behind this fact is that we aren't have any explicit method for
+manipulating the time branches =amb= evaluation. We can not teleport the time
+point into specific point in the time tree[fn:0]. So we need to traverse all the
+time branches produced by
+#+BEGIN_SRC scheme
+(qeval (negated-query operands)
+       (remove-callbacks frame))
+#+END_SRC
+just to abort. It may produce infinite number of frame branches; in that case,
+the evaluation of =negate= would also run forever without returning the control
+to the caller.
+
+This is huge difference and unfortunate from the stream version of query
+language.
+
+Anyway we can implement this idea as
+#+BEGIN_SRC scheme
+(define (negate operands frame)
+  (define callback
+    (let ((vars (extract-vars (negated-query operands))))
+      (make-callback
+       (lambda (frame)
+         (has-constants? vars frame))
+       (lambda (frame)
+         (let ((succeed? false))
+           (if-fail
+            (begin (qeval (negated-query operands)
+                          (remove-callbacks frame))
+                   (permanent-set! succeed? true))
+            'ignore)
+           (if succeed?
+               'failed
+               frame))))))
+  (filter-failed (add-callback callback frame)))
+#+END_SRC
+
+Here we used the combination of =if-fail= and =permanent-set!= as we did [[Exercise 4.53][before]]
+to cope with the time branch abortion.
+
+Then (unit) test:
+#+BEGIN_SRC scheme
+;;; Amb-Eval input:
+(define (simulate-negate-action-failed)
+  (let ((succeed? false))
+    (if-fail
+     (begin (amb 1 2 3 4)
+            (permanent-set! succeed? true))
+     'ignore)
+    (if succeed? 'failed
+        'frame)))
+
+;;; Starting a new problem
+;;; Amb-Eval value:
+ok
+
+;;; Amb-Eval input:
+(define (simulate-negate-action-succeed)
+  (let ((succeed? false))
+    (if-fail
+     (amb)
+     'ignore)
+    (if succeed? 'failed
+        'frame)))
+
+;;; Starting a new problem
+;;; Amb-Eval value:
+ok
+
+;;; Amb-Eval input:
+(filter-failed (simulate-negate-action-failed))
+
+;;; Starting a new problem
+;;; There are no more values of
+(filter-failed (simulate-negate-action-failed))
+
+;;; Amb-Eval input:
+(filter-failed (simulate-negate-action-succeed))
+
+;;; Starting a new problem
+;;; Amb-Eval value:
+frame
+
+#+END_SRC
+
+Yet another difficulty is =execute=. If we chose ordinary =eval/apply=
+interpreter as evaluator for backbone of query language, it is easy to
+implement; however in our =amb= evaluator, as the implementation of that
+evaluator consisted of =succeed/fail= chains, to reason about this chains to
+implement the counterparts of =apply= and =eval=.
+
+Here we also try to capture the behavior we want from =execute=:
+- Just extract the expression off the quoted expression and then evaluate that
+  with the received =env=, =succeed=, =fail=.
+
+
+Here is the implementation:
+#+BEGIN_SRC scheme
+(define (execute? exp) (tagged-list? exp 'execute))
+(define (execute-expression exp) (cadr exp))
+
+(define (analyze-execute exp)
+  (lambda (env succeed fail)
+    ((analyze-quoted (execute-expression exp))
+     env
+     (lambda (exp2 fail2)
+       ((analyze exp2) env
+        succeed fail2))
+     fail)))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+;;; Amb-Eval input:
+(execute '(> 5 4))
+
+;;; Starting a new problem
+;;; Amb-Eval value:
+#t
+
+#+END_SRC
+
+From this implementation, we got the point that the nondeterministic evaluator
+does offer quite restricted freedom to user for the purpose to support the
+automatic search.
+
+Rest is quite rather simple task than above ones.
+
+Then test:
+#+BEGIN_SRC scheme
+;;; Amb-Eval input:
+(query-driver-loop)
+
+;;; Starting a new problem
+
+;;; Query input:
+(lives-near ?who ?neighbor)
+
+;;; Query results:
+(lives-near (aull dewitt) (reasoner louis))
+
+;;; Query input:
+next-result
+
+;;; Query results:
+(lives-near (aull dewitt) (bitdiddle ben))
+
+;;; Query input:
+#+END_SRC
+
+=unique= test:
+#+BEGIN_SRC scheme
+;;; Query input:
+(unique (job ?x (computer wizard)))
+
+;;; Query results:
+(unique (job (bitdiddle ben) (computer wizard)))
+
+;;; Query input:
+(unique (job ?x (computer programmer)))
+
+;;; Query results:
+(lives-near (reasoner louis) (bitdiddle ben))
+
+;;; Query input:
+#+END_SRC
+
+The last response is quite quirk. We can fix this with =if-fail=:
+#+BEGIN_SRC scheme
+(define (query-driver-loop)
+  (prompt-for-input input-prompt)
+  (let ((input (read)))
+    (if (eq? input 'next-result)
+        (begin
+          (newline)
+          (display output-prompt)
+          (newline)
+          (amb))
+        (let ((q (query-syntax-process input)))
+          (cond ((assertion-to-be-added? q)
+                 (add-rule-or-assertion! (add-assertion-body q))
+                 (newline)
+                 (display "Assertion added to data base.")
+                 (query-driver-loop))
+                (else
+                 (newline)
+                 (display output-prompt)
+                 ;; [extra newline at end] (announce-output output-prompt)
+                 (newline)
+                 (if-fail
+                  (display
+                   (instantiate q
+                                (qeval q empty-frame)
+                                (lambda (v f)
+                                  (contract-question-mark v))))
+                  (begin
+                    (display ";;; There are no more result of")
+                    (newline)
+                    (display
+                     (instantiate
+                      q empty-frame
+                      (lambda (v f)
+                        (contract-question-mark v))))))
+                 (query-driver-loop)))))))
+#+END_SRC
+
+Then
+#+BEGIN_SRC scheme
+;;; Query input:
+(unique (job ?x (computer wizard)))
+
+;;; Query results:
+(unique (job (bitdiddle ben) (computer wizard)))
+
+;;; Query input:
+next-result
+
+;;; Query results:
+;;; There are no more result of
+(unique (job ?x (computer wizard)))
+
+;;; Query input:
+(unique (job ?x (computer programmer)))
+
+;;; Query results:
+;;; There are no more result of
+(unique (job ?x (computer programmer)))
+
+;;; Query input:
+#+END_SRC
+
+Others also works fine:
+#+BEGIN_SRC scheme
+;;; Query input:
+(outranked-by ?who (Bitdiddle Ben))
+
+;;; Query results:
+(outranked-by (tweakit lem e) (bitdiddle ben))
+
+;;; Query input:
+next-result
+
+;;; Query results:
+(outranked-by (fect cy d) (bitdiddle ben))
+
+;;; Query input:
+#+END_SRC
+
+Then as we noted above, the difference of this implementation from the stream
+version is the followings:
+#+BEGIN_SRC scheme
+;;; Query input:
+(not (infinite answer))
+
+;;; Query results:
+  C-c C-c;Quit!
+#+END_SRC
+
+Or the =or= from [[Exercise 4.72][the previous example]]:
+#+BEGIN_SRC scheme
+;;; Starting a new problem
+
+;;; Query input:
+(or (infinite ?x)
+    (outranked-by ?who (Bitdiddle Ben)))
+
+;;; Query results:
+(or (infinite ?x) (outranked-by (tweakit lem e) (bitdiddle ben)))
+
+;;; Query input:
+next-result
+
+;;; Query results:
+(or (infinite ?x) (outranked-by (fect cy d) (bitdiddle ben)))
+#+END_SRC
+
+And:
+#+BEGIN_SRC scheme
+;;; Query input:
+(or (infinite ?x)
+    (outranked-by ?who (Bitdiddle Ben)))
+
+;;; Query results:
+(or (infinite answer) (outranked-by ?who (bitdiddle ben)))
+
+;;; Query input:
+next-result
+
+;;; Query results:
+(or (infinite answer) (outranked-by ?who (bitdiddle ben)))
+
+...
+
+;;; Query input:
+next-result
+
+;;; Query results:
+(or (infinite answer) (outranked-by ?who (bitdiddle ben)))
+
+#+END_SRC
+
+As noted above.
+* Footnotes
+
+[fn:0] If we could have that ability, we
+can implement BFS. But it would cause chaos into the evaluator.

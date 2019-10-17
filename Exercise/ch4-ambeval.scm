@@ -60,6 +60,7 @@
   (cond ((self-evaluating? exp) 
          (analyze-self-evaluating exp))
         ((quoted? exp) (analyze-quoted exp))
+        ((execute? exp) (analyze-execute exp))
         ((variable? exp) (analyze-variable exp))
         ((assignment? exp) (analyze-assignment exp))
         ((permanent-assignment? exp) (analyze-permanent-assignment exp))
@@ -92,6 +93,21 @@
   (let ((qval (text-of-quotation exp)))
     (lambda (env succeed fail)
       (succeed qval fail))))
+
+;; Detector
+(define (execute? exp) (tagged-list? exp 'execute))
+;; Selector
+(define (execute-expression exp) (cadr exp))
+
+;; Analyzer
+(define (analyze-execute exp)
+  (lambda (env succeed fail)
+    ((analyze-quoted (execute-expression exp))
+     env
+     (lambda (exp2 fail2)
+       ((analyze exp2) env
+        succeed fail2))
+     fail)))
 
 (define (analyze-variable exp)
   (lambda (env succeed fail)
@@ -192,6 +208,9 @@
 ;;   (permanent-set! count (+ count 1))
 ;;   (require (not (eq? x y)))
 ;;   (list x y count))
+
+(define (execute exp)
+  (a))
 
 ;; Exercise 4.52
 (define (analyze-if-fail exp)
@@ -402,6 +421,29 @@
         (list '1+ 1+)
         (list '-1+ -1+)
         (list 'even? even?)
+        (list 'display display)
+        (list 'newline newline)
+        (list 'assoc assoc)
+        (list 'set-car! set-car!)
+        (list 'set-cdr! set-cdr!)
+        (list 'list list)
+        (list 'error error)
+        (list 'read read)
+        (list 'pair? pair?)
+        (list 'symbol? symbol?)
+        (list 'equal? equal?)
+        (list 'symbol->string symbol->string)
+        (list 'string-append string-append)
+        (list 'cadr cadr)
+        (list 'caddr caddr)
+        (list 'cddr cddr)
+        (list 'string=? string=?)
+        (list 'string->symbol string->symbol)
+        (list 'substring substring)
+        (list 'string-length string-length)
+        (list 'number? number?)
+        (list 'number->string number->string)
+        (list 'append append)
         ;;      more primitives
         ))
 
