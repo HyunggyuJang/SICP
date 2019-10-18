@@ -5770,6 +5770,60 @@ next-result
 #+END_SRC
 
 As noted above.
+*** Exercise 4.79
+Here we try to change the implementation details from the scratch; that is, we
+change our model of evaluation or control system from stream (or branches) of
+frames to environment model as we learned in section 3 and implemented the
+preceding parts of this section.
+
+To emigrate to environment, first, we need to understand what feature of
+environment model we are going to implement and what new aspect we need to add
+that we haven't encountered in previous evaluation model.
+
+So we re-learn about the environment model as the text indicates. In the problem
+statement, they posted the examples that illustrate the killer feature --
+avoiding the name capture. This is one of the most important concept in the
+lambda calculus, which is the backbone of all of the computer science theory.
+
+Contrast with which, so far in this query language implementation, we escaped
+this name capture problem by issuing the unique name every each time we apply
+the rule. Actually we can use this alternative strategy to our meta circular
+evaluator which used environment model instead in that time.
+
+The "issuing" unique variable name is quite simple and clever idea especially in
+this query language since the query itself can (and usually do) have variable,
+which yet unbound in that time. If the variable failed to be bound as the result
+of query, this specific implementation detail helps a lot or make sense the
+representation of this fact.
+
+Think about the =(last-pair <list> <last-pair>)= query with the =<list>= part
+unbound. As we seen from ex [[Exercise 4.62][4.62]], it unfolds all possible answers using the
+unbound variable and using "different" variable representation. It make sense
+since in our language, same variable name indicates has to be bound with same
+value. But in that example, all of the variable do not need to be bound at same
+value. In other cases, where the result unbound variables should be bound at
+same value when it be bound, our current implementation deals with those without
+any problem also.
+
+Exactly this is the difference between our previous evaluation situation from
+current query language implementation. Can our new implementation deals with
+this problem without any confusing? Or should we implement this behavior? That
+is, to inform the user those are possibly different variables even it bound
+using same rule. Or is it good enough to be consistent with those concept
+internally, i.e. in machine information.
+
+Previously, we did not concern with those concept or need not be bothered by
+those since our evaluation or computation progress in unidirectional way: When
+we apply given procedure, the argument should be bound with some constant value.
+So if we hand over the values of given arguments to the procedure, we are free
+from worrying about the environment where the evaluation made; The environment
+part of procedure to be applied would be used afterward evaluation.
+
+One way to deal with the unbound variables in procedural style is to make
+unbound object whenever we encounter with those; and hand over those to
+subsequent rule application arguments. And those objects would be bound
+afterward evaluations (or queries). This is similar strategy we took in
+constraint based arithmetic language in section 3.
 * Footnotes
 
 [fn:0] If we could have that ability, we
