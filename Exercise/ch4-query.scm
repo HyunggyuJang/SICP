@@ -174,6 +174,19 @@
       (add-callback callback frame))
     frame-stream)))
 
+(define (negate! operands frame-stream)
+  (stream-filter
+   (lambda (frame)
+     (not (eq? frame 'failed)))
+   (stream-map
+    (lambda (frame)
+      (if (stream-null?
+           (qeval (negated-query operands)
+                  (singleton-stream frame)))
+          frame
+          'failed))
+    frame-stream)))
+
 (define (uniquely-asserted operand frame-stream)
   (stream-flatmap
    (lambda (frame)
@@ -779,6 +792,8 @@
   (put 'always-true 'qeval always-true)
   ;; Exercise 4.75
   (put 'unique 'qeval uniquely-asserted)
+  ;; Exercise 4.79
+  (put 'not! 'qeval negate!)
   (deal-out rules-and-assertions '() '()))
 
 ;; Do following to reinit the data base from microshaft-data-base

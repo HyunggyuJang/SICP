@@ -81,8 +81,11 @@
 (assert! (rule (grandson ?g ?s)
        (and (son ?f ?s) (son ?g ?f))))
 (assert! (rule (son ?m ?s)
-       (and (wife ?m ?w) (son ?w ?s))))
-
+       (andthen (wife ?m ?w) (son ?w ?s))))
+;; (Grandson ?G ?S) -> (and (Son ?G ?F) (Son ?F ?S))
+(not! (not! (and (grandson ?g ?s)
+            (not! (and (son ?g ?f)
+                       (son ?f ?s))))))
 ;; Infinite loops
 (assert! (rule (married ?x ?y)
        (married ?y ?x)))
@@ -100,13 +103,18 @@
 ;; Exercise 4.68
 (assert! (rule (reverse () ())))
 (assert! (rule (reverse (?x . ?xs) ?y)
-               (and (same-length (?x . ?xs) ?y)
+               (andthen (same-length (?x . ?xs) ?y)
                     (append-to-form ?rs (?x) ?y)
                     (reverse ?xs ?rs))))
 
 (assert! (rule (same-length () ())))
 (assert! (rule (same-length (?x . ?xs) (?y . ?ys))
                (same-length ?xs ?ys)))
+
+;; Exercise 4.79
+(not! (andthen (andthen (reverse ?x ?y)
+                        (reverse ?z ?x))
+               (not! (same ?z ?y))))
 
 ;; Exercise 4.69
 
@@ -1107,3 +1115,22 @@
           (andthen (supervisor ?staff-person ?middle-manager)
                (outranked-by ?middle-manager ?boss))))
 ))
+
+;; Exercise 4.79
+(assert! (rule (grandson->def)
+               (not! (and (grandson ?g ?s)
+                          (not! (and (son ?g ?f)
+                                     (son ?f ?s)))))))
+(assert! (rule (not-grandson->def)
+               (andthen (grandson ?g ?s)
+                        (not! (and (son ?g ?f)
+                                   (son ?f ?s))))))
+
+;; (rule (P->A-and-B ?x1 ?x2 ?x3)
+;;       (andthen (P ...)
+;;                (and (rule (P->A ...)
+;;                           (A ...))
+;;                     (rule (P->B ...)
+;;                           (B ...))
+;;                     (and (P->A ...)
+;;                          (P->B ...)))))

@@ -5823,8 +5823,188 @@ One way to deal with the unbound variables in procedural style is to make
 unbound object whenever we encounter with those; and hand over those to
 subsequent rule application arguments. And those objects would be bound
 afterward evaluations (or queries). This is similar strategy we took in
-constraint based arithmetic language in section 3.
+constraint based arithmetic language in section 3. In this way, we can resolve
+the name capture error since we do not hand over the frame itself to the
+subsequent process any more -- just pass the places where those process should
+set those value if the query has succeeded.
+
+In this way of implementation, the previously observed problem would be /No
+confusion in machine level but yes in human level/.
+
+Then as our query only require whether it succeeded or not, if the subsequent
+process succeeded, it will just inform this fact to the caller unlike the
+procedure evaluation, where the callee should return some (possibly useful)
+value to the caller.
+
+With the above informal specification how we are going to implement (or change)
+the query language, we implicitly used mutator (set) to bind the value to the
+given place (or variable). Actually if we decided another way around such as to
+decide to return valuable value as success of query process -- frame for the
+unbound variables, for which the query made -- we may eliminate all the
+mutations in implementation going to be made. This implies we can exploit our
+stream implementation of query language as base implementation to which we are
+going to make change from frames into environments.
+
+However, if we make up our mind to stick with mutation version, we would be
+better to go with nondeterministic implementation, which we made in preceding
+exercise, since it has the feature to revert the mutation once its process
+aborted; and more, the assignment and stream is very different entities as we
+have been noted over and over again in preceding captures.
+
+So here we are going to implement the emigration to the environment using the
+nondeterministic evaluator with object and mutation. This would cause change to
+the unifier and matcher implementation a little bit. And if we, afterward,
+extends our language to the block-structured rule definition as we did in
+page 36 in text in procedure, we need to change the rule definition to capture
+the environment where the definition made.
+
+To deal with these changes, we need to analyze which component is the
+counterpart of that of meta circular evaluator (or underlying Lisp) to implement
+those concept properly. As the text noticed or we learned from the
+implementation of query language, rule is like procedure. Then what is
+assertions? It is definitely the primitive elements that composing the query
+language; and it has many similarities with primitive procedures since the rule
+application and assertion matches tried to the same query as the primitive
+procedures and compound procedures are tried in manner (in =apply=).
+
+From this observation we may want to implement the assert new assertion not to
+capture the evaluation environment or force it to be made only in, say, global
+environment.
+
+We have delivered a lot of specification that can be made before actually
+implement any of the details.
+
+Finally before start to implement the details of above specifications, let we
+consider the last question in the problem statement. That is, to relate the
+block structured rule to the problem of making deductions in a context (e.g. "If
+I supposed that /P/ were true, then I would be able to deduce /A/ and /B/.") as
+a method of problem solving.
+
+First, let we consider the "If I supposed that /P/ were true, then I would be
+able to deduce /A/" in logically. Actually, in the truth table, it is equivalent
+to $\neg P \lor A$; but in our query language as =not= is not the logical not as
+noted in the text, we can not express this fact. However we can express yet
+another equivalent form $\neg (P \land \neg A)$:
+#+BEGIN_SRC scheme
+(not (and P (not A)))
+#+END_SRC
+
+Let's test this fact with the =grandson= relation in exercise [[Exercise 4.63][4.63]]:
+#+BEGIN_SRC scheme
+;;; Query input:
+(not (and (grandson ?g ?s)
+          (not (and (son ?g ?f)
+                    (son ?f ?s)))))
+
+;;; Query results:
+(not (and (grandson ?g ?s) (not (and (son ?g ?f) (son ?f ?s)))))
+
+#+END_SRC
+
+It seems like works but actually not:
+#+BEGIN_SRC scheme
+;;; Query input:
+(and (grandson ?g ?s)
+          (not (and (son ?g ?f)
+                    (son ?f ?s))))
+
+;;; Query results:
+(and (grandson mehujael lamech) (not (and (son mehujael ?f) (son ?f lamech))))
+(and (grandson methushael jubal) (not (and (son methushael ?f) (son ?f jubal))))
+(and (grandson methushael jabal) (not (and (son methushael ?f) (son ?f jabal))))
+(and (grandson irad methushael) (not (and (son irad ?f) (son ?f methushael))))
+(and (grandson enoch mehujael) (not (and (son enoch ?f) (son ?f mehujael))))
+(and (grandson cain irad) (not (and (son cain ?f) (son ?f irad))))
+(and (grandson adam enoch) (not (and (son adam ?f) (son ?f enoch))))
+#+END_SRC
+
+Since now our =not= is modified from the original one in exercise [[Exercise 4.76][4.76]]; our new
+=not= does not process the negated query unless the variables in that are all
+bound. We need the behavior of previous =not= in this case to accomplish this.
+So we've added =not!=, which is exactly the previous =not=, that process the
+negated query independent whether those variables has value or not[fn:1].
+
+Then let re-run what we tested above:
+#+BEGIN_SRC scheme
+;;; Query input:
+(not! (and (grandson ?g ?s)
+           (not! (and (son ?g ?f)
+                      (son ?f ?s)))))
+
+;;; Query results:
+(not! (and (grandson ?g ?s) (not! (and (son ?g ?f) (son ?f ?s)))))
+
+;;; Query input:
+(and (grandson ?g ?s)
+     (not! (and (son ?g ?f)
+                (son ?f ?s))))
+
+;;; Query results:
+
+;;; Query input:
+#+END_SRC
+
+Now works as expected; and more, this usage of =not!= works as it works in
+logic:
+#+BEGIN_SRC scheme
+;;; Query input:
+(not! (not! (and (grandson ?g ?s)
+                 (not! (and (son ?g ?f)
+                            (son ?f ?s))))))
+
+;;; Query results:
+
+;;; Query input:
+#+END_SRC
+
+Unfortunately our logical if ~ then can not cope with arbitrary arguments
+while in mathematical logic can reason about that:
+#+BEGIN_SRC scheme
+;;; Query input:
+(not! (andthen (andthen (reverse ?x ?y)
+                        (reverse ?z ?x))
+               (not! (same ?z ?y))))
+
+;;; Query results:  C-c C-c
+;Quit!
+#+END_SRC
+
+This is due to the behavior of our query language, that is, to verify even if
+the given one is arbitrary one (unbound one) rather than add that property
+(reverse relation) to the given entities and then check whether this newly added
+property is consistent with existing ones.
+
+What we want to capture would be for all /x_{1}, x_{2}, .../ if we can say /A/
+and /B/ is satisfied in a context where /P/ is true, then we can say we deduced
+/A/ and /B/ from /P/. If we represent this statement in a mathematical logic
+language, it becomes
+
+- \[\forall x.~P(x_{1}, x_{2}, \ldots) \implies \left\{ A(x_{1}, x_{2}, \ldots)
+  \land B(x_{1}, x_{2}, \ldots) \right\} \]
+
+As noted before it is equivalent to
+- \[\neg \exists (x_{1}, x_{2}, \ldots).~ P(x_{1}, x_{2}, \ldots) \land \neg
+  \left\{ A(x_{1}, x_{2}, \ldots) \land B(x_{1}, x_{2}, \ldots)\right\}\]
+
+
+So we can express this fact in our query language if the variables in those
+(/x_{1}, x_{2}, \ldots/) are closed in our discourse -- what we can find in
+assertions.
+
+So far, we interpreted the quoted sentence in mathematical logic; since we did
+this without any use of block structured rule, it would not be the one the text
+wanted from us. It may want us to use the context captured by rule definition.
+
+Since yet we haven't implemented the environment model in the query language, we
+are not able to capture what the text wanted exactly.
+
+So it's time for coding.
 * Footnotes
+
+[fn:1] We chose to
+append bang(!) at the end of the name to capture the meaning of forcing as used
+in [[https://www.vim.org/][Vim]] unlike in our convention of Scheme, which use bang to indicate the
+mutation.
 
 [fn:0] If we could have that ability, we
 can implement BFS. But it would cause chaos into the evaluator.
