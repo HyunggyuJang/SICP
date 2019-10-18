@@ -5979,8 +5979,8 @@ and /B/ is satisfied in a context where /P/ is true, then we can say we deduced
 /A/ and /B/ from /P/. If we represent this statement in a mathematical logic
 language, it becomes
 
-- \[\forall x.~P(x_{1}, x_{2}, \ldots) \implies \left\{ A(x_{1}, x_{2}, \ldots)
-  \land B(x_{1}, x_{2}, \ldots) \right\} \]
+- \[\forall (x_{1}, x_{2}, \ldots).~P(x_{1}, x_{2}, \ldots) \implies \left\{
+  A(x_{1}, x_{2}, \ldots) \land B(x_{1}, x_{2}, \ldots) \right\} \]
 
 As noted before it is equivalent to
 - \[\neg \exists (x_{1}, x_{2}, \ldots).~ P(x_{1}, x_{2}, \ldots) \land \neg
@@ -5989,7 +5989,19 @@ As noted before it is equivalent to
 
 So we can express this fact in our query language if the variables in those
 (/x_{1}, x_{2}, \ldots/) are closed in our discourse -- what we can find in
-assertions.
+assertions, e.g.:
+#+BEGIN_SRC scheme
+(rule (grandson->def)
+      (not! (and (grandson ?g ?s)
+                 (not! (and (son ?g ?f)
+                            (son ?f ?s))))))
+
+;;; Query input:
+(grandson->def)
+
+;;; Query results:
+(grandson->def)
+#+END_SRC
 
 So far, we interpreted the quoted sentence in mathematical logic; since we did
 this without any use of block structured rule, it would not be the one the text
@@ -5998,7 +6010,26 @@ wanted from us. It may want us to use the context captured by rule definition.
 Since yet we haven't implemented the environment model in the query language, we
 are not able to capture what the text wanted exactly.
 
-So it's time for coding.
+So it's time for design & coding. We are going to implement the whole system by
+starting with simple and small working examples and then extend to the whole
+complex system.
+
+We will implement whole system by breaking into two pieces:
+1. Get rid all of frames (into environment).
+2. Extend the process of definition of rules to be able to capture the context
+   -- environment.
+
+**** Get rid all of frames
+We are going to implement this task relying on our old strategy, wishful
+thinking. That is, we will design the high level procedure first, and then from
+this knowledge, we are going to specify the low level design details (the
+matcher and unifier).
+
+After that, we can implement high level procedures with the specification of low
+level procedure, and then fill the rest.
+
+First we should skim all of the process of current evaluation to design high
+level procedures.
 * Footnotes
 
 [fn:1] We chose to

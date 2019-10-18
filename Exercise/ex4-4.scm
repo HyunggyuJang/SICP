@@ -1117,11 +1117,11 @@
 ))
 
 ;; Exercise 4.79
-(assert! (rule (grandson->def)
-               (not! (and (grandson ?g ?s)
+(assert! (rule (grandson->def ?g ?f ?s)
+               (not! (andthen (grandson ?g ?s)
                           (not! (and (son ?g ?f)
                                      (son ?f ?s)))))))
-(assert! (rule (not-grandson->def)
+(assert! (rule (not-grandson->def ?g ?f ?s)
                (andthen (grandson ?g ?s)
                         (not! (and (son ?g ?f)
                                    (son ?f ?s))))))
@@ -1134,3 +1134,79 @@
 ;;                           (B ...))
 ;;                     (and (P->A ...)
 ;;                          (P->B ...)))))
+
+;; Design & implementation
+;;; Phase 1 implement simple & working sample
+
+;;;The Evaluator
+;; Query, Environment -> Environment
+(define (qeval query env)
+  (let ((qproc (get (type query) 'qeval))
+        (env (extend-if-unbound-varaible
+              query env)))
+    (if qproc
+        (qproc (contents query) env)
+        (simple-query query env))))
+
+;;;Simple queries
+;; Query, Env -> Env
+(define (simple-query query-pattern env)
+  (amb (find-assertions query-pattern env)
+       (apply-rules query-pattern env)))
+
+;;;Finding Assertions by Pattern Matching
+
+(define (find-assertions pattern env)
+  (check-an-assertion (fetch-assertions pattern env)
+                      pattern env))
+
+(define (check-an-assertion assertion query-pat query-env)
+  (pattern-match (instantiate query-pat query-env) assertion))
+
+;; Pattern, Datum -> 'done | abort
+(define (pattern-match pat dat)
+  (cond ((equal? pat dat) 'done)
+        ((var-obj? pat) (assign-if-consistent pat dat))
+        ((and (pair? pat) (pair? dat))
+         (pattern-match (car pat) (car dat))
+         (pattern-match (cdr pat) (cdr dat)))
+        (else (amb))))                  ;abort
+
+(define (assign-if-consistent var dat)
+  (if (has-value? var)
+      (pattern-match (bound-value var) dat)
+      (set-value! var dat)))
+
+;;; variable object ADT
+;;;; constructor
+(define (make-var-obj)
+  '(var (unbound . ())))
+;;;; detector
+(define (var-obj? obj)
+  (tagged-list? obj 'var))
+
+(define (has-value? var-obj)
+  (and (var-obj? obj)
+       (tagged-list? (var-value var-obj) 'bound)))
+
+;;;; selector
+(define (var-value var-obj)
+  (cdadr var-obj))
+
+;;;; mutator
+(define (set-value! var value)
+  (let ((val (var-value obj)))
+    (set-car! val 'bound)
+    (set-cdr! val value)))
+
+;; internal selector
+(define (var-value obj)
+  (cadr obj))
+
+;;;Maintaining the Data Base
+
+(define (fetch-assertions pattern env)
+  (an-element-of
+   (if (use-index? pattern)
+       (get-indexed-assertions pattern)
+       (get-all-assertions))))
