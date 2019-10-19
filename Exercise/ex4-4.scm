@@ -790,6 +790,9 @@
       '(always-true)
       (caddr rule)))
 
+(define (rule-env rule)
+  empty-environment)                    ;just for now
+
 (define (query-syntax-process exp)
   (map-over-symbols expand-question-mark exp))
 
@@ -839,6 +842,7 @@
   (cons variable value))
 
 (define empty-bindings '())
+(define empty-bindings? null?)
 
 (define (binding-variable binding)
   (car binding))
@@ -908,6 +912,9 @@
 
 (define empty-frame
   (make-frame empty-bindings empty-callbacks))
+
+(define (empty-frame? frame)
+  (equal? frame empty-frame))
 
 ;;;; Callback ADT
 ;; Trigger := Frame -> boolean
@@ -1025,13 +1032,14 @@
   (let ((operation-table (make-table)))
     (permanent-set! get (operation-table 'lookup-proc))
     (permanent-set! put (operation-table 'insert-proc!)))
-  (put 'and 'qeval conjoin)
+  ;; (put 'and 'qeval conjoin)
   (put 'andthen 'qeval conjoin-in-order)
   (put 'or 'qeval disjoin)
-  (put 'not 'qeval negate)
-  (put 'lisp-value 'qeval lisp-value)
-  (put 'always-true 'qeval always-true)
-  ;; Exercise 4.75
+  ;; (put 'not 'qeval negate)
+  (put 'not! 'qeval negate!)
+  ;; (put 'lisp-value 'qeval lisp-value)
+  ;; (put 'always-true 'qeval always-true)
+  ;; ;; Exercise 4.75
   (put 'unique 'qeval uniquely-asserted)
   (deal-out rules-and-assertions '() '()))
 
@@ -1113,18 +1121,18 @@
 (rule (outranked-by ?staff-person ?boss)
       (or (supervisor ?staff-person ?boss)
           (andthen (supervisor ?staff-person ?middle-manager)
-               (outranked-by ?middle-manager ?boss))))
+                   (outranked-by ?middle-manager ?boss))))
 ))
 
 ;; Exercise 4.79
-(assert! (rule (grandson->def ?g ?f ?s)
-               (not! (andthen (grandson ?g ?s)
-                          (not! (and (son ?g ?f)
-                                     (son ?f ?s)))))))
-(assert! (rule (not-grandson->def ?g ?f ?s)
-               (andthen (grandson ?g ?s)
-                        (not! (and (son ?g ?f)
-                                   (son ?f ?s))))))
+;; (assert! (rule (grandson->def ?g ?f ?s)
+;;                (not! (andthen (grandson ?g ?s)
+;;                           (not! (and (son ?g ?f)
+;;                                      (son ?f ?s)))))))
+;; (assert! (rule (not-grandson->def ?g ?f ?s)
+;;                (andthen (grandson ?g ?s)
+;;                         (not! (and (son ?g ?f)
+;;                                    (son ?f ?s))))))
 
 ;; (rule (P->A-and-B ?x1 ?x2 ?x3)
 ;;       (andthen (P ...)
@@ -1138,31 +1146,169 @@
 ;; Design & implementation
 ;;; Phase 1 implement simple & working sample
 
+;;; Environment ADT
+(define empty-environment '())
+(define (empty-env? env) (null? env))
+(define (extend-env frame env) (cons frame env))
+(define (first-frame env) (car env))
+(define (enclosing-env env) (cdr env))
+(define (binding-in-env var env)
+  (if (empty-env? env)
+      false
+      (or (binding-in-frame var (first-frame env))
+          (binding-in-env var (enclosing-env env)))))
+
+;;; Driver-loop
+(define (query-driver-loop)
+  (prompt-for-input input-prompt)
+  (let ((input (read)))
+    (if (eq? input 'next-result)
+        (begin
+          (newline)
+          (display output-prompt)
+          (newline)
+          (amb))
+        (let ((q (query-syntax-process input)))
+          (let ((env (extend-if-unbound-variable
+                      q empty-environment)))
+            (cond ((assertion-to-be-added? q)
+                   (add-rule-or-assertion! (add-assertion-body q))
+                   (newline)
+                   (display "Assertion added to data base.")
+                   (query-driver-loop))
+                  (else
+                   (newline)
+                   (display output-prompt)
+                   ;; [extra newline at end] (announce-output output-prompt)
+                   (newline)
+                   (if-fail
+                    (display
+                     (instantiate
+                      q (qeval q env)
+                      (lambda (v f)
+                        'ignore)
+                      (lambda (obj env)
+                        '?)))
+                    (begin
+                      (display ";;; There are no more result of")
+                      (newline)
+                      (display
+                       (instantiate
+                        q empty-environment
+                        (lambda (v f)
+                          (contract-question-mark v))
+                        (lambda (var env)
+                          'ignore)))))
+                   (query-driver-loop))))))))
+
 ;;;The Evaluator
 ;; Query, Environment -> Environment
 (define (qeval query env)
-  (let ((qproc (get (type query) 'qeval))
-        (env (extend-if-unbound-varaible
-              query env)))
+  (let ((qproc (get (type query) 'qeval)))
     (if qproc
         (qproc (contents query) env)
-        (simple-query query env))))
+        (simple-query query env))
+    env))
+
+;; Pattern, Env -> Env
+(define (extend-if-unbound-variable exp env)
+  ;; Pattern, Frame -> Frame
+  (define (extend-frame exp frame)
+    (cond ((var? exp)
+           (let ((binding (binding-in-env exp env)))
+             (if (not binding)
+                 (extend
+                  exp (make-var-obj) frame)
+                 frame)))
+          ((pair? exp)
+           (extend-frame (cdr exp)
+                         (extend-frame (car exp) frame)))
+          (else frame)))
+  (let ((extended
+         (extend-frame exp empty-frame)))
+    (if (empty-frame? extended)
+        env
+        (extend-env extended env))))
+
+(define (instantiate exp env unbound-var-handler unassigned-var-handler)
+  (define (copy exp)
+    (cond ((var? exp)
+           (let ((binding (binding-in-env exp env)))
+             (if binding
+                 (copy (binding-value binding))
+                 (unbound-var-handler exp env))))
+          ((var-obj? exp)               ;debugging!
+           (if (has-value? exp)
+               (copy (bound-value exp))
+               (unassigned-var-handler exp env)))
+          ((pair? exp)
+           (cons (copy (car exp)) (copy (cdr exp))))
+          (else exp)))
+  (copy exp))
 
 ;;;Simple queries
-;; Query, Env -> Env
+;; Query, Env -> 'done
 (define (simple-query query-pattern env)
-  (amb (find-assertions query-pattern env)
-       (apply-rules query-pattern env)))
+  (let ((subed-pattern
+         (instantiate
+          query-pattern env
+          (lambda (v e)
+            'ignore)
+          (lambda (var env)
+            var))))
+    (amb (pattern-match
+          subed-pattern
+          (fetch-assertions
+           query-pattern env))
+         (apply-a-rule
+          (fetch-rules
+           query-pattern env)
+          subed-pattern))))
+
+;;;Compound queries
+
+(define (conjoin-in-order conjuncts env)
+  (if (empty-conjunction? conjuncts)
+      'done
+      (conjoin-in-order (rest-conjuncts conjuncts)
+                        (qeval (first-conjunct conjuncts)
+                               env))))
+
+(define (disjoin disjuncts env)
+  (if (empty-disjunction? disjuncts)
+      (amb)
+      (ramb
+       (qeval (first-disjunct disjuncts) env)
+       (disjoin (rest-disjuncts disjuncts)
+                env))))
+
+(define (negate! operands env)
+  (filter-failed
+   (let ((succeed? false))
+     (if-fail
+      (begin (qeval (negated-query operands)
+                    env)
+             (permanent-set! succeed? true))
+      'ignore)
+     (if succeed?
+         'failed
+         'done))))
+
+(define (uniquely-asserted operand env)
+  (let ((output-envs '()))
+    (if-fail (let ((e (qeval (unique-query operand)
+                             env)))
+               (permanent-set! output-envs
+                               (cons e output-envs))
+               (amb))
+             'ignore)
+    (if (and (not (null? output-envs))
+             (null? (cdr output-envs)))
+        (qeval (unique-query operand)
+                             env)
+        (amb))))
 
 ;;;Finding Assertions by Pattern Matching
-
-(define (find-assertions pattern env)
-  (check-an-assertion (fetch-assertions pattern env)
-                      pattern env))
-
-(define (check-an-assertion assertion query-pat query-env)
-  (pattern-match (instantiate query-pat query-env) assertion))
-
 ;; Pattern, Datum -> 'done | abort
 (define (pattern-match pat dat)
   (cond ((equal? pat dat) 'done)
@@ -1177,36 +1323,103 @@
       (pattern-match (bound-value var) dat)
       (set-value! var dat)))
 
+;;;Rules and Unification
+
+(define (apply-a-rule rule query-pattern)
+  (let ((instantiated-env
+         (extend-if-unbound-variable rule (rule-env rule))))
+    (let ((subed-rule
+           (instantiate
+            rule instantiated-env
+            (lambda (v env)
+              'ignore)
+            (lambda (var env)
+              var))))
+      (unify-match query-pattern
+                   (conclusion subed-rule))
+      (qeval (rule-body rule)
+             instantiated-env))))
+
+(define (unify-match p1 p2)
+  (cond ((eq? p1 p2) 'done)             ;we can not use equal since we use object!
+        ((var-obj? p1) (assign-if-possible p1 p2))
+        ((var-obj? p2) (assign-if-possible p2 p1)) ; {\em ; ***}
+        ((and (pair? p1) (pair? p2))
+         (unify-match (car p1) (car p2))
+         (unify-match (cdr p1) (cdr p2)))
+        (else (amb))))
+
+(define (assign-if-possible var val)
+  (cond ((has-value? var)
+         (unify-match
+          (bound-value var) val))
+        ((var-obj? val)                     ; {\em ; ***}
+         (if (has-value? val)
+             (unify-match
+              var (bound-value val))
+             (set-value! var val)))
+        ((depends-on? val var)    ; {\em ; ***}
+         (amb))
+        (else (set-value! var val))))
+
+(define (depends-on? exp var)
+  (define (tree-walk e)
+    (cond ((var-obj? e)
+           (if (equal? var e)
+               true
+               (if (has-value? e)
+                   (tree-walk (bound-value e))
+                   false)))
+          ((pair? e)
+           (or (tree-walk (car e))
+               (tree-walk (cdr e))))
+          (else false)))
+  (tree-walk exp))
+
+(define (fetch-rules pattern env)
+  (an-element-of
+   (if (use-index? pattern)
+       (get-indexed-rules pattern)
+       (get-all-rules))))
+
 ;;; variable object ADT
 ;;;; constructor
 (define (make-var-obj)
-  '(var (unbound . ())))
+  (list 'var (make-var-value)))
 ;;;; detector
 (define (var-obj? obj)
   (tagged-list? obj 'var))
 
 (define (has-value? var-obj)
-  (and (var-obj? obj)
-       (tagged-list? (var-value var-obj) 'bound)))
+  (and (var-obj? var-obj)
+       ((var-value var-obj) 'bound?)))
 
 ;;;; selector
-(define (var-value var-obj)
-  (cdadr var-obj))
+(define (bound-value var-obj)
+  ((var-value var-obj) 'value))
 
 ;;;; mutator
-(define (set-value! var value)
-  (let ((val (var-value obj)))
-    (set-car! val 'bound)
-    (set-cdr! val value)))
+;;; ↓can not revert the mutation when subbranching aborted
+;; (define (set-value! var value)
+;;   (let ((val (var-value var)))
+;;     (set-car! val 'bound)
+;;     (set-cdr! val value)))
+
+(define (set-value! var-obj val)
+  (((var-value var-obj) 'set-value!) val))
 
 ;; internal selector
 (define (var-value obj)
   (cadr obj))
 
-;;;Maintaining the Data Base
-
-(define (fetch-assertions pattern env)
-  (an-element-of
-   (if (use-index? pattern)
-       (get-indexed-assertions pattern)
-       (get-all-assertions))))
+;;; var-value ADT
+(define (make-var-value)
+  (let ((bound? false)
+        (value '()))
+    (lambda (m)
+      (cond ((eq? m 'bound?) bound?)
+            ((eq? m 'value) value)
+            ((eq? m 'set-value!)
+             (lambda (new-value)
+               (set! bound? true)
+               (set! value new-value)))))))

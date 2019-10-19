@@ -6030,6 +6030,604 @@ level procedure, and then fill the rest.
 
 First we should skim all of the process of current evaluation to design high
 level procedures.
+
+After some inspection, we've deduced following specifications:
+- =Qeval= should extend given environment by binding each unbound variable in
+  the query with new variable object.
+- Subsequent process of =simple-query= should instantiate received query pattern
+  with the given environment since pattern matcher or unifier needs that.
+- Since we use nondeterministic evaluator as implementation language, we can
+  exploit the =(amb)= in the pattern matcher or unifier; that is, we can abort
+  as soon as we encounter the match failed rather than propagate this fact
+  to chained process.
+
+
+***** The smallest working sample: Using pattern matcher
+The goal of this section is to implement answering the following query using
+environment:
+#+BEGIN_SRC scheme
+(job ?p ?j)
+#+END_SRC
+
+To make this happen, as we said above, we need new variable object, which has
+identity in it:
+#+BEGIN_SRC scheme
+;;; variable object ADT
+;;;; constructor
+(define (make-var-obj)
+  (list 'var (make-var-value)))
+;;;; detector
+(define (var-obj? obj)
+  (tagged-list? obj 'var))
+
+(define (has-value? var-obj)
+  (and (var-obj? var-obj)
+       ((var-value var-obj) 'bound?)))
+
+;;;; selector
+(define (bound-value var-obj)
+  ((var-value var-obj) 'value))
+
+;;;; mutator
+;;; ↓can not revert the mutation when subbranching aborted
+;; (define (set-value! var value)
+;;   (let ((val (var-value var)))
+;;     (set-car! val 'bound)
+;;     (set-cdr! val value)))
+
+(define (set-value! var-obj val)
+  (((var-value var-obj) 'set-value!) val))
+
+;;;; operation on var-obj
+(define (instantiate-value exp)
+  (cond ((var-obj? exp)
+         (instantiate-value (bound-value exp)))
+        ((pair? exp)
+         (cons (instantiate-value (car exp))
+               (instantiate-value (cdr exp))))
+        (else exp)))
+
+;; internal selector
+(define (var-value obj)
+  (cadr obj))
+
+
+;;; var-value ADT
+(define (make-var-value)
+  (let ((bound? false)
+        (value '()))
+    (lambda (m)
+      (cond ((eq? m 'bound?) bound?)
+            ((eq? m 'value) value)
+            ((eq? m 'set-value!)
+             (lambda (new-value)
+               (set! bound? true)
+               (set! value new-value)))))))
+#+END_SRC
+
+And the rest changes:
+#+BEGIN_SRC scheme
+;; Design & implementation
+;;; Phase 1 implement simple & working sample
+
+;;; Environment ADT
+(define empty-environment '())
+(define (empty-env? env) (null? env))
+(define (extend-env frame env) (cons frame env))
+(define (first-frame env) (car env))
+(define (enclosing-env env) (cdr env))
+(define (binding-in-env var env)
+  (if (empty-env? env)
+      false
+      (or (binding-in-frame var (first-frame env))
+          (binding-in-env var (enclosing-env env)))))
+
+;;; Driver-loop
+(define (query-driver-loop)
+  (prompt-for-input input-prompt)
+  (let ((input (read)))
+    (if (eq? input 'next-result)
+        (begin
+          (newline)
+          (display output-prompt)
+          (newline)
+          (amb))
+        (let ((q (query-syntax-process input)))
+          (cond ((assertion-to-be-added? q)
+                 (add-rule-or-assertion! (add-assertion-body q))
+                 (newline)
+                 (display "Assertion added to data base.")
+                 (query-driver-loop))
+                (else
+                 (newline)
+                 (display output-prompt)
+                 ;; [extra newline at end] (announce-output output-prompt)
+                 (newline)
+                 (if-fail
+                  (display
+                   (instantiate
+                    q (qeval q empty-environment)
+                    (lambda (v f)
+                      (contract-question-mark v))
+                    (lambda (obj env)
+                      (instantiate-value obj))))
+                  (begin
+                    (display ";;; There are no more result of")
+                    (newline)
+                    (display
+                     (instantiate
+                      q empty-environment
+                      (lambda (v f)
+                        (contract-question-mark v))
+                      (lambda (var env)
+                        var)))))
+                 (query-driver-loop)))))))
+
+;;;The Evaluator
+;; Query, Environment -> Environment
+(define (qeval query env)
+  (let ((qproc (get (type query) 'qeval))
+        (env (extend-if-unbound-variable
+              query env)))
+    (if qproc
+        (qproc (contents query) env)
+        (simple-query query env))
+    env))
+
+;; Pattern, Env -> Env
+(define (extend-if-unbound-variable exp env)
+  ;; Pattern, Frame -> Frame
+  (define (extend-frame exp frame)
+    (cond ((var? exp)
+           (let ((binding (binding-in-env exp env)))
+             (if (not binding)
+                 (extend
+                  exp (make-var-obj) frame)
+                 frame)))
+          ((pair? exp)
+           (extend-frame (cdr exp)
+                         (extend-frame (car exp) frame)))
+          (else frame)))
+  (extend-env (extend-frame exp empty-frame) env))
+
+(define (instantiate exp env unbound-var-handler var-obj-handler)
+  (define (copy exp)
+    (cond ((var? exp)
+           (let ((binding (binding-in-env exp env)))
+             (if binding
+                 (copy (binding-value binding))
+                 (unbound-var-handler exp env))))
+          ((var-obj? exp)               ;debugging!
+           (var-obj-handler exp env))
+          ((pair? exp)
+           (cons (copy (car exp)) (copy (cdr exp))))
+          (else exp)))
+  (copy exp))
+
+;;;Simple queries
+;; Query, Env -> 'done
+(define (simple-query query-pattern env)
+  (amb (find-assertions query-pattern env)
+       (apply-rules query-pattern env)))
+
+;;;Finding Assertions by Pattern Matching
+
+(define (find-assertions pattern env)
+  (check-an-assertion (fetch-assertions pattern env)
+                      pattern env))
+
+(define (check-an-assertion assertion query-pat query-env)
+  (pattern-match
+   (instantiate
+    query-pat query-env
+    (lambda (v f)
+      (error "pat var is not instantiated -- CHECK-AN-ASSERTION" v))
+    (lambda (var env)
+      var))
+   assertion))
+
+;; Pattern, Datum -> 'done | abort
+(define (pattern-match pat dat)
+  (cond ((equal? pat dat) 'done)
+        ((var-obj? pat) (assign-if-consistent pat dat))
+        ((and (pair? pat) (pair? dat))
+         (pattern-match (car pat) (car dat))
+         (pattern-match (cdr pat) (cdr dat)))
+        (else (amb))))                  ;abort
+
+(define (assign-if-consistent var dat)
+  (if (has-value? var)
+      (pattern-match (bound-value var) dat)
+      (set-value! var dat)))
+#+END_SRC
+
+Then let's test!
+#+BEGIN_SRC scheme
+;;; Query input:
+(job ?p ?j)
+
+;;; Query results:
+(job (aull dewitt) (administration secretary))
+
+;;; Query input:
+next-result
+
+;;; Query results:
+(job (cratchet robert) (accounting scrivener))
+
+;;; Query input:
+(address ?p ?a)
+
+;;; Query results:
+(address (aull dewitt) (slumerville (onion square) 5))
+
+;;; Query input:
+next-result
+
+;;; Query results:
+(address (cratchet robert) (allston (n harvard street) 16))
+
+#+END_SRC
+
+Works well.
+
+But it seems awkward a little bit to make =instantiate= handle unbound variable;
+since now all the previously "unbound" variable bound to the "unassigned." So
+now our =instantiate= procedure do not work as much as before.
+
+Actually we can integrate =instantiate= with =instantiate-value=:
+#+BEGIN_SRC scheme
+(define (instantiate exp env unbound-var-handler unassigned-var-handler)
+  (define (copy exp)
+    (cond ((var? exp)
+           (let ((binding (binding-in-env exp env)))
+             (if binding
+                 (copy (binding-value binding))
+                 (unbound-var-handler exp env))))
+          ((var-obj? exp)               ;debugging!
+           (if (has-value? exp)
+               (copy (bound-value exp))
+               (unassigned-var-handler exp env)))
+          ((pair? exp)
+           (cons (copy (car exp)) (copy (cdr exp))))
+          (else exp)))
+  (copy exp))
+#+END_SRC
+***** Extend to the rest method of compound expression
+Here we are going to implement method of combination. Those expression is
+evaluated with respect to given environment.
+- =andthen= :: Evaluate given conjuncts in order. Return symbol =done= as we did
+  in the =simple-query=.
+- =or= :: Evaluate one of disjuncts.
+- =not!= :: Evaluate the negated query.
+- =unique= :: Evaluate the given query and if the result is unique, returns
+  symbol =done= else aborts.
+
+
+The rest depend on the =unify-frames=, which in turn depends on =unify-match=;
+that we are going to implement in following step.
+
+Then the code:
+#+BEGIN_SRC scheme
+;;;Compound queries
+
+(define (conjoin-in-order conjuncts env)
+  (if (empty-conjunction? conjuncts)
+      'done
+      (conjoin-in-order (rest-conjuncts conjuncts)
+                        (qeval (first-conjunct conjuncts)
+                               env))))
+
+(define (disjoin disjuncts env)
+  (if (empty-disjunction? disjuncts)
+      (amb)
+      (ramb
+       (qeval (first-disjunct disjuncts) env)
+       (disjoin (rest-disjuncts disjuncts)
+                env))))
+
+(define (negate! operands env)
+  (filter-failed
+   (let ((succeed? false))
+     (if-fail
+      (begin (qeval (negated-query operands)
+                    env)
+             (permanent-set! succeed? true))
+      'ignore)
+     (if succeed?
+         'failed
+         'done))))
+
+(define (uniquely-asserted operand env)
+  (let ((output-frames '()))
+    (if-fail (let ((f (qeval (unique-query operand)
+                             env)))
+               (permanent-set! output-frames
+                               (cons f output-frames))
+               (amb))
+             'ignore)
+    (if (and (not (null? output-frames))
+             (null? (cdr output-frames)))
+        'done
+        (amb))))
+
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+;;; Query input:
+(andthen (supervisor ?middle-manager ?person)
+           (supervisor ?x ?middle-manager))
+
+;;; Query results:
+(andthen (supervisor (scrooge eben) (warbucks oliver)) (supervisor (cratchet robert) (scrooge eben)))
+
+;;; Query input:
+next-result
+
+;;; Query results:
+(andthen (supervisor (bitdiddle ben) (warbucks oliver)) (supervisor (tweakit lem e) (bitdiddle ben)))
+
+;;; Query input:
+(unique (job ?x (computer wizard)))
+
+;;; Query results:
+(unique (job ? (computer wizard)))
+
+;;; Query input:
+next-result
+
+;;; Query results:
+;;; There are no more result of
+(unique (job ?x (computer wizard)))
+
+;;; Query input:
+(unique (job ?x (computer programmer)))
+
+;;; Query results:
+;;; There are no more result of
+(unique (job ?x (computer programmer)))
+
+;;; Query input:
+(not! (baseball ?x))
+
+;;; Query results:
+(not! (baseball ?))
+
+;;; Query input:
+(not! (job ?p (computer wizard)))
+
+;;; Query results:
+;;; There are no more result of
+(not! (job ?p (computer wizard)))
+
+#+END_SRC
+
+Turns out we need to make use the subsequent evaluation result; we need to force
+the type constraint the dispatched process to return environment to support the
+process such as =unique=. This also would change the pattern matcher; it does
+not allowed to mutate the structure since subsequent mutation is undone by
+the =(amb)= in the =uniquely-asserted=.
+
+So rather than we enforce the type constraint to return the environment, let's
+use trick:
+#+BEGIN_SRC scheme
+(define (uniquely-asserted operand env)
+  (let ((output-envs '()))
+    (if-fail (let ((e (qeval (unique-query operand)
+                             env)))
+               (permanent-set! output-envs
+                               (cons e output-envs))
+               (amb))
+             'ignore)
+    (if (and (not (null? output-envs))
+             (null? (cdr output-envs)))
+        (qeval (unique-query operand)
+                             env)
+        (amb))))
+#+END_SRC
+
+Then:
+#+BEGIN_SRC scheme
+;;; Query input:
+(unique (job ?x (computer wizard)))
+
+;;; Query results:
+(unique (job (bitdiddle ben) (computer wizard)))
+
+;;; Query input:
+(unique (job ?x (computer programmer)))
+
+;;; Query results:
+;;; There are no more result of
+(unique (job ?x (computer programmer)))
+
+#+END_SRC
+***** Extend to the rule application
+So far, we implemented all the components that do not depend on the unifier.
+Here we are about to design & implement the unifier. But, before that, let we
+rethink what we done so far in conferencing with the procedural evaluator.
+
+We already noted that logic language evaluator also has many commonalities with
+the ordinary unidirectional evaluator; but without detailed comparison since at
+that point we aren't have any components to compare in logic language
+implemented by environment model.
+
+However we do now have the working evaluator program that do use the environment
+model; so I've thought this is the right moment to compare and which would
+direct further designing and coding of logic language evaluator.
+
+Firstly, =qeval= is like =eval= in meta circular evaluator but do extra work than
+that: Namely, it transform the given query expression into procedural
+expression -- it binds all the unbound variable expressions into unassigned
+variable objects. After that process, we can now treat the resulting expression
+as we did in =eval= -- dispatch on the expression type -- since now all the
+variable is bound.
+
+Secondly, =simple-query= is like =application= clause in meta circular
+evaluator; it fetches all the assertions and rules using given environment
+(operator part in procedural application) and then instantiate given query with
+respect to the given environment (operands part) and then try to apply. More
+specifically,
+- Applying assertions is just like applying the primitive procedure that mutate
+  the given argument objects in ordinary evaluator.
+- Applying rules is more subtle than that of compound procedure. It should
+  extend captured rule environment with respect to the given instantiated query
+  (via unifier); process the body of rule with respect to this extended rule
+  environment as we do in normal application of compound procedure.
+
+
+We have not yet considered the implementation details about the unifier but we
+know it should look similar with pattern matcher we have seen in frame version
+logic language.
+
+If we think the rule application in comparison with compound application, we
+would expect the unifier to bind the unbound variables in the rule conclusion
+with given query.
+
+But if we think with the view point that we are doing this implementation to
+avoid the name capture problem, so if we look the previous implementation for
+reference, we should have come to think we have chose the variable object as
+counterpart of rule application id in the previous one.
+
+With this point of view, they did not create any variable id to the non-rule
+application query since it is guaranteed to be unique already since all the
+variables in rule application process have different name -- via
+=rename-variables-in=.
+
+If we stick this one rather than the analogy with procedural language, we can
+divide the process of binding unbound variable with new variable object from the
+evaluation -- =qeval=.
+
+One way to accomplish this idea is using the preprocessing as we did in
+=analyze= in section 4.1.7 in text book, or more recently in
+=query-syntax-process=. That is to process the instantiation process --
+extending the given environment with bindings where unbound variables bound to
+unassigned variable object -- after we process the input query using the
+=query-syntax-process=. For the rule application, as we did in frame
+implementation, before evaluating any contents of fetched rule we instantiate
+any of variable as variable object.
+
+This is exactly the same idea they used in implementation of query language in
+frame model: Give each variable unique identification. Here we accomplished this
+via /object/ -- combination of message passing paradigm and assignment; they did
+via making each variable has unique name.
+
+
+We can go further than that. We can substitute all the variables even before
+evaluating any as preprocessing. But it would eliminate completely the need to
+use environment; we can implement this idea just sticking with frame model. This
+would leads to limitation we encountered in the frame model: We can not express
+block structured program (I'm not quite sure what we can do with the block
+structured program in logic language; we should comeback this topic later).
+
+So here we attempt to re-factor our implementation we did so far; decompose the
+instantiation process from the =qeval=. With this, we are able to treat the
+variable uniformly -- there is no coexistence of =var= and =var-obj= in pattern
+matcher or unifier as it is in current =instantiate= procedure.
+
+Then the current implementation has one to one mapping with the previous
+implementation. That means we can re-use the previous procedures just by
+rewriting those along with the relation -- =var?= became =var-obj?= and =extend=
+became =set-value!= etc.:
+#+BEGIN_SRC scheme
+(define (rule-env rule)
+  empty-environment)                    ;just for now
+
+;;;Simple queries
+;; Query, Env -> 'done
+(define (simple-query query-pattern env)
+  (let ((subed-pattern
+         (instantiate
+          query-pattern env
+          (lambda (v e)
+            'ignore)
+          (lambda (var env)
+            var))))
+    (amb (pattern-match
+          subed-pattern
+          (fetch-assertions
+           query-pattern env))
+         (apply-a-rule
+          (fetch-rules
+           query-pattern env)
+          subed-pattern))))
+
+;;;Rules and Unification
+
+(define (apply-a-rule rule query-pattern)
+  (let ((instantiated-env
+         (extend-if-unbound-variable rule (rule-env rule))))
+    (let ((subed-rule
+           (instantiate
+            rule instantiated-env
+            (lambda (v env)
+              'ignore)
+            (lambda (var env)
+              var))))
+      (unify-match query-pattern
+                   (conclusion subed-rule))
+      (qeval (rule-body rule)
+             instantiated-env))))
+
+(define (unify-match p1 p2)
+  (cond ((eq? p1 p2) 'done)             ;we can not use equal since we use object!
+        ((var-obj? p1) (assign-if-possible p1 p2))
+        ((var-obj? p2) (assign-if-possible p2 p1)) ; {\em ; ***}
+        ((and (pair? p1) (pair? p2))
+         (unify-match (car p1) (car p2))
+         (unify-match (cdr p1) (cdr p2)))
+        (else (amb))))
+
+(define (assign-if-possible var val)
+  (cond ((has-value? var)
+         (unify-match
+          (bound-value var) val))
+        ((var-obj? val)                     ; {\em ; ***}
+         (if (has-value? val)
+             (unify-match
+              var (bound-value val))
+             (set-value! var val)))
+        ((depends-on? val var)    ; {\em ; ***}
+         (amb))
+        (else (set-value! var val))))
+
+(define (depends-on? exp var)
+  (define (tree-walk e)
+    (cond ((var-obj? e)
+           (if (equal? var e)
+               true
+               (if (has-value? e)
+                   (tree-walk (bound-value e))
+                   false)))
+          ((pair? e)
+           (or (tree-walk (car e))
+               (tree-walk (cdr e))))
+          (else false)))
+  (tree-walk exp))
+#+END_SRC
+
+Now rule application works:
+#+BEGIN_SRC scheme
+;;; Query input:
+(outranked-by ?p (Bitdiddle Ben))
+
+;;; Query results:
+(outranked-by (tweakit lem e) (bitdiddle ben))
+
+;;; Query input:
+next-result
+
+;;; Query results:
+(outranked-by (fect cy d) (bitdiddle ben))
+
+;;; Query input:
+#+END_SRC
+
+Actually as we transit into this decomposing with above =simple-query=, faced
+some bug which led to modify =unify-match= to use =eq?= instead =equal?= since
+we have used object.
+***** Support counterpart of =unify-frames=
 * Footnotes
 
 [fn:1] We chose to

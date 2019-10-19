@@ -444,6 +444,7 @@
         (list 'number? number?)
         (list 'number->string number->string)
         (list 'append append)
+        (list 'cdadr cdadr)
         ;;      more primitives
         ))
 
