@@ -64,8 +64,8 @@
 
 ;; Exercise 4.62
 (assert! (rule (last-pair (?x) (?x))))            ;base case
-(assert! (rule (last-pair (?head . ?tail) ?x)             ;recursive case
-       (last-pair ?tail ?x)))
+(assert! (rule (last-pair (?head . ?tail) ?x)     ;recursive case
+               (last-pair ?tail ?x)))
 
 ;; Exercise 4.63
 (assert! (son Adam Cain))
@@ -338,6 +338,9 @@
 (define (an-element-of items)
     (require (not (null? items)))
     (amb (car items) (an-element-of (cdr items))))
+(define (a-random-of items)
+    (require (not (null? items)))
+    (ramb (car items) (a-random-of (cdr items))))
 (query-driver-loop)
 
 ;;; Implementation
@@ -1037,8 +1040,9 @@
   (put 'or 'qeval disjoin)
   ;; (put 'not 'qeval negate)
   (put 'not! 'qeval negate!)
+  (put 'lisp-value! 'qeval lisp-value!)
   ;; (put 'lisp-value 'qeval lisp-value)
-  ;; (put 'always-true 'qeval always-true)
+  (put 'always-true 'qeval always-true)
   ;; ;; Exercise 4.75
   (put 'unique 'qeval uniquely-asserted)
   (deal-out rules-and-assertions '() '()))
@@ -1294,6 +1298,18 @@
          'failed
          'done))))
 
+(define (lisp-value! call env)
+  (if (execute
+       (instantiate
+        call
+        env
+        (lambda (v e)
+          'ignore)
+        (lambda (v e)
+          (error "Unknown pat var -- LISP-VALUE" v))))
+      'done
+      (amb)))
+
 (define (uniquely-asserted operand env)
   (let ((output-envs '()))
     (if-fail (let ((e (qeval (unique-query operand)
@@ -1305,7 +1321,7 @@
     (if (and (not (null? output-envs))
              (null? (cdr output-envs)))
         (qeval (unique-query operand)
-                             env)
+               env)
         (amb))))
 
 ;;;Finding Assertions by Pattern Matching
@@ -1365,7 +1381,7 @@
 (define (depends-on? exp var)
   (define (tree-walk e)
     (cond ((var-obj? e)
-           (if (equal? var e)
+           (if (eq? var e)
                true
                (if (has-value? e)
                    (tree-walk (bound-value e))
@@ -1377,7 +1393,7 @@
   (tree-walk exp))
 
 (define (fetch-rules pattern env)
-  (an-element-of
+  (a-random-of
    (if (use-index? pattern)
        (get-indexed-rules pattern)
        (get-all-rules))))
@@ -1423,3 +1439,31 @@
              (lambda (new-value)
                (set! bound? true)
                (set! value new-value)))))))
+
+;; Example
+;; (assert! (rule (Cons ?a ?d (?a . ?d))))
+;; (assert! (rule (Suc ?p (?p . ?p))))
+;; (assert! (rule (Add () ?n ?n)))
+;; (assert! (rule (Add ?m+1 ?n ?m+n+1)
+;;        (andthen (Suc ?m ?m+1)
+;;                 (Suc ?m+n ?m+n+1)
+;;                 (Add ?m ?n ?m+n))))
+;; (assert! (rule (add-assoc ?l ?m ?n)
+;;        (andthen (Add ?l ?m ?l+m)
+;;                 (Add ?l+m ?n ?<l+m>+n)
+;;                 (Add ?m ?n ?m+n)
+;;                 (Add ?l ?m+n ?l+<m+n>)
+;;                 (same ?<l+m>+n ?l+<m+n>))))
+
+;; (assert! (rule (prove-add-assoc-base2 ?l ?m ?n)
+;;                (not! (andthen (same ?l ())
+;;                               (Add ?l ?m ?l+m)
+;;                               (Add ?l+m ?n ?<l+m>+n)
+;;                               (Add ?m ?n ?m+n)
+;;                               (Add ?l ?m+n ?l+<m+n>)
+;;                               (not! (same ?<l+m>+n ?l+<m+n>))))))
+
+;; (assert! (rule (prove-assoc-sub ?l ?m)
+;;        (not! (andthen (same () ?l)
+;;                       (Add ?l ?m ?l+m)
+;;                       (not! (same ?m ?l+m))))))

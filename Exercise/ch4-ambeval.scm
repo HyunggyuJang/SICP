@@ -102,7 +102,7 @@
 ;; Analyzer
 (define (analyze-execute exp)
   (lambda (env succeed fail)
-    ((analyze-quoted (execute-expression exp))
+    ((analyze (execute-expression exp))
      env
      (lambda (exp2 fail2)
        ((analyze exp2) env

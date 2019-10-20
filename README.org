@@ -6304,8 +6304,9 @@ evaluated with respect to given environment.
   symbol =done= else aborts.
 
 
-The rest depend on the =unify-frames=, which in turn depends on =unify-match=;
-that we are going to implement in following step.
+The rest depend on the =unify-frames=, which in turn depends on =unify-match= or
+using the =callback= structure in [[Exercise 4.77][exercise 4.77]]; that we are going to implement
+in following step.
 
 Then the code:
 #+BEGIN_SRC scheme
@@ -6595,7 +6596,7 @@ became =set-value!= etc.:
 (define (depends-on? exp var)
   (define (tree-walk e)
     (cond ((var-obj? e)
-           (if (equal? var e)
+           (if (eq? var e)              ;same as above
                true
                (if (has-value? e)
                    (tree-walk (bound-value e))
@@ -6626,8 +6627,562 @@ next-result
 
 Actually as we transit into this decomposing with above =simple-query=, faced
 some bug which led to modify =unify-match= to use =eq?= instead =equal?= since
-we have used object.
-***** Support counterpart of =unify-frames=
+we have used object (same in =depends-on?=).
+
+And all the other complex rule application works well:
+#+BEGIN_SRC scheme
+;;; Query input:
+(append-to-form ?x ?y ((3 4) 2 (1 2) 3))
+
+;;; Query results:
+(append-to-form ((3 4) 2 (1 2) 3) () ((3 4) 2 (1 2) 3))
+
+;;; Query input:
+next-result
+
+;;; Query results:
+(append-to-form ((3 4) 2 (1 2)) (3) ((3 4) 2 (1 2) 3))
+
+;;; Query input:
+(reverse (1 2 (3 4) (3 1) 5) ?x)
+
+;;; Query results:
+(reverse (1 2 (3 4) (3 1) 5) (5 (3 1) (3 4) 2 1))
+
+#+END_SRC
+
+****** =Last-pair= problem
+For the one having curiosity of =last-pair= response we've mentioned above, in
+current query language implemented using =amb= evaluator, as noted before in
+exercise [[Exercise 4.78][4.78]], we can not produce the output of =(last-pair ?x (2))=:
+#+BEGIN_SRC scheme
+;;; Query input:
+(last-pair (1 2 3 4) ?x)
+
+;;; Query results:
+(last-pair (1 2 3 4) (4))
+
+;;; Query input:
+(last-pair ?x (2))
+
+;;; Query results:
+  C-c C-c;Quit!
+#+END_SRC
+
+This is not due to the environment implementation but =amb= evaluator -- it can
+not produce breadth first search process. So to work around this, as we did in
+=disjoin=, we have to use =ramb= to avoid infinite loop:
+#+BEGIN_SRC scheme
+(define (a-random-of items)
+    (require (not (null? items)))
+    (ramb (car items) (a-random-of (cdr items))))
+
+(define (fetch-rules pattern env)
+  (a-random-of
+   (if (use-index? pattern)
+       (get-indexed-rules pattern)
+       (get-all-rules))))
+#+END_SRC
+
+Armed with above procedure,
+#+BEGIN_SRC scheme
+;;; Query input:
+(last-pair ?x (1))
+
+;;; Query results:
+(last-pair (? 1) (1))
+
+;;; Query input:
+next-result
+
+;;; Query results:
+(last-pair (? ? ? ? ? 1) (1))
+
+#+END_SRC
+
+(We may need to come up with more clever notation for unassigned variable rather
+than current one to express the constraint -- e.g. which variables should bound
+to same value.)
+***** Support counterpart of =unify-frames= and callback
+We actually already support this feature in our implementation; =andthen= is
+also the kind of =and= that used =unify-frames= in previous implementation.
+Since we decomposed the instantiation process from the =qeval= and we are now
+using assignment rather than using immutable data structure, our =andthen=
+processes what =unfiy-frames= did in a more concise way.
+
+We could make another =and= special form that do not imposing the evaluation
+order as =andthen= did using =ramb=; but I've found no use of that in our case,
+so let it go as it is.
+
+For the =callback= feature we made in the [[Exercise 4.77][previous exercise]] to frame structure,
+we need to transit into more constraint arithmetic language flavored
+implementation; that is, to make our callback process as object as it did in
+constraint object -- adder, multiplier, etc.
+
+Then we have to make change the current frame structure: Frame does not have to
+keep track of the callback objects; variable object would do that directly. To
+implement this idea, we have to change current variable object to have callback
+objects as state variable, which would be informed one by one whenever the given
+variable object assigned a (constant) value.
+
+To integrate this feature with current implementation, as current one allow to
+variable object to have another variable object as its value, we need to
+propagate the callback list from entry variable object to the value variable
+object whenever it has value; of course if the value is constant, just activates
+the callback list.
+
+This is exactly what =has-constant?= did in previous implementation -- this is
+the way of current version of callback system.
+
+This feature support is interesting in its own; but let us move on to the next
+part of implementation since that is more interesting one and this one can be
+done later if we found it is the really valuable one. For now I'm not quite
+convinced by the usefulness of this feature.
+
+So for now we can implement the counterpart of =lisp-value= as before where we
+haven't used callback structure; but naming it as =list-value!= in case where we
+found to want to add callback structure in our language:
+#+BEGIN_SRC scheme
+(define (lisp-value! call env)
+  (if (execute
+       (instantiate
+        call
+        frame
+        (lambda (v e)
+          'ignore)
+        (lambda (v e)
+          (error "Unknown pat var -- LISP-VALUE" v))))
+      'done
+      (amb)))
+#+END_SRC
+
+Then:
+#+BEGIN_SRC scheme
+;;; Query input:
+(lisp-value! > 5 4)
+
+;;; Query results:
+(lisp-value! > 5 4)
+
+#+END_SRC
+
+Actually does not work:
+#+BEGIN_SRC scheme
+;;; Query input:
+(lisp-value! > 5 7)
+
+;;; Query results:
+(lisp-value! > 5 7)
+
+#+END_SRC
+
+It just blindly evaluate the consequent clause. After debugging, we found it
+really just evaluate the conseqence part in any case:
+#+BEGIN_SRC scheme
+(define (lisp-value! call env)
+  (if (execute
+       (instantiate
+        call
+        env
+        (lambda (v e)
+          'ignore)
+        (lambda (v e)
+          (error "Unknown pat var -- LISP-VALUE" v))))
+      (begin (newline)
+             (display "conseq processed") 'done)
+      (begin (newline)
+             (display "altern processed") (amb))))
+
+;;; Query input:
+(lisp-value! > 2 7)
+
+;;; Query results:
+
+conseq processed(lisp-value! > 2 7)
+#+END_SRC
+
+This is due to the way of processing of =execute=:
+#+BEGIN_SRC scheme
+;;; Amb-Eval input:
+(if (execute
+     (instantiate
+      '(> 5 7) empty-environment
+      (lambda (v e) 'ignore) (lambda (v e) 'ignore)))
+    'conseq 'alter)
+
+;;; Starting a new problem
+;;; Amb-Eval value:
+conseq
+#+END_SRC
+
+We need to make =execute= to evaluate its argument expressen before strip off
+the quotation or in other word, all we need to do is double evaluation:
+#+BEGIN_SRC scheme
+(define (analyze-execute exp)
+  (lambda (env succeed fail)
+    ((analyze (execute-expression exp))
+     env
+     (lambda (exp2 fail2)
+       ((analyze exp2) env
+        succeed fail2))
+     fail)))
+#+END_SRC
+
+Now,
+#+BEGIN_SRC scheme
+;;; Amb-Eval input:
+(if (execute
+     (instantiate
+      '(> 5 7) empty-environment
+      (lambda (v e) 'ignore) (lambda (v e) 'ignore)))
+    'conseq 'alter)
+
+;;; Starting a new problem
+;;; Amb-Eval value:
+alter
+
+;;; Query input:
+(lisp-value! > 5 7)
+
+;;; Query results:
+;;; There are no more result of
+(lisp-value! > 5 7)
+
+#+END_SRC
+
+More complex one also works:
+#+BEGIN_SRC scheme
+;;; Query input:
+(andthen (can-be-replaced-by ?p1 ?p2)
+         (salary ?p1 ?a1) (salary ?p2 ?a2)
+         (lisp-value! > ?a1 ?a2))
+
+;;; Query results:
+(andthen (can-be-replaced-by (warbucks oliver) (aull dewitt))
+         (salary (warbucks oliver) 150000) (salary (aull dewitt) 25000)
+         (lisp-value! > 150000 25000))
+
+;;; Query input:
+next-result
+
+;;; Query results:
+(andthen (can-be-replaced-by (hacker alyssa p) (fect cy d))
+         (salary (hacker alyssa p) 40000) (salary (fect cy d) 35000)
+         (lisp-value! > 40000 35000))
+
+;;; Query input:
+next-result
+
+;;; Query results:
+;;; There are no more result of
+(andthen (can-be-replaced-by ?p1 ?p2)
+         (salary ?p1 ?a1) (salary ?p2 ?a2)
+         (lisp-value! > ?a1 ?a2))
+
+#+END_SRC
+**** Extend the process of definition of rules
+Now we are done the half of the task what we planned to do. The rest is to
+transition from current "whole data base in one place" into "data base in
+context of environment."
+
+If we have done with this transition, we are able to capture the context where
+the rule is being defined. What would this change make us to do more useful
+works? I don't know well; even more I couldn't understand well what the logic
+language for neither in concrete sense nor abstract one while I've used it so
+far.
+
+To make use of this new feature -- capturing the environment where the rule
+definition evaluated -- we need to understand exactly what logic program is for,
+what can we do in current version, and what if we can make use the "capturing"
+in the context of preceding ones.
+
+So it's time to learn from lecture -- Logic programming, [[youtube:rCqMiPk1BJE?list=PLE18841CABEA24090][part 1]] and [[youtube:GReBwkGFZcs?list=PLE18841CABEA24090][part 2]].
+It says,
+#+BEGIN_QUOTE
+People use logic program to express what is true, to check whether something is
+true, and to find out what's true.
+#+END_QUOTE
+
+Let's think about this phrase with concrete example. We have used (or
+programmed) logic language to define the recursive relation in =append-to-form=
+or =last-pair=. This is analogous definition for recursive definition of
+=append= and =last-pair= in Lisp.
+
+Here is working example, which define natural number in set theory:
+#+BEGIN_SRC scheme
+(assert! (rule (Suc ?p (?p . ?p))))
+(assert! (rule (Add () ?n ?n)))
+(assert! (rule (Add ?m+1 ?n ?m+n+1)
+               (andthen (Suc ?m ?m+1)
+                        (Suc ?m+n ?m+n+1)
+                        (Add ?m ?n ?m+n))))
+#+END_SRC
+
+That is, if we define zero as =()= then the rest natural number defined along
+with =Suc=:
+#+BEGIN_SRC scheme
+;;; Query input:
+(Suc () ?one)
+
+;;; Query results:
+(suc () (()))
+
+;;; Query input:
+(Suc (()) ?two)
+
+;;; Query results:
+(suc (()) ((()) ()))
+
+;;; Query input:
+(Suc ((()) ()) ?three)
+
+;;; Query results:
+(suc ((()) ()) (((()) ()) (()) ()))
+
+...
+#+END_SRC
+
+With this, we can add two set theory number:
+#+BEGIN_SRC scheme
+;;; Query input:
+(add ((()) ()) (((()) ()) (()) ()) ?five)
+
+;;; Query results:
+(add ((()) ()) (((()) ()) (()) ()) (((((()) ()) (()) ()) ((()) ()) (()) ()) (((()) ()) (()) ()) ((()) ()) (()) ()))
+
+#+END_SRC
+
+Since our query language define rules as relation not unidirectional
+computation, we can ask also the reverse question, that is, to ask what is five
+add of?
+#+BEGIN_SRC scheme
+
+;;; Query input:
+(add ?a1 ?a2
+     (((((()) ()) (()) ()) ((()) ()) (()) ()) (((()) ()) (()) ()) ((()) ()) (()) ())
+     )
+
+;;; Query results:
+(add ()
+     (((((()) ()) (()) ()) ((()) ()) (()) ()) (((()) ()) (()) ()) ((()) ()) (()) ())
+     (((((()) ()) (()) ()) ((()) ()) (()) ()) (((()) ()) (()) ()) ((()) ()) (()) ())
+     )
+
+;;; Query input:
+next-result
+
+;;; Query results:
+(add (())
+     ((((()) ()) (()) ()) ((()) ()) (()) ())
+     (((((()) ()) (()) ()) ((()) ()) (()) ()) (((()) ()) (()) ()) ((()) ()) (()) ())
+     )
+
+;;; Query input:
+next-result
+
+;;; Query results:
+(add (((()) ()) (()) ())
+     ((()) ())
+     (((((()) ()) (()) ()) ((()) ()) (()) ()) (((()) ()) (()) ()) ((()) ()) (()) ())
+     )
+
+;;; Query input:
+next-result
+
+;;; Query results:
+(add (((((()) ()) (()) ()) ((()) ()) (()) ()) (((()) ()) (()) ()) ((()) ()) (()) ())
+     ()
+     (((((()) ()) (()) ()) ((()) ()) (()) ()) (((()) ()) (()) ()) ((()) ()) (()) ())
+     )
+
+;;; Query input:
+next-result
+
+;;; Query results:
+(add ((((()) ()) (()) ()) ((()) ()) (()) ())
+     (())
+     (((((()) ()) (()) ()) ((()) ()) (()) ()) (((()) ()) (()) ()) ((()) ()) (()) ())
+     )
+
+;;; Query input:
+next-result
+
+;;; Query results:
+(add ((()) ())
+     (((()) ()) (()) ())
+     (((((()) ()) (()) ()) ((()) ()) (()) ()) (((()) ()) (()) ()) ((()) ()) (()) ())
+     )
+
+;;; Query input:
+next-result
+
+;;; Query results:
+;;; There are no more result of
+(add ?a1 ?a2
+     (((((()) ()) (()) ()) ((()) ()) (()) ()) (((()) ()) (()) ()) ((()) ()) (()) ())
+     )
+
+#+END_SRC
+
+So from this example, we can define or express what is true -- natural number --
+and find our what is true -- what is successor of given number, what number is
+the result of addition of given two number, and what numbers are composing the
+given number via addition -- but we can not /prove/ the following theorem:
+#+BEGIN_SRC scheme
+(rule (add-assoc ?l ?m ?n)
+       (andthen (Add ?l ?m ?l+m)
+                (Add ?l+m ?n ?<l+m>+n)
+                (Add ?m ?n ?m+n)
+                (Add ?l ?m+n ?l+<m+n>)
+                (same ?<l+m>+n ?l+<m+n>)))
+
+;;; Query input:
+(add-assoc ?l ?m ?n)
+
+;;; Query results:
+(add-assoc ((()) ()) ((((()) ()) (()) ()) ((()) ()) (()) ()) ?)
+
+#+END_SRC
+
+We wanted to prove above association rule in addition using logic program but it
+only can find the instantiations that satisfies given rule. Let's attempt to
+resolve this unfortunate: Direct the proving method -- induction on =?l=
+#+BEGIN_SRC scheme
+(rule (prove-add-assoc-base ?l ?m ?n)
+      (andthen (same ?l ())
+               (add-assoc ?l ?m ?n)))
+
+;; or directly
+
+(rule (prove-add-assoc-base ?l ?m ?n)
+       (andthen (same ?l ())
+                (Add ?l ?m ?l+m)
+                (Add ?l+m ?n ?<l+m>+n)
+                (Add ?m ?n ?m+n)
+                (Add ?l ?m+n ?l+<m+n>)
+                (same ?<l+m>+n ?l+<m+n>)))
+#+END_SRC
+
+This base case indifferently betray our hope:
+#+BEGIN_SRC scheme
+;;; Query input:
+(prove-add-assoc-base ?l ?m ?n)
+
+;;; Query results:
+(prove-add-assoc-base () () ?)
+
+;;; Query input:
+next-result
+
+;;; Query results:
+(prove-add-assoc-base () ((((()) ()) (()) ()) ((()) ()) (()) ()) ?)
+
+#+END_SRC
+
+What we expected was
+#+BEGIN_SRC scheme
+;;; Query input:
+(andthen (same () ?l) (Add ?l ?m ?l+m))
+
+;;; Query results:
+(andthen (same () ()) (add () ? ?))
+
+;;; Query input:
+next-result
+
+;;; Query results:
+;;; There are no more result of
+(andthen (same () ?l) (add ?l ?m ?l+m))
+
+#+END_SRC
+
+Which implies for all =?m= and =?<l+m>= where =?l= is same as =()=, =?m= is same
+as =?l+m=:
+#+BEGIN_SRC scheme
+;;; Query input:
+(assert! (rule (prove-assoc-sub ?l ?m)
+       (not! (andthen (same () ?l)
+                      (Add ?l ?m ?l+m)
+                      (not! (same ?m ?l+m))))))
+
+Assertion added to data base.
+
+;;; Query input:
+(prove-assoc-sub ?l ?m)
+
+;;; Query results:
+(prove-assoc-sub ? ?)
+
+;;; Query input:
+next-result
+
+;;; Query results:
+;;; There are no more result of
+(prove-assoc-sub ?l ?m)
+
+#+END_SRC
+
+Unfortunately we can not apply this same strategy to the previous one since it
+falls into infinite loop as we noted before:
+#+BEGIN_SRC scheme
+;;; Query input:
+(assert! (rule (prove-add-assoc-base2 ?l ?m ?n)
+               (not! (andthen (same ?l ())
+                         (Add ?l ?m ?l+m)
+                         (Add ?l+m ?n ?<l+m>+n)
+                         (Add ?m ?n ?m+n)
+                         (Add ?l ?m+n ?l+<m+n>)
+                         (not! (same ?<l+m>+n ?l+<m+n>))))))
+
+Assertion added to data base.
+
+;;; Query input:
+(prove-add-assoc-base2 ?l ?m ?n)
+
+;;; Query results:
+  C-c C-c;Quit!
+#+END_SRC
+
+So consequently we can not use our query language to prove some theorem in
+itself; but it pose some possibilities one can use the idea behind this query
+language to prove some theorem whose correctness checked by the computer.
+
+That is, rather than use the multi-directional search method to find some fact
+in the data base, if we can use the definition of data in multi way -- to
+compute the output as ordinary programming language and also to prove some
+property concerning with that data structure using induction on that structure
+-- one can define data structure and use that and also prove the behavior of
+program that uses defined data structure exploiting the structural induction on
+that data structure.
+
+Defined data structure is used to aggregate given arguments into one concept and
+to prove the theorem about that data structure by decomposing aggregated concept
+to simpler ones.
+
+As conclusion, query language is for constructing /closed world/ from where we
+deduce all the facts; it is not for proving some property using defined data
+base along with mathematical logic, it is for defining what canonical logic
+rule is and what we can deduce from constructed closed world.
+
+What I've expected from logic language was the framework where all the
+mathematical inference rules are inherited; but it was not. It is more
+programming language that has three components which makes the language powerful
+-- primitive data, means of combination, means of abstraction. Rule definition
+is not more than the means of abstraction in query language; we should not
+expect any magic more than that.
+
+From this argument, we now can digest what the statement of this exercise meant.
+The block structured program is meant to prevent the program from being hard to
+be read, at the same time, not leaking the guts of the specific rule definition
+that would not be used anywhere other than outside the enclosing rule
+definition. And for the last question, it is unable to accomplish that in our
+query language but I've outlined the possibilities if we generalize what we
+learned from this language -- even if our query works in multi-directional way,
+our rule definitions only works in one way, from body to conclusion.
+
+Using those ideas we can achieve making deductions in a context since in that
+language, where even the means of abstraction works in multi way, we can use the
+assumption to compose desiring fact.
 * Footnotes
 
 [fn:1] We chose to
