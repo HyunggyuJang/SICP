@@ -56,6 +56,12 @@
 (assert! (rule (append-to-form (?u . ?v) ?y (?u . ?z))
                (append-to-form ?v ?y ?z)))
 
+(assert! (rule (append-to-form ?x ?y ?z)
+               (andthen (assert! (rule (append-local (?u . ?v) ?y (?u . ?z))
+                                       (append-local ?v ?y ?z)))
+                        (assert! (rule (append-local () ?y ?y)))
+                        (append-local ?x ?y ?z))))
+
 ;; Exercise 4.61
 (assert! (rule (?x next-to ?y in (?x ?y . ?u))))
 
@@ -648,6 +654,13 @@
                  (proc initial (car lst))
                  (cdr lst))))
 
+(define (fold-right proc initial lst)
+  (if (null? lst)
+      initial
+      (proc
+       (car lst)
+       (fold-right proc initial (cdr lst)))))
+
 (define (unify-bindings bindings frame)
   (cond ((eq? frame 'failed) 'failed)
         ((null? bindings) frame)
@@ -793,8 +806,14 @@
       '(always-true)
       (caddr rule)))
 
-(define (rule-env rule)
-  empty-environment)                    ;just for now
+(define (make-captured-rule rule env)
+  (list rule env))
+
+(define (rule-contents captured-rule)
+  (car captured-rule))
+
+(define (rule-env captured-rule)
+  (cadr captured-rule))
 
 (define (query-syntax-process exp)
   (map-over-symbols expand-question-mark exp))
@@ -1150,18 +1169,6 @@
 ;; Design & implementation
 ;;; Phase 1 implement simple & working sample
 
-;;; Environment ADT
-(define empty-environment '())
-(define (empty-env? env) (null? env))
-(define (extend-env frame env) (cons frame env))
-(define (first-frame env) (car env))
-(define (enclosing-env env) (cdr env))
-(define (binding-in-env var env)
-  (if (empty-env? env)
-      false
-      (or (binding-in-frame var (first-frame env))
-          (binding-in-env var (enclosing-env env)))))
-
 ;;; Driver-loop
 (define (query-driver-loop)
   (prompt-for-input input-prompt)
@@ -1173,46 +1180,40 @@
           (newline)
           (amb))
         (let ((q (query-syntax-process input)))
-          (let ((env (extend-if-unbound-variable
-                      q empty-environment)))
-            (cond ((assertion-to-be-added? q)
-                   (add-rule-or-assertion! (add-assertion-body q))
-                   (newline)
-                   (display "Assertion added to data base.")
-                   (query-driver-loop))
-                  (else
-                   (newline)
-                   (display output-prompt)
-                   ;; [extra newline at end] (announce-output output-prompt)
-                   (newline)
-                   (if-fail
-                    (display
-                     (instantiate
-                      q (qeval q env)
-                      (lambda (v f)
-                        'ignore)
-                      (lambda (obj env)
-                        '?)))
-                    (begin
-                      (display ";;; There are no more result of")
-                      (newline)
-                      (display
-                       (instantiate
-                        q empty-environment
-                        (lambda (v f)
-                          (contract-question-mark v))
-                        (lambda (var env)
-                          'ignore)))))
-                   (query-driver-loop))))))))
+          (newline)
+          (display output-prompt)
+          ;; [extra newline at end] (announce-output output-prompt)
+          (newline)
+          (if-fail
+           (display
+            (instantiate
+             q (qeval q query-initial-environment)
+             (lambda (v f)
+               'ignore)
+             (lambda (obj env)
+               '?)))
+           (begin
+             (display ";;; There are no more result of")
+             (newline)
+             (display
+              (instantiate
+               q empty-environment
+               (lambda (v f)
+                 (contract-question-mark v))
+               (lambda (var env)
+                 'ignore)))))
+          (query-driver-loop)))))
 
 ;;;The Evaluator
 ;; Query, Environment -> Environment
 (define (qeval query env)
-  (let ((qproc (get (type query) 'qeval)))
-    (if qproc
-        (qproc (contents query) env)
-        (simple-query query env))
-    env))
+  (if (assertion-to-be-added? query)
+      (begin (add-rule-or-assertion! (add-assertion-body query) env)
+             env)
+      (let ((qproc (get-op (type query) 'qeval)))
+        (if qproc
+            (qproc (contents query) env)
+            (simple-query query env)))))
 
 ;; Pattern, Env -> Env
 (define (extend-if-unbound-variable exp env)
@@ -1220,6 +1221,26 @@
   (define (extend-frame exp frame)
     (cond ((var? exp)
            (let ((binding (binding-in-env exp env)))
+             (if (not (or (binding-in-frame exp frame)
+                          (binding-in-env exp env)))
+                 (extend
+                  exp (make-var-obj) frame)
+                 frame)))
+          ((pair? exp)
+           (extend-frame (cdr exp)
+                         (extend-frame (car exp) frame)))
+          (else frame)))
+  (let ((extended
+         (extend-frame exp (empty-frame))))
+    (if (empty-frame? extended)
+        env
+        (extend-env extended env))))
+
+(define (extend-if-variable exp env)
+  ;; Pattern, Frame -> Frame
+  (define (extend-frame exp frame)
+    (cond ((var? exp)
+           (let ((binding (binding-in-frame exp frame)))
              (if (not binding)
                  (extend
                   exp (make-var-obj) frame)
@@ -1229,7 +1250,7 @@
                          (extend-frame (car exp) frame)))
           (else frame)))
   (let ((extended
-         (extend-frame exp empty-frame)))
+         (extend-frame exp (empty-frame))))
     (if (empty-frame? extended)
         env
         (extend-env extended env))))
@@ -1251,29 +1272,32 @@
   (copy exp))
 
 ;;;Simple queries
-;; Query, Env -> 'done
+;; Query, Env -> Env
 (define (simple-query query-pattern env)
-  (let ((subed-pattern
-         (instantiate
-          query-pattern env
-          (lambda (v e)
-            'ignore)
-          (lambda (var env)
-            var))))
-    (amb (pattern-match
-          subed-pattern
-          (fetch-assertions
-           query-pattern env))
-         (apply-a-rule
-          (fetch-rules
-           query-pattern env)
-          subed-pattern))))
+  (let ((extended-env
+         (extend-if-unbound-variable query-pattern env)))
+    (let ((subed-pattern
+           (instantiate
+            query-pattern extended-env
+            (lambda (v e)
+              'ignore)
+            (lambda (var env)
+              var))))
+      (amb (pattern-match
+            subed-pattern
+            (fetch-assertions
+             query-pattern env))
+           (apply-a-rule
+            (fetch-rules
+             query-pattern env)
+            subed-pattern)))
+    extended-env))
 
 ;;;Compound queries
 
 (define (conjoin-in-order conjuncts env)
   (if (empty-conjunction? conjuncts)
-      'done
+      env
       (conjoin-in-order (rest-conjuncts conjuncts)
                         (qeval (first-conjunct conjuncts)
                                env))))
@@ -1296,7 +1320,7 @@
       'ignore)
      (if succeed?
          'failed
-         'done))))
+         env))))
 
 (define (lisp-value! call env)
   (if (execute
@@ -1307,7 +1331,7 @@
           'ignore)
         (lambda (v e)
           (error "Unknown pat var -- LISP-VALUE" v))))
-      'done
+      env
       (amb)))
 
 (define (uniquely-asserted operand env)
@@ -1343,7 +1367,8 @@
 
 (define (apply-a-rule rule query-pattern)
   (let ((instantiated-env
-         (extend-if-unbound-variable rule (rule-env rule))))
+         (extend-if-variable (rule-contents rule) (rule-env rule)))
+        (rule (rule-contents rule)))
     (let ((subed-rule
            (instantiate
             rule instantiated-env
@@ -1392,11 +1417,11 @@
           (else false)))
   (tree-walk exp))
 
-(define (fetch-rules pattern env)
-  (a-random-of
-   (if (use-index? pattern)
-       (get-indexed-rules pattern)
-       (get-all-rules))))
+;; (define (fetch-rules pattern env)
+;;   (a-random-of
+;;    (if (use-index? pattern)
+;;        (get-indexed-rules pattern)
+;;        (get-all-rules))))
 
 ;;; variable object ADT
 ;;;; constructor
@@ -1467,3 +1492,311 @@
 ;;        (not! (andthen (same () ?l)
 ;;                       (Add ?l ?m ?l+m)
 ;;                       (not! (same ?m ?l+m))))))
+
+(define (add-rule-or-assertion! assertion env)
+  (if (rule? assertion)
+      (add-rule! assertion env)
+      (add-assertion! assertion env)))
+
+;;;Maintaining the Data Base
+
+;; (define THE-ASSERTIONS '())
+
+(define (fetch-assertions pattern env)
+  (an-element-of
+   (if (use-index? pattern)
+       (get-indexed-assertions pattern env)
+       (get-all-assertions env))))
+
+(define (get-all-assertions env) (assertions env))
+
+(define (get-indexed-assertions pattern env)
+  (fold-right
+   (lambda (frame appended)
+     (append (get-list (table-frame frame) (index-key-of pattern) 'assertion-list)
+             appended))
+   '()
+   (env->frame-list env)))
+
+(define (get-list table key1 key2)
+  (let ((l (get table key1 key2)))
+    (if l l '())))
+
+;; (define THE-RULES '())
+
+(define (fetch-rules pattern env)
+  (a-random-of
+   (if (use-index? pattern)
+       (get-indexed-rules pattern env)
+       (get-all-rules env))))
+
+(define (get-all-rules env) (rules env))
+
+(define (get-indexed-rules pattern env)
+  (append
+   (fold-right
+    (lambda (frame appended)
+      (append (get-list (table-frame frame) (index-key-of pattern) 'rule-list)
+              appended))
+    '()
+    (env->frame-list env))
+   (fold-right
+    (lambda (frame appended)
+      (append (get-list (table-frame frame) '? 'rule-list)
+              appended))
+    '()
+    (env->frame-list env))))
+
+(define (add-assertion! assertion env)
+  (store-assertion-in-index assertion env)
+  (add-to-assertions! assertion env)
+  'ok)
+
+(define (add-rule! rule env)
+  (store-rule-in-index rule env)
+  (add-to-rules! rule env)
+  'ok)
+
+(define (store-assertion-in-index assertion env)
+  (if (indexable? assertion)
+      (let ((key (index-key-of assertion))
+            (index-table (index-table env)))
+        (let ((current-assertion-list
+               (get-list
+                index-table key 'assertion-list)))
+          (put
+           index-table key 'assertion-list
+           (cons assertion
+                 current-assertion-list))))))
+
+(define (store-rule-in-index rule env)
+  (let ((pattern (conclusion rule)))
+    (if (indexable? pattern)
+        (let ((key (index-key-of pattern))
+              (index-table (index-table env)))
+          (let ((current-rule-list
+                 (get-list
+                  index-table key 'rule-list)))
+            (put
+             index-table key 'rule-list
+             (cons (make-captured-rule rule env)
+                   current-rule-list)))))))
+
+;;; interfacing the table ADT
+(define (put table key1 key2 item)
+  ((table 'insert-proc!) key1 key2 item))
+
+(define (get table key1 key2)
+  ((table 'lookup-proc) key1 key2))
+
+;;; Environment ADT
+(define empty-environment '())
+(define (empty-env? env) (null? env))
+(define (extend-env frame env) (cons frame env))
+(define (first-frame env) (car env))
+(define (enclosing-env env) (cdr env))
+(define env->frame-list (lambda (x) x))
+(define (index-table env) (table-frame (first-frame env)))
+(define (assertions env)
+  (fold-right
+   (lambda (frame appended)
+     (append ((assertions-frame frame) 'assertions)
+             appended))
+   '() (env->frame-list env)))
+(define (rules env)
+  (fold-right
+   (lambda (frame appended)
+     (append ((rules-frame frame) 'rules)
+             appended))
+   '() (env->frame-list env)))
+(define (add-to-assertions! assertion env)
+  (((assertions-frame (first-frame env)) 'add-assertion!)
+   assertion))
+(define (set-assertions! assertions env)
+  (((assertions-frame (first-frame env)) 'set-assertions!)
+   assertions))
+(define (add-to-rules! rule env)
+  (((rules-frame (first-frame env)) 'add-rule!)
+   (make-captured-rule rule env)))
+(define (set-rules! rules env)
+  (((rules-frame (first-frame env)) 'set-rules!)
+   (map (lambda (rule) (make-captured-rule rule env)) rules)))
+(define (map proc lst)
+  (if (null? lst)
+      '()
+      (cons (proc (car lst))
+            (map proc (cdr lst)))))
+(define (binding-in-env var env)
+  (if (empty-env? env)
+      false
+      (or (binding-in-frame var (first-frame env))
+          (binding-in-env var (enclosing-env env)))))
+
+;;;; Frame ADT
+(define (binding-in-frame variable frame)
+  (assoc variable (bindings frame)))
+
+(define (extend variable value frame)
+  (make-frame (cons (make-binding variable value) (bindings frame))
+              (assertions-frame frame)
+              (rules-frame frame)
+              (table-frame frame)))
+
+;; Frame -> List<Binding>
+(define (bindings frame)
+  (car frame))
+
+(define (assertions-frame frame)
+  (cadr frame))
+
+(define (rules-frame frame)
+  (caddr frame))
+
+(define (table-frame frame)
+  (cadddr frame))
+
+;; List<Binding> -> Frame
+(define (make-frame bindings assertions rules table)
+  (list bindings assertions rules table))
+
+(define (empty-frame)
+  (make-frame empty-bindings (make-assertions) (make-rules) (make-table-amb)))
+
+(define (empty-frame? frame)
+  (and (empty-bindings? (bindings frame))
+       (null? ((assertions-frame frame) 'assertions))
+       (null? ((rules-frame frame) 'rules))
+       ((table-frame frame) 'empty?)))
+
+;; Assertions ADT
+(define (make-assertions)
+  (let ((assertions '()))
+    (lambda (m)
+      (cond ((eq? m 'assertions) assertions)
+            ((eq? m 'add-assertion!)
+             (lambda (a)
+               (set! assertions
+                 (cons a assertions))))
+            ((eq? m 'set-assertions!)
+             (lambda (as)
+               (set! assertions as)))))))
+(define (make-rules)
+  (let ((rules '()))
+    (lambda (m)
+      (cond ((eq? m 'rules) rules)
+            ((eq? m 'add-rule!)
+             (lambda (r)
+               (set! rules
+                 (cons r rules))))
+            ((eq? m 'set-rules!)
+             (lambda (rs)
+               (set! rules rs)))))))
+
+;;;; binding ADT
+(define (make-binding variable value)
+  (cons variable value))
+
+(define empty-bindings '())
+(define empty-bindings? null?)
+
+(define (binding-variable binding)
+  (car binding))
+
+(define (binding-value binding)
+  (cdr binding))
+
+;;;;Table support from Chapter 3, Section 3.3.3 (local tables)
+;;;;without using any of set-cdr or set-car version.
+(define (make-table-amb)
+  (let ((local-table (make-local-table)))
+    (define (lookup key-1 key-2)
+      (let ((subtable (assoc key-1 (local-table 'get))))
+        (if subtable
+            (let ((record (assoc key-2 ((cdr subtable) 'get))))
+              (if record
+                  ((cdr record) 'get)
+                  false))
+            false)))
+    (define (insert! key-1 key-2 value)
+      (let ((subtable (assoc key-1 (local-table 'get))))
+        (if subtable
+            (let ((record (assoc key-2 ((cdr subtable) 'get))))
+              (if record
+                  (((cdr record) 'set!) value)
+                  (add-element!
+                   (cdr subtable)
+                   (cons key-2
+                         (make-value-table value)))))
+            (add-element!
+             local-table
+             (cons key-1
+                   (let ((sub-tbl (make-local-table)))
+                     (add-element!
+                      sub-tbl
+                      (cons key-2
+                            (make-value-table value))))))))
+      'ok)
+    (define (dispatch m)
+      (cond ((eq? m 'lookup-proc) lookup)
+            ((eq? m 'insert-proc!) insert!)
+            ((eq? m 'empty?) (null? (local-table 'get)))
+            (else (error "Unknown operation -- TABLE" m))))
+    dispatch))
+
+(define (make-local-table)
+  (let ((lst '()))
+    (lambda (m)
+      (cond ((eq? m 'get) lst)
+            ((eq? m 'set!)
+             (lambda (new)
+               (set! lst new)))))))
+
+(define (make-value-table value)
+  (let ((val-tbl (make-local-table)))
+    ((val-tbl 'set!) value)
+    val-tbl))
+
+(define (add-element! table value)
+  ((table 'set!)
+   (cons value
+         (table 'get)))
+    table)
+
+(define query-initial-environment
+  (extend-env (empty-frame) empty-environment))
+
+(define get-op '())
+(define put-op '())
+
+(define (initialize-data-base rules-and-assertions)
+  (define (deal-out r-and-a rules assertions)
+    (cond ((null? r-and-a)
+           (set-assertions! assertions query-initial-environment)
+           (set-rules! rules query-initial-environment)
+           'done)
+          (else
+           (let ((s (query-syntax-process (car r-and-a))))
+             (cond ((rule? s)
+                    (store-rule-in-index s query-initial-environment)
+                    (deal-out (cdr r-and-a)
+                              (cons s rules)
+                              assertions))
+                   (else
+                    (store-assertion-in-index s query-initial-environment)
+                    (deal-out (cdr r-and-a)
+                              rules
+                              (cons s assertions))))))))
+  (let ((operation-table (make-table)))
+    (permanent-set! get-op (operation-table 'lookup-proc))
+    (permanent-set! put-op (operation-table 'insert-proc!)))
+  ;; (put 'and 'qeval conjoin)
+  (put-op 'andthen 'qeval conjoin-in-order)
+  (put-op 'or 'qeval disjoin)
+  ;; (put 'not 'qeval negate)
+  (put-op 'not! 'qeval negate!)
+  (put-op 'lisp-value! 'qeval lisp-value!)
+  ;; (put 'lisp-value 'qeval lisp-value)
+  (put-op 'always-true 'qeval always-true)
+  ;; ;; Exercise 4.75
+  (put-op 'unique 'qeval uniquely-asserted)
+  (deal-out rules-and-assertions '() '()))

@@ -7183,6 +7183,685 @@ our rule definitions only works in one way, from body to conclusion.
 Using those ideas we can achieve making deductions in a context since in that
 language, where even the means of abstraction works in multi way, we can use the
 assumption to compose desiring fact.
+
+***** Change the Data Base structure
+Now we are going to implement the final part of our task. Our data base is going
+to have meaning only in the context of environment. First let's change the high
+level procedures to use the environment to fetch and aggregate the data base:
+#+BEGIN_SRC scheme
+(define (fetch-assertions pattern env)
+  (an-element-of
+   (if (use-index? pattern)
+       (get-indexed-assertions pattern env)
+       (get-all-assertions env))))
+
+(define (get-all-assertions env) (assertions env))
+
+(define (get-indexed-assertions pattern env)
+  (get-list (index-table env) (index-key-of pattern) 'assertion-list))
+
+(define (fetch-rules pattern env)
+  (a-random-of
+   (if (use-index? pattern)
+       (get-indexed-rules pattern env)
+       (get-all-rules env))))
+
+(define (get-all-rules env) (rules env))
+
+(define (get-indexed-rules pattern env)
+  (let ((index-table (index-table env)))
+    (append
+     (get-list index-table (index-key-of pattern) 'rule-list)
+     (get-list index-table '? 'rule-list))))
+
+(define (add-assertion! assertion env)
+  (store-assertion-in-index assertion env)
+  (add-to-assertions! assertion env)
+  'ok)
+
+(define (add-rule! rule env)
+  (store-rule-in-index rule env)
+  (add-to-rules! rule env)
+  'ok)
+
+(define (store-assertion-in-index assertion env)
+  (if (indexable? assertion)
+      (let ((key (index-key-of assertion))
+            (index-table (index-table env)))
+        (let ((current-assertion-list
+               (get-list
+                index-table key 'assertion-list)))
+          (put
+           index-table key 'assertion-list
+           (cons assertion
+                 current-assertion-list))))))
+
+(define (store-rule-in-index rule env)
+  (let ((pattern (conclusion rule)))
+    (if (indexable? pattern)
+        (let ((key (index-key-of pattern))
+              (index-table (index-table env)))
+          (let ((current-rule-list
+                 (get-list
+                  index-table key 'rule-list)))
+            (put
+             index-table key 'rule-list
+             (cons rule
+                   current-rule-list)))))))
+
+#+END_SRC
+
+From this specification, we need to alter the environment structure to have
+appropriate state variables. Specifically our environment have to support
+following procedures:
+- Selectors
+  - =(index-table <env>)= :: returns index table where we can retrieve the indexed
+    rules and assertions with key.
+  - =(assertions <env>)= :: returns a list of all the assertions stored in given
+    environment.
+  - =(rules <env>)= :: returns a list of all the rules stored in given environment.
+- Mutators
+  - =(add-to-asseritons! <assertion> <env>)= :: mutates the assertion list of
+    given environment by adding the given assertion to that list.
+  - =(add-to-rules! <rule> <env>)= :: mutates the rule list of given environment
+    by adding the given rule to that list.
+
+
+Here is the resulting codes:
+#+BEGIN_SRC scheme
+;;; interfacing the table ADT
+(define (put table key1 key2 item)
+  ((table 'insert-proc!) key1 key2 item))
+
+(define (get table key1 key2)
+  ((table 'lookup-proc) key1 key2))
+
+;;; Environment ADT
+(define empty-environment '())
+(define (empty-env? env) (null? env))
+(define (extend-env frame env) (cons frame env))
+(define (first-frame env) (car env))
+(define (enclosing-env env) (cdr env))
+(define (index-table env) (table-frame (first-frame env)))
+(define (assertions env)
+  ((assertions-frame (first-frame env)) 'assertions))
+(define (rules env)
+  ((rules-frame (first-frame env)) 'rules))
+(define (add-to-assertions! assertion env)
+  (((assertions-frame (first-frame env)) 'add-assertion!)
+   assertion))
+(define (set-assertions! assertions env)
+  (((assertions-frame (first-frame env)) 'set-assertions!)
+   assertions))
+(define (add-to-rules! rule env)
+  (((rules-frame (first-frame env)) 'add-rule!)
+   rule))
+(define (set-rules! rules env)
+  (((rules-frame (first-frame env)) 'set-rules!)
+   rules))
+(define (binding-in-env var env)
+  (if (empty-env? env)
+      false
+      (or (binding-in-frame var (first-frame env))
+          (binding-in-env var (enclosing-env env)))))
+
+;;;; Frame ADT
+(define (binding-in-frame variable frame)
+  (assoc variable (bindings frame)))
+
+(define (extend variable value frame)
+  (make-frame (cons (make-binding variable value) (bindings frame))
+              (assertions-frame frame)
+              (rules-frame frame)
+              (table-frame frame)))
+
+;; Frame -> List<Binding>
+(define (bindings frame)
+  (car frame))
+
+(define (assertions-frame frame)
+  (cadr frame))
+
+(define (rules-frame frame)
+  (caddr frame))
+
+(define (table-frame frame)
+  (cadddr frame))
+
+;; List<Binding> -> Frame
+(define (make-frame bindings assertions rules table)
+  (list bindings assertions rules table))
+
+(define (empty-frame)
+  (make-frame empty-bindings (make-assertions) (make-rules) (make-table-amb)))
+
+(define (empty-frame? frame)
+  (equal? frame (empty-frame)))
+
+;; Assertions ADT
+(define (make-assertions)
+  (let ((assertions '()))
+    (lambda (m)
+      (cond ((eq? m 'assertions) assertions)
+            ((eq? m 'add-assertion!)
+             (lambda (a)
+               (set! assertions
+                 (cons a assertions))))
+            ((eq? m 'set-assertions!)
+             (lambda (as)
+               (set! assertions as)))))))
+(define (make-rules)
+  (let ((rules '()))
+    (lambda (m)
+      (cond ((eq? m 'rules) rules)
+            ((eq? m 'add-rule!)
+             (lambda (r)
+               (set! rules
+                 (cons r rules))))
+            ((eq? m 'set-rules!)
+             (lambda (rs)
+               (set! rules rs)))))))
+
+;;;; binding ADT
+(define (make-binding variable value)
+  (cons variable value))
+
+(define empty-bindings '())
+(define empty-bindings? null?)
+
+(define (binding-variable binding)
+  (car binding))
+
+(define (binding-value binding)
+  (cdr binding))
+
+;;;;Table support from Chapter 3, Section 3.3.3 (local tables)
+;;;;without using any of set-cdr or set-car version.
+(define (make-table-amb)
+  (let ((local-table (make-local-table)))
+    (define (lookup key-1 key-2)
+      (let ((subtable (assoc key-1 (local-table 'get))))
+        (if subtable
+            (let ((record (assoc key-2 ((cdr subtable) 'get))))
+              (if record
+                  ((cdr record) 'get)
+                  false))
+            false)))
+    (define (insert! key-1 key-2 value)
+      (let ((subtable (assoc key-1 (local-table 'get))))
+        (if subtable
+            (let ((record (assoc key-2 ((cdr subtable) 'get))))
+              (if record
+                  (((cdr record) 'set!) value)
+                  (add-element!
+                   (cdr subtable)
+                   (cons key-2
+                         (make-value-table value)))))
+            (add-element!
+             local-table
+             (cons key-1
+                   (let ((sub-tbl (make-local-table)))
+                     (add-element!
+                      sub-tbl
+                      (cons key-2
+                            (make-value-table value))))))))
+      'ok)
+    (define (dispatch m)
+      (cond ((eq? m 'lookup-proc) lookup)
+            ((eq? m 'insert-proc!) insert!)
+            (else (error "Unknown operation -- TABLE" m))))
+    dispatch))
+
+(define (make-local-table)
+  (let ((lst '()))
+    (lambda (m)
+      (cond ((eq? m 'get) lst)
+            ((eq? m 'set!)
+             (lambda (new)
+               (set! lst new)))))))
+
+(define (make-value-table value)
+  (let ((val-tbl (make-local-table)))
+    ((val-tbl 'set!) value)
+    val-tbl))
+
+(define (add-element! table value)
+  ((table 'set!)
+   (cons value
+         (table 'get)))
+    table)
+
+#+END_SRC
+
+Unfortunately this naive approach would not work since we only lookup the first
+frame in the environment. We need to look through all the frame in the
+environment:
+#+BEGIN_SRC scheme
+(define (get-indexed-assertions pattern env)
+  (fold-right
+   (lambda (frame appended)
+     (append (get-list (table-frame frame) (index-key-of pattern) 'assertion-list)
+             appended))
+   '()
+   (env->frame-list env)))
+
+(define (get-indexed-rules pattern env)
+  (append
+   (fold-right
+    (lambda (frame appended)
+      (append (get-list (table-frame frame) (index-key-of pattern) 'rule-list)
+              appended))
+    '()
+    (env->frame-list env))
+   (fold-right
+    (lambda (frame appended)
+      (append (get-list (table-frame frame) '? 'rule-list)
+              appended))
+    '()
+    (env->frame-list env))))
+
+(define (assertions env)
+  (fold-right
+   (lambda (frame appended)
+     (append ((assertions-frame frame) 'assertions)
+             appended))
+   '() (env->frame-list env)))
+(define (rules env)
+  (fold-right
+   (lambda (frame appended)
+     (append ((rules-frame frame) 'rules)
+             appended))))
+
+(define (fold-right proc initial lst)
+  (if (null? lst)
+      initial
+      (proc
+       (car lst)
+       (fold-right proc initial (cdr lst)))))
+
+#+END_SRC
+
+And our rule should capture the environment:
+#+BEGIN_SRC scheme
+(define (make-captured-rule rule env)
+  (list rule env))
+
+(define (rule-contents captured-rule)
+  (car captured-rule))
+
+(define (rule-env captured-rule)
+  (cadr captured-rule))
+
+(define (apply-a-rule rule query-pattern)
+  (let ((instantiated-env
+         (extend-if-unbound-variable (rule-contents rule) (rule-env rule)))
+        (rule (rule-contents rule)))
+    (let ((subed-rule
+           (instantiate
+            rule instantiated-env
+            (lambda (v env)
+              'ignore)
+            (lambda (var env)
+              var))))
+      (unify-match query-pattern
+                   (conclusion subed-rule))
+      (qeval (rule-body rule)
+             instantiated-env))))
+
+(define (store-rule-in-index rule env)
+  (let ((pattern (conclusion rule)))
+    (if (indexable? pattern)
+        (let ((key (index-key-of pattern))
+              (index-table (index-table env)))
+          (let ((current-rule-list
+                 (get-list
+                  index-table key 'rule-list)))
+            (put
+             index-table key 'rule-list
+             (cons (make-captured-rule rule env)
+                   current-rule-list)))))))
+
+(define (add-to-rules! rule env)
+  (((rules-frame (first-frame env)) 'add-rule!)
+   (make-captured-rule rule env)))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+;;; Query input:
+(outranked-by ?p1 ?p2)
+
+;;; Query results:
+(outranked-by (cratchet robert) (warbucks oliver))
+
+;;; Query input:
+(andthen (outranked-by ?p1 ?p2) (supervisor ?p2 (Bitdiddle Ben)))
+
+;;; Query results:
+(andthen (outranked-by (reasoner louis) (hacker alyssa p)) (supervisor (hacker alyssa p) (bitdiddle ben)))
+
+#+END_SRC
+
+Now we should be able to define rule that has block structure. First let's test
+our new feature with following modification:
+#+BEGIN_SRC scheme
+,*** in initialize-data-base
+  (put-op 'assert! 'qeval add-rule-or-assertion!)
+,*** end of that procedure
+
+(define (add-assertion-body exp)
+  (car exp))
+
+(define (add-rule-or-assertion! exp env)
+  (let ((assertion (add-assertion-body exp)))
+    (if (rule? assertion)
+        (add-rule! assertion env)
+        (add-assertion! assertion env))))
+
+#+END_SRC
+
+But this won't work unexpectedly:
+#+BEGIN_SRC scheme
+;;; Query input:
+(assert! (test 5))
+;Aborting!: maximum recursion depth exceeded
+
+#+END_SRC
+
+After some debugging process, we find out the following one is the source of bug:
+#+BEGIN_SRC scheme
+;;; Amb-Eval input:
+(define x (extend-if-unbound-variable '(assert! (test 5)) query-initial-environment))
+
+;;; Starting a new problem
+;Aborting!: maximum recursion depth exceeded
+#+END_SRC
+
+Let's start another debugging:
+#+BEGIN_SRC scheme
+(define (extend-if-unbound-variable exp env)
+  ;; Pattern, Frame -> Frame
+  (define (extend-frame exp frame)
+    (newline)
+    (display "in the extend-frame")
+    (cond ((var? exp)
+           (let ((binding (binding-in-env exp env)))
+             (if (not binding)
+                 (extend
+                  exp (make-var-obj) frame)
+                 frame)))
+          ((pair? exp)
+           (extend-frame (cdr exp)
+                         (extend-frame (car exp) frame)))
+          (else frame)))
+  (let ((extended
+         (extend-frame exp (empty-frame))))
+    (newline)
+    (display "after execution of extend-frame")
+    (if (empty-frame? extended)
+        env
+        (extend-env extended env))))
+
+;;; Amb-Eval input:
+(extend-if-unbound-variable '(assert! (test 5)) query-initial-environment)
+
+;;; Starting a new problem
+in the extend-frame
+in the extend-frame
+in the extend-frame
+in the extend-frame
+in the extend-frame
+in the extend-frame
+in the extend-frame
+in the extend-frame
+in the extend-frame
+after execution of extend-frame
+;Aborting!: maximum recursion depth exceeded
+#+END_SRC
+
+Now we narrowed down to the execution of =empty-frame?=:
+#+BEGIN_SRC scheme
+;;; Amb-Eval input:
+(empty-frame? (empty-frame))
+
+;;; Starting a new problem
+;Aborting!: maximum recursion depth exceeded
+
+#+END_SRC
+
+The definition of =empty-frame?= was
+#+BEGIN_SRC scheme
+(define (empty-frame? frame)
+  (equal? frame (empty-frame)))
+#+END_SRC
+
+I've used =equal?= since I've looked up the manual after the unexpected result
+from =unify-match= and =depends-on?= -- =equal?= ,more specifically, =eqv?= can
+deal with procedure objects by inspecting the local state variables.
+
+But I've not considered the depth it can search through. Since our
+=make-table-amb= use nested procedure object even for the local variables
+=equal?= fails due to the limitation on the recursion depth set.
+
+So we need to our own definition not relying on =equal?=:
+#+BEGIN_SRC scheme
+(define (empty-frame? frame)
+  (and (empty-bindings? (bindings frame))
+       (null? ((assertions-frame frame) 'assertions))
+       (null? ((rules-frame frame) 'rules))
+       ((table-frame frame) 'empty?)))
+
+(define (make-table-amb)
+  (let ((local-table (make-local-table)))
+    (define (lookup key-1 key-2)
+      (let ((subtable (assoc key-1 (local-table 'get))))
+        (if subtable
+            (let ((record (assoc key-2 ((cdr subtable) 'get))))
+              (if record
+                  ((cdr record) 'get)
+                  false))
+            false)))
+    (define (insert! key-1 key-2 value)
+      (let ((subtable (assoc key-1 (local-table 'get))))
+        (if subtable
+            (let ((record (assoc key-2 ((cdr subtable) 'get))))
+              (if record
+                  (((cdr record) 'set!) value)
+                  (add-element!
+                   (cdr subtable)
+                   (cons key-2
+                         (make-value-table value)))))
+            (add-element!
+             local-table
+             (cons key-1
+                   (let ((sub-tbl (make-local-table)))
+                     (add-element!
+                      sub-tbl
+                      (cons key-2
+                            (make-value-table value))))))))
+      'ok)
+    (define (dispatch m)
+      (cond ((eq? m 'lookup-proc) lookup)
+            ((eq? m 'insert-proc!) insert!)
+            ((eq? m 'empty?) (null? (local-table 'get)))
+            (else (error "Unknown operation -- TABLE" m))))
+    dispatch))
+#+END_SRC
+
+Now we get what we wanted from our implementation:
+#+BEGIN_SRC scheme
+;;; Query input:
+(assert! (test 5))
+
+;;; Query results:
+(assert! (test 5))
+
+;;; Query input:
+(test ?x)
+
+;;; Query results:
+(test 5)
+
+#+END_SRC
+
+The block structure can be achieved as
+#+BEGIN_SRC scheme
+(assert! (rule (append-to-form ?x ?y ?z)
+               (andthen (assert! (rule (append-local () ?y ?y)))
+                        (assert! (rule (append-local (?u . ?v) ?y (?u . ?z))
+                                       (append-local ?v ?y ?z)))
+                        (append-local ?x ?y ?z))))
+#+END_SRC
+
+But this won't work!
+#+BEGIN_SRC scheme
+;;; Query input:
+(append-to-form ?x ?y (1 2 3 4))
+
+;;; Query results:
+;;; There are no more result of
+(append-to-form ?x ?y (1 2 3 4))
+#+END_SRC
+
+Since we process the unbound variable before evaluating (asserting) the rule
+expression, it goes away as soon as it defined; never can be reached after
+that.
+
+It means our preprocessing wasn't appropriate one to do. We should revert that
+change as before. Combined with treating =assert!= specially:
+#+BEGIN_SRC scheme
+(define (qeval query env)
+  (if (assertion-to-be-added? query)
+      (add-rule-or-assertion! (add-assertion-body query))
+      (let ((qproc (get-op (type query) 'qeval))
+            (extended-env (extend-if-unbound-variable query env)))
+        (if qproc
+            (qproc (contents query) extended-env)
+            (simple-query query extended-env))
+        extended-env)))
+#+END_SRC
+
+Also we need another procedure that is analogous to =extend-if-unbound-variable=
+and the application of compound procedure.
+
+Even I found the bug that lurks in the =extend-if-unbound-variable=, that is we
+have to check whether the found variable already bound in current frame:
+#+BEGIN_SRC scheme
+;; Pattern, Env -> Env
+(define (extend-if-unbound-variable exp env)
+  ;; Pattern, Frame -> Frame
+  (define (extend-frame exp frame)
+    (cond ((var? exp)
+           (let ((binding (binding-in-env exp env)))
+             (if (not (or (binding-in-frame exp frame)
+                          (binding-in-env exp env)))
+                 (extend
+                  exp (make-var-obj) frame)
+                 frame)))
+          ((pair? exp)
+           (extend-frame (cdr exp)
+                         (extend-frame (car exp) frame)))
+          (else frame)))
+  (let ((extended
+         (extend-frame exp (empty-frame))))
+    (if (empty-frame? extended)
+        env
+        (extend-env extended env))))
+
+(define (extend-if-variable exp env)
+  ;; Pattern, Frame -> Frame
+  (define (extend-frame exp frame)
+    (cond ((var? exp)
+           (let ((binding (binding-in-frame exp frame)))
+             (if (not binding)
+                 (extend
+                  exp (make-var-obj) frame)
+                 frame)))
+          ((pair? exp)
+           (extend-frame (cdr exp)
+                         (extend-frame (car exp) frame)))
+          (else frame)))
+  (let ((extended
+         (extend-frame exp (empty-frame))))
+    (if (empty-frame? extended)
+        env
+        (extend-env extended env))))
+#+END_SRC
+
+Then
+#+BEGIN_SRC scheme
+(define (apply-a-rule rule query-pattern)
+  (let ((instantiated-env
+         (extend-if-variable (rule-contents rule) (rule-env rule)))
+        (rule (rule-contents rule)))
+    (let ((subed-rule
+           (instantiate
+            rule instantiated-env
+            (lambda (v env)
+              'ignore)
+            (lambda (var env)
+              var))))
+      (unify-match query-pattern
+                   (conclusion subed-rule))
+      (qeval (rule-body rule)
+             instantiated-env))))
+#+END_SRC
+
+Now it finally works:
+#+BEGIN_SRC scheme
+;;; Starting a new problem
+
+;;; Query input:
+(assert! (rule (append-to-form ?x ?y ?z)
+               (andthen (assert! (rule (append-local () ?y ?y)))
+                        (assert! (rule (append-local (?u . ?v) ?y (?u . ?z))
+                                       (append-local ?v ?y ?z)))
+                        (append-local ?x ?y ?z))))
+
+;;; Query results:
+(assert! (rule (append-to-form ignore ignore ignore) (andthen (assert! (rule (append-local () ignore ignore))) (assert! (rule (append-local (ignore . ignore) ignore (ignore . ignore)) (append-local ignore ignore ignore))) (append-local ignore ignore ignore))))
+
+;;; Query input:
+(append-to-form ?x ?y (1 2 3 4))
+
+;;; Query results:
+(append-to-form (1 2 3 4) () (1 2 3 4))
+
+;;; Query input:
+next-result
+
+;;; Query results:
+(append-to-form (1 2 3) (4) (1 2 3 4))
+
+;;; Query input:
+next-result
+
+;;; Query results:
+(append-to-form (1 2) (3 4) (1 2 3 4))
+
+;;; Query input:
+next-result
+
+;;; Query results:
+(append-to-form (1) (2 3 4) (1 2 3 4))
+
+;;; Query input:
+next-result
+
+;;; Query results:
+(append-to-form () (1 2 3 4) (1 2 3 4))
+
+;;; Query input:
+next-result
+
+;;; Query results:
+;;; There are no more result of
+(append-to-form ?x ?y (1 2 3 4))
+
+;;; Query input:
+#+END_SRC
+
+We got block structure definition.
 * Footnotes
 
 [fn:1] We chose to
