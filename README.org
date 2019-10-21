@@ -7862,6 +7862,14 @@ next-result
 #+END_SRC
 
 We got block structure definition.
+**** Conclusion
+Last word: Although in this query language we couldn't implement the general
+idea, say "If /P/ is true then we can deduce /A/ and /B/," in predicate logic
+sense but we could have told about the specific instance of /P/, that is whether
+the /P/ has no variable in it or we capture one of them with appropriate
+assignment and we want to say /A/ and /B/ about that specific instance. For deal
+with the general scheme, as I noted above, we need to make means of abstraction
+also to be multi directional.
 * Footnotes
 
 [fn:1] We chose to

@@ -56,6 +56,7 @@
 (assert! (rule (append-to-form (?u . ?v) ?y (?u . ?z))
                (append-to-form ?v ?y ?z)))
 
+;; Exercise 4.79
 (assert! (rule (append-to-form ?x ?y ?z)
                (andthen (assert! (rule (append-local (?u . ?v) ?y (?u . ?z))
                                        (append-local ?v ?y ?z)))
@@ -72,6 +73,13 @@
 (assert! (rule (last-pair (?x) (?x))))            ;base case
 (assert! (rule (last-pair (?head . ?tail) ?x)     ;recursive case
                (last-pair ?tail ?x)))
+
+;; Exercise 4.79
+(assert! (rule (last-pair? ?x ?y)
+       (andthen (assert! (rule (local (?x) (?x))))
+                (assert! (rule (local (?head . ?tail) ?x)
+                               (local ?tail ?x)))
+                (local ?x ?y))))
 
 ;; Exercise 4.63
 (assert! (son Adam Cain))
