@@ -1243,3 +1243,528 @@ Now we can use as follows:
 
 Exponential growth verified!
 *** Exercise 5.16
+1. Make =make-new-machine= have =trace?= as state variable, which can be on and
+   off by the message =trace-on= and =trace-off=.
+2. Then in the =execute= procedure, if =trace?= then it should print out the
+   instruction text -- by using the =instruction-text= selector.
+
+
+Then test
+#+BEGIN_SRC scheme
+(fib-machine 'trace-on)
+
+;Value: #f
+
+(set-register-contents! fib-machine 'n 3)
+
+;Value: done
+
+(start fib-machine)
+
+(assign continue (label fib-done))
+(test (op <) (reg n) (const 2))
+(branch (label immediate-answer))
+(save continue)
+(assign continue (label afterfib-n-1))
+(save n)
+(assign n (op -) (reg n) (const 1))
+(goto (label fib-loop))
+(test (op <) (reg n) (const 2))
+(branch (label immediate-answer))
+(save continue)
+(assign continue (label afterfib-n-1))
+(save n)
+(assign n (op -) (reg n) (const 1))
+(goto (label fib-loop))
+(test (op <) (reg n) (const 2))
+(branch (label immediate-answer))
+(assign val (reg n))
+(goto (reg continue))
+(restore n)
+(restore continue)
+(assign n (op -) (reg n) (const 2))
+(save continue)
+(assign continue (label afterfib-n-2))
+(save val)
+(goto (label fib-loop))
+(test (op <) (reg n) (const 2))
+(branch (label immediate-answer))
+(assign val (reg n))
+(goto (reg continue))
+(assign n (reg val))
+(restore val)
+(restore continue)
+(assign val (op +) (reg val) (reg n))
+(goto (reg continue))
+(restore n)
+(restore continue)
+(assign n (op -) (reg n) (const 2))
+(save continue)
+(assign continue (label afterfib-n-2))
+(save val)
+(goto (label fib-loop))
+(test (op <) (reg n) (const 2))
+(branch (label immediate-answer))
+(assign val (reg n))
+(goto (reg continue))
+(assign n (reg val))
+(restore val)
+(restore continue)
+(assign val (op +) (reg val) (reg n))
+(goto (reg continue))
+;Value: done
+#+END_SRC
+*** Exercise 5.17
+Here we should think of what abstraction level we are going to modify. Since the
+tracing things is about in the =make-new-machine= procedure, we may need to the
+machine object to possess label information.
+
+But we do not want break the ADT about the label data, it would be better to
+offer lookup method with the label data from outside of machine object.
+
+And also construct additional ADT:
+#+BEGIN_SRC scheme
+;;; ADT for labels package which going to be installed into machine object
+(define (make-labels-package find-from-key find-from-val labels)
+  (list find-from-key find-from-val labels))
+(define (find-from-key-proc labels-pack)
+  (car labels-pack))
+(define (find-from-val-proc labels-pack)
+  (cadr labels-pack))
+(define (labels-data labels-pack)
+  (caddr labels-pack))
+
+;; operate on labels-package
+(define (find-from-val labels-pack)
+  (lambda (val)
+    ((find-from-val-proc labels-pack)
+     val
+     (labels-data labels-pack))))
+
+(define (find-from-key labels-pack)
+  (lambda (key)
+    ((find-from-key-proc labels-pack)
+     key
+     (labels-data labels-pack))))
+#+END_SRC
+
+Then define the retriever:
+#+BEGIN_SRC scheme
+;; selector of labels
+(define retrive-label-from-insts
+  (association-procedure eq? cdr))
+#+END_SRC
+
+The rest is interface with the others:
+#+BEGIN_SRC scheme
+,*** in assemble
+(accept
+ insts
+ (make-labels-package
+  get-label
+  retrive-label-from-insts
+  labels)
+ all-insts
+ entry-regs
+ stack-related-regs
+ reg-sources-table)
+
+,*** in make-machine
+((machine 'install-labels-package)
+ labels-package)
+
+,*** in execute in the make-new-machine
+(let ((inst (car insts)))
+  (if trace?
+      (let ((label-entry ((find-from-val labels-package)
+                          insts)))
+        (if label-entry
+            (begin (newline)
+                   (display (label-name label-entry))))
+        (begin (newline)
+               (display (instruction-text inst)))))
+  ((instruction-execution-proc inst))
+  (set! number-execs (1+ number-execs))
+  (execute))
+#+END_SRC
+
+=Label-name= and =get-label= are defined in [[Exercise 5.8][exercise 5.8]].
+
+Then test
+#+BEGIN_SRC scheme
+(start fib-machine)
+
+(assign continue (label fib-done))
+fib-loop
+(test (op <) (reg n) (const 2))
+(branch (label immediate-answer))
+(save continue)
+(assign continue (label afterfib-n-1))
+(save n)
+(assign n (op -) (reg n) (const 1))
+(goto (label fib-loop))
+fib-loop
+(test (op <) (reg n) (const 2))
+(branch (label immediate-answer))
+(save continue)
+(assign continue (label afterfib-n-1))
+(save n)
+(assign n (op -) (reg n) (const 1))
+(goto (label fib-loop))
+fib-loop
+(test (op <) (reg n) (const 2))
+(branch (label immediate-answer))
+immediate-answer
+(assign val (reg n))
+(goto (reg continue))
+afterfib-n-1
+(restore n)
+(restore continue)
+(assign n (op -) (reg n) (const 2))
+(save continue)
+(assign continue (label afterfib-n-2))
+(save val)
+(goto (label fib-loop))
+fib-loop
+(test (op <) (reg n) (const 2))
+(branch (label immediate-answer))
+immediate-answer
+(assign val (reg n))
+(goto (reg continue))
+afterfib-n-2
+(assign n (reg val))
+(restore val)
+(restore continue)
+(assign val (op +) (reg val) (reg n))
+(goto (reg continue))
+afterfib-n-1
+(restore n)
+(restore continue)
+(assign n (op -) (reg n) (const 2))
+(save continue)
+(assign continue (label afterfib-n-2))
+(save val)
+(goto (label fib-loop))
+fib-loop
+(test (op <) (reg n) (const 2))
+(branch (label immediate-answer))
+immediate-answer
+(assign val (reg n))
+(goto (reg continue))
+afterfib-n-2
+(assign n (reg val))
+(restore val)
+(restore continue)
+(assign val (op +) (reg val) (reg n))
+(goto (reg continue))
+;Value: done
+#+END_SRC
+*** Exercise 5.18
+It is analogous to the previous one:
+#+BEGIN_SRC scheme
+(define (make-register name)
+  (let ((contents '*unassigned*)
+        (trace? #f))
+    (define (dispatch message)
+      (cond ((eq? message 'get) contents)
+            ((eq? message 'set)
+             (lambda (value)
+               (if trace?
+                   (begin (newline)
+                          (display `(Register ,name gets ,value from ,contents))))
+               (set! contents value)))
+            ((eq? message 'trace-on)
+             (set! trace? #t))
+            ((eq? message 'trace-off)
+             (set! trace? #f))
+            (else
+             (error "Unknown request -- REGISTER" message))))
+    dispatch))
+#+END_SRC
+
+Then unit test:
+#+BEGIN_SRC scheme
+(define x (make-register 'x))
+(x 'trace-on)
+((x 'set) 5)
+
+(register x gets 5 from *unassigned*)
+;Value: *unassigned*
+#+END_SRC
+
+All the rest is to interface in the =make-new-machine=:
+#+BEGIN_SRC scheme
+,*** in make-new-machine
+              ((eq? message 'trace-on-register)
+               (lambda (reg-name)
+                 ((lookup-register reg-name) 'trace-on)))
+              ((eq? message 'trace-off-register)
+               (lambda (reg-name)
+                 ((lookup-register reg-name) 'trace-off)))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+((fib-machine 'trace-on-register) 'n)
+
+;Value: #f
+
+(set-register-contents! fib-machine 'n 3)
+
+(register n gets 3 from *unassigned*)
+;Value: done
+
+(start fib-machine)
+
+(register n gets 2 from 3)
+(register n gets 1 from 2)
+(register n gets 2 from 1)
+(register n gets 0 from 2)
+(register n gets 0 from 0)
+(register n gets 3 from 0)
+(register n gets 1 from 3)
+(register n gets 1 from 1)
+;Value: done
+#+END_SRC
+*** Exercise 5.19
+This is a analogous feature to =start= procedure; but use =label= data. The
+specifications on the procedures that manipulate break points indicates we need
+to define new data structure that keeps track of all the break points.
+
+As we noted before, our machine now has the information about the label as its
+state variable, we can transform the specifications of where the break point
+should be into the actual instruction. So here we are going to store this
+transformed information as the break points data structure -- so called internal
+data.
+
+For the break points data structure, we need to remove the specified break point
+from the structure; it means we should mutate the data structure. So we'd better
+to give the data structure identity. For this purpose, we'll implement the break
+points as headed list to possess identity.
+
+And more, we should keep track of the current break point since we should
+support the =proceed-machine= procedure. We can exploit dummy head of the headed
+list possessing this additional information. Or
+
+Then here is the code
+#+BEGIN_SRC scheme
+,*** as state variable of make-new-machine
+        (break-points '(#f))
+...
+,*** internal defintions of make-new-machine
+      (define (cdring-down lst n)
+        (if (= n 1)
+            lst
+            (cdring-down (cdr lst)
+                         (-1+ n))))
+      (define (add-break-point label n)
+        (let ((break-point
+               (cdring-down ((find-from-key labels-package) label)
+                            n)))
+          (if (memq break-point (cdr break-points))
+              (error "Given break point already in break points -- ADD-BREAK-POINT"
+                     (list label n))
+              (set-cdr! break-points (cons break-point
+                                           (cdr break-points))))))
+      (define (remove-break-point label n)
+        (let ((break-point
+               (cdring-down ((find-from-key labels-package) label)
+                            n)))
+          (let loop ((items break-points))
+            (cond ((null? (cdr items))
+                   (error "Given break point not in break points -- REMOVE-BREAK-POINT"
+                          (list label n)))
+                  ((eq? (cadr items) break-point)
+                   (set-cdr! items (cddr items)))
+                  (else (loop (cdr items)))))))
+#+END_SRC
+
+Then =execute= gets complicated than before:
+#+BEGIN_SRC scheme
+(define (execute)
+  (let ((insts (get-contents pc)))
+    (cond ((null? insts) 'done)
+          ((car break-points) ;the right after instruction from the broken
+           (set-car! break-points #f)
+           (execute))
+          ((and (not (eq? (car break-points) insts)) ;ensure this is not the point broken
+                (memq insts (cdr break-points)))
+           (set-car! break-points insts) ;save the broken point
+           'broken)
+          (else
+           (let ((inst (car insts)))
+             (if trace?
+                 (let ((label-entry ((find-from-val labels-package)
+                                     insts)))
+                   (if label-entry
+                       (begin (newline)
+                              (display (label-name label-entry))))
+                   (begin (newline)
+                          (display (instruction-text inst)))))
+             ((instruction-execution-proc inst))
+             (set! number-execs (1+ number-execs))
+             (execute))))))
+#+END_SRC
+
+And interfaces:
+#+BEGIN_SRC scheme
+,*** in dispatch
+              ((eq? message 'proceed-machine)
+               (if (car break-points)
+                   (begin (set-contents! pc (car break-points))
+                          (execute))
+                   (error "There in no broken point to proceed from -- PROCEED-MACHINE")))
+              ((eq? message 'set-breakpoint)
+               add-break-point)
+              ((eq? message 'cancel-breakpoint)
+               remove-break-point)
+              ((eq? message 'cancel-all-breakpoints)
+               (set! break-points '(#f)))
+#+END_SRC
+
+To procedural syntax:
+#+BEGIN_SRC scheme
+(define (set-breakpoint machine label n)
+  ((machine 'set-breakpoint) label n))
+
+(define (cancel-breakpoint machine label n)
+  ((machine 'cancel-breakpoint) label n))
+
+(define (proceed-machine machine)
+  (machine 'proceed-machine))
+
+(define (cancel-all-breakpoints machine)
+  (machine 'cancel-all-breakpoints))
+#+END_SRC
+
+Then let's test:
+#+BEGIN_SRC scheme
+(set-breakpoint gcd-machine 'test-b 4)
+
+;The object test-b, passed as an argument to assoc, is not the correct type.
+;To continue, call RESTART with an option number:
+; (RESTART 1) => Return to read-eval-print level 1.
+#+END_SRC
+
+It is due to that the =find-from-val= and =find-from-key= does not agree in
+where the =labels= should position. Let us make them consist along with
+=loopup-label=.
+
+Then re-run the test:
+#+BEGIN_SRC scheme
+(set-register-contents! gcd-machine 'a 202)
+
+;Value: done
+
+(set-register-contents! gcd-machine 'b 43)
+
+;Value: done
+
+(set-breakpoint gcd-machine 'test-b 4)
+
+;Unspecified return value
+
+(gcd-machine 'trace-on)
+
+;Value: #f
+
+(start gcd-machine)
+
+test-b
+(test (op =) (reg b) (const 0))
+(branch (label gcd-done))
+(assign t (op rem) (reg a) (reg b))
+;Value: broken
+
+(proceed-machine gcd-machine)
+
+;Value: broken
+#+END_SRC
+
+Unfortunately our =proceed-machine= does not work as expected.
+
+We should have defined as follows
+#+BEGIN_SRC scheme
+(define (execute)
+        (let ((insts (get-contents pc)))
+          (cond ((null? insts) 'done)
+                ((and (car break-points) ;the right after instruction from the broken
+                      (not (eq? (car break-points) insts)))
+                 (set-car! break-points #f)
+                 (execute))
+                ((and (not (eq? (car break-points) insts)) ;ensure this is not the point broken
+                      (memq insts (cdr break-points)))
+                 (set-car! break-points insts) ;save the broken point
+                 'broken)
+                (else
+                 (let ((inst (car insts)))
+                   (if trace?
+                       (let ((label-entry ((find-from-val labels-package)
+                                           insts)))
+                         (if label-entry
+                             (begin (newline)
+                                    (display (label-name label-entry))))
+                         (begin (newline)
+                                (display (instruction-text inst)))))
+                   ((instruction-execution-proc inst))
+                   (set! number-execs (1+ number-execs))
+                   (execute))))))
+#+END_SRC
+
+Now it works as expected:
+#+BEGIN_SRC scheme
+(start gcd-machine)
+
+test-b
+(test (op =) (reg b) (const 0))
+(branch (label gcd-done))
+(assign t (op rem) (reg a) (reg b))
+;Value: broken
+
+(proceed-machine gcd-machine)
+
+(assign a (reg b))
+(assign b (reg t))
+(goto (label test-b))
+test-b
+(test (op =) (reg b) (const 0))
+(branch (label gcd-done))
+(assign t (op rem) (reg a) (reg b))
+;Value: broken
+
+(cancel-breakpoint gcd-machine 'test-b 4)
+
+;Unspecified return value
+
+(proceed-machine gcd-machine)
+
+(assign a (reg b))
+(assign b (reg t))
+(goto (label test-b))
+test-b
+(test (op =) (reg b) (const 0))
+(branch (label gcd-done))
+(assign t (op rem) (reg a) (reg b))
+(assign a (reg b))
+(assign b (reg t))
+(goto (label test-b))
+test-b
+(test (op =) (reg b) (const 0))
+(branch (label gcd-done))
+(assign t (op rem) (reg a) (reg b))
+(assign a (reg b))
+(assign b (reg t))
+(goto (label test-b))
+test-b
+(test (op =) (reg b) (const 0))
+(branch (label gcd-done))
+(assign t (op rem) (reg a) (reg b))
+(assign a (reg b))
+(assign b (reg t))
+(goto (label test-b))
+test-b
+(test (op =) (reg b) (const 0))
+(branch (label gcd-done))
+;Value: done
+
+#+END_SRC

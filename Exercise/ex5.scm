@@ -528,6 +528,10 @@ abs-done
                                tbl)))
                         (accept
                          insts
+                         (make-labels-package
+                          get-label
+                          retrive-label-from-insts
+                          labels)
                          all-insts
                          entry-regs
                          stack-related-regs
@@ -537,11 +541,13 @@ abs-done
   (let ((machine (make-new-machine)))
     ((machine 'install-operations) ops)
     (assemble controller-text machine
-              (lambda (instructions
+              (lambda (instructions labels-package
                        all-instructions registers-with-entry
                        stack-inst-regs reg-sources-table)
                 ((machine 'install-instruction-sequence)
                  instructions)
+                ((machine 'install-labels-package)
+                 labels-package)
                 ((machine 'install-all-instructions)
                  all-instructions)
                 ((machine 'install-registers-with-entry)
@@ -561,7 +567,10 @@ abs-done
         (registers-with-entry '())
         (stack-instruction-registers '())
         (register-sources-table '())    ;initial value -- undefined
-        (number-execs 0))
+        (number-execs 0)
+        (trace? #f)
+        (labels-package '())
+        (break-points '(#f)))
     (let ((the-ops
            (list (list 'initialize-stack
                        (lambda () (stack 'initialize)))
@@ -571,6 +580,31 @@ abs-done
                        (lambda () (stack 'print-statistics)))))
           (register-table
            (list (list 'pc pc) (list 'flag flag))))
+      (define (cdring-down lst n)
+        (if (= n 1)
+            lst
+            (cdring-down (cdr lst)
+                         (-1+ n))))
+      (define (add-break-point label n)
+        (let ((break-point
+               (cdring-down ((find-from-key labels-package) label)
+                            n)))
+          (if (memq break-point (cdr break-points))
+              (error "Given break point already in break points -- ADD-BREAK-POINT"
+                     (list label n))
+              (set-cdr! break-points (cons break-point
+                                           (cdr break-points))))))
+      (define (remove-break-point label n)
+        (let ((break-point
+               (cdring-down ((find-from-key labels-package) label)
+                            n)))
+          (let loop ((items break-points))
+            (cond ((null? (cdr items))
+                   (error "Given break point not in break points -- REMOVE-BREAK-POINT"
+                          (list label n)))
+                  ((eq? (cadr items) break-point)
+                   (set-cdr! items (cddr items)))
+                  (else (loop (cdr items)))))))
       (define (print-statistics)
         (newline)
         (display
@@ -595,16 +629,43 @@ abs-done
                      (lookup-register name)))))
       (define (execute)
         (let ((insts (get-contents pc)))
-          (if (null? insts)
-              'done
-              (begin
-                ((instruction-execution-proc (car insts)))
-                (set! number-execs (1+ number-execs))
-                (execute)))))
+          (cond ((null? insts) 'done)
+                ((and (car break-points) ;the right after instruction from the broken
+                      (not (eq? (car break-points) insts)))
+                 (set-car! break-points #f)
+                 (execute))
+                ((and (not (eq? (car break-points) insts)) ;ensure this is not the point broken
+                      (memq insts (cdr break-points)))
+                 (set-car! break-points insts) ;save the broken point
+                 'broken)
+                (else
+                 (let ((inst (car insts)))
+                   (if trace?
+                       (let ((label-entry ((find-from-val labels-package)
+                                           insts)))
+                         (if label-entry
+                             (begin (newline)
+                                    (display (label-name label-entry))))
+                         (begin (newline)
+                                (display (instruction-text inst)))))
+                   ((instruction-execution-proc inst))
+                   (set! number-execs (1+ number-execs))
+                   (execute))))))
       (define (dispatch message)
         (cond ((eq? message 'start)
                (set-contents! pc the-instruction-sequence)
                (execute))
+              ((eq? message 'proceed-machine)
+               (if (car break-points)
+                   (begin (set-contents! pc (car break-points))
+                          (execute))
+                   (error "There in no broken point to proceed from -- PROCEED-MACHINE")))
+              ((eq? message 'set-breakpoint)
+               add-break-point)
+              ((eq? message 'cancel-breakpoint)
+               remove-break-point)
+              ((eq? message 'cancel-all-breakpoints)
+               (set! break-points '(#f)))
               ((eq? message 'install-instruction-sequence)
                (lambda (seq) (set! the-instruction-sequence seq)))
               ((eq? message 'install-all-instructions)
@@ -630,6 +691,17 @@ abs-done
                (lambda (ops) (set! the-ops (append the-ops ops))))
               ((eq? message 'print-statistics) (print-statistics))
               ((eq? message 'initialize-statistics) (set! number-execs 0))
+              ((eq? message 'trace-on) (set! trace? #t))
+              ((eq? message 'trace-off) (set! trace? #f))
+              ((eq? message 'install-labels-package)
+               (lambda (labels-pack)
+                 (set! labels-package labels-pack)))
+              ((eq? message 'trace-on-register)
+               (lambda (reg-name)
+                 ((lookup-register reg-name) 'trace-on)))
+              ((eq? message 'trace-off-register)
+               (lambda (reg-name)
+                 ((lookup-register reg-name) 'trace-off)))
               ((eq? message 'stack) stack)
               ((eq? message 'operations) the-ops)
               (else (error "Unknown request -- MACHINE" message))))
@@ -762,3 +834,95 @@ abs-done
      (goto (reg continue))              ; return to caller
      fact-done
      (perform (op print-stack-statistics)))))
+
+;; Exercise 5.17
+;;; ADT for labels package which going to be installed into machine object
+(define (make-labels-package find-from-key find-from-val labels)
+  (list find-from-key find-from-val labels))
+(define (find-from-key-proc labels-pack)
+  (car labels-pack))
+(define (find-from-val-proc labels-pack)
+  (cadr labels-pack))
+(define (labels-data labels-pack)
+  (caddr labels-pack))
+
+;; operate on labels-package
+(define (find-from-val labels-pack)
+  (lambda (val)
+    ((find-from-val-proc labels-pack)
+     (labels-data labels-pack)
+     val)))
+
+(define (find-from-key labels-pack)
+  (lambda (key)
+    ((find-from-key-proc labels-pack)
+     (labels-data labels-pack)
+     key)))
+
+;; selector of labels
+(define (retrive-label-from-insts items key)
+  ((association-procedure eq? cdr) key items))
+
+;; Exercisse 5.18
+(define (make-register name)
+  (let ((contents '*unassigned*)
+        (trace? #f))
+    (define (dispatch message)
+      (cond ((eq? message 'get) contents)
+            ((eq? message 'set)
+             (lambda (value)
+               (if trace?
+                   (begin (newline)
+                          (display `(Register ,name gets ,value from ,contents))))
+               (set! contents value)))
+            ((eq? message 'trace-on)
+             (set! trace? #t))
+            ((eq? message 'trace-off)
+             (set! trace? #f))
+            (else
+             (error "Unknown request -- REGISTER" message))))
+    dispatch))
+;;; test make-register
+;; (define x (make-register 'x))
+;; (x 'trace-on)
+;; ((x 'set) 5)
+
+;; (register x gets 5 from *unassigned*)
+;; ;Value: *unassigned*
+
+;; Exercise 5.19
+;;; test machine
+(define gcd-machine
+  (make-machine
+   ;; '(a b t)
+   (list (list 'rem remainder) (list '= =))
+   '(test-b
+     (test (op =) (reg b) (const 0))
+     (branch (label gcd-done))
+     (assign t (op rem) (reg a) (reg b))
+     (assign a (reg b))
+     (assign b (reg t))
+     (goto (label test-b))
+     gcd-done)))
+
+(define (set-breakpoint machine label n)
+  ((machine 'set-breakpoint) label n))
+
+(define (cancel-breakpoint machine label n)
+  ((machine 'cancel-breakpoint) label n))
+
+(define (proceed-machine machine)
+  (machine 'proceed-machine))
+
+(define (cancel-all-breakpoints machine)
+  (machine 'cancel-all-breakpoints))
+
+;; Test feature
+(set-register-contents! gcd-machine 'a 202)
+(set-register-contents! gcd-machine 'b 43)
+(set-breakpoint gcd-machine 'test-b 4)
+(gcd-machine 'trace-on)
+(start gcd-machine)
+(proceed-machine gcd-machine)
+(cancel-breakpoint gcd-machine 'test-b 4)
+(proceed-machine)
