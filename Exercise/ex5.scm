@@ -341,7 +341,7 @@ abs-done
 ;;; test machine
 (define fib-machine
   (make-machine
-   '(continue n val)
+   ;; '(continue n val)
    `((< ,<) (- ,-) (+ ,+))
    '((assign continue (label fib-done))
      fib-loop
@@ -560,7 +560,8 @@ abs-done
         (all-instructions '())
         (registers-with-entry '())
         (stack-instruction-registers '())
-        (register-sources-table '()))   ;initial value -- undefined
+        (register-sources-table '())    ;initial value -- undefined
+        (number-execs 0))
     (let ((the-ops
            (list (list 'initialize-stack
                        (lambda () (stack 'initialize)))
@@ -570,12 +571,16 @@ abs-done
                        (lambda () (stack 'print-statistics)))))
           (register-table
            (list (list 'pc pc) (list 'flag flag))))
+      (define (print-statistics)
+        (newline)
+        (display
+         `(tatal-executions = ,number-execs)))
       (define (allocate-register name)
         (if (assoc name register-table)
             (error "Multiply defined register: " name)
             (set! register-table
-                  (cons (list name (make-register name))
-                        register-table)))
+              (cons (list name (make-register name))
+                    register-table)))
         'register-allocated)
       (define (lookup-register name)
         (let ((val (assoc name register-table)))
@@ -594,6 +599,7 @@ abs-done
               'done
               (begin
                 ((instruction-execution-proc (car insts)))
+                (set! number-execs (1+ number-execs))
                 (execute)))))
       (define (dispatch message)
         (cond ((eq? message 'start)
@@ -622,6 +628,8 @@ abs-done
                try-allocate-and-return-register)
               ((eq? message 'install-operations)
                (lambda (ops) (set! the-ops (append the-ops ops))))
+              ((eq? message 'print-statistics) (print-statistics))
+              ((eq? message 'initialize-statistics) (set! number-execs 0))
               ((eq? message 'stack) stack)
               ((eq? message 'operations) the-ops)
               (else (error "Unknown request -- MACHINE" message))))
@@ -690,6 +698,7 @@ abs-done
            (lambda () (get-contents r))))
         (else
          (error "Unknown expression type -- ASSEMBLE" exp))))
+
 ;; Test machine
 (define fib-machine
   (make-machine
@@ -724,3 +733,32 @@ abs-done
      (assign val (reg n))               ; base case: Fib(n)=n
      (goto (reg continue))
      fib-done)))
+
+;; Exercise 5.14
+(define fact-machine
+  (make-machine
+   `((= ,=) (- ,-) (* ,*) (read ,read))
+   '((assign n (op read))
+     (perform (op initialize-stack))
+     (assign continue (label fact-done)) ; set up final return address
+     fact-loop
+     (test (op =) (reg n) (const 1))
+     (branch (label base-case))
+     ;; Set up for the recursive call by saving n and continue.
+     ;; Set up continue so that the computation will continue
+     ;; at after-fact when the subroutine returns.
+     (save continue)
+     (save n)
+     (assign n (op -) (reg n) (const 1))
+     (assign continue (label after-fact))
+     (goto (label fact-loop))
+     after-fact
+     (restore n)
+     (restore continue)
+     (assign val (op *) (reg n) (reg val)) ; val now contains n(n-1)!
+     (goto (reg continue))                 ; return to caller
+     base-case
+     (assign val (const 1))             ; base case: 1!=1
+     (goto (reg continue))              ; return to caller
+     fact-done
+     (perform (op print-stack-statistics)))))

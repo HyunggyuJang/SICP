@@ -1098,3 +1098,148 @@ And let's test:
 #+END_SRC
 
 Works well.
+** Monitoring Machine Performance
+*** Exercise 5.14
+#+BEGIN_SRC scheme
+ (define fact-machine
+  (make-machine
+   `((= ,=) (- ,-) (* ,*))
+   '(
+     (perform (op initialize-stack))
+     (assign continue (label fact-done)) ; set up final return address
+     fact-loop
+     (test (op =) (reg n) (const 1))
+     (branch (label base-case))
+     ;; Set up for the recursive call by saving n and continue.
+     ;; Set up continue so that the computation will continue
+     ;; at after-fact when the subroutine returns.
+     (save continue)
+     (save n)
+     (assign n (op -) (reg n) (const 1))
+     (assign continue (label after-fact))
+     (goto (label fact-loop))
+     after-fact
+     (restore n)
+     (restore continue)
+     (assign val (op *) (reg n) (reg val)) ; val now contains n(n-1)!
+     (goto (reg continue))                 ; return to caller
+     base-case
+     (assign val (const 1))             ; base case: 1!=1
+     (goto (reg continue))              ; return to caller
+     fact-done
+     (perform (op print-stack-statistics)))))
+#+END_SRC
+
+Then here is the experiment cases:
+#+BEGIN_SRC scheme
+(set-register-contents! fact-machine 'n 10)
+
+;Value: done
+
+(start fact-machine)
+
+(total-pushes = 18 maximum-depth = 18)
+;Value: done
+
+(set-register-contents! fact-machine 'n 20)
+
+;Value: done
+
+(start fact-machine)
+
+(total-pushes = 38 maximum-depth = 38)
+;Value: done
+
+(set-register-contents! fact-machine 'n 2)
+
+;Value: done
+
+(start fact-machine)
+
+(total-pushes = 2 maximum-depth = 2)
+;Value: done
+#+END_SRC
+
+From this data, we can deduce that =total-pushes= and =maximum-depth= are same
+and the general formula for this in terms of =n= is $T(n) = 2n-2$.
+
+Or using =read=:
+#+BEGIN_SRC scheme
+(start fact-machine)
+5
+
+(total-pushes = 8 maximum-depth = 8)
+;Value: done
+
+(start fact-machine)
+35
+
+(total-pushes = 68 maximum-depth = 68)
+;Value: done
+#+END_SRC
+*** Exercise 5.15
+We need to modify the =make-new-machine= procedure to include =number-execs= to
+accommodate new feature specified in the statement.
+
+And define as internal definition of that procedure the following print method:
+#+BEGIN_SRC scheme
+(define (print-statistics)
+        (newline)
+        (display
+         `(tatal-executions = ,number-execs)))
+#+END_SRC
+
+And modify =execute=:
+#+BEGIN_SRC scheme
+(define (execute)
+        (let ((insts (get-contents pc)))
+          (if (null? insts)
+              'done
+              (begin
+                ((instruction-execution-proc (car insts)))
+                (set! number-execs (1+ number-execs))
+                (execute)))))
+#+END_SRC
+
+And interface with the rest:
+#+BEGIN_SRC scheme
+,*** in dispatch
+              ((eq? message 'print-statistics) (print-statistics))
+              ((eq? message 'initialize-statistics) (set! number-execs 0))
+#+END_SRC
+
+Now we can use as follows:
+#+BEGIN_SRC scheme
+(set-register-contents! fib-machine 'n 10)
+
+;Value: done
+
+(start fib-machine)
+
+;Value: done
+
+(fib-machine 'print-statistics)
+
+(tatal-executions = 2029)
+;Unspecified return value
+
+(fib-machine 'initialize-statistics)
+
+;Value: 2029
+
+(set-register-contents! fib-machine 'n 20)
+
+;Value: done
+
+(start fib-machine)
+
+;Value: done
+
+(fib-machine 'print-statistics)
+
+(tatal-executions = 251740)
+;Unspecified return value
+#+END_SRC
+
+Exponential growth verified!
+*** Exercise 5.16
