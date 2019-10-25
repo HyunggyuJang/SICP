@@ -1768,3 +1768,158 @@ test-b
 ;Value: done
 
 #+END_SRC
+* Storage Allocation and Garbage Collection
+** Memory as Vectors
+*** Exercise 5.20
+I've drawn this diagram with my digital paper.
+*** Exercise 5.21
+**** a.
+#+BEGIN_SRC scheme
+(controller
+ (assign continue (label count-done))
+ count-leaves-loop
+ (test (op null?) (reg tree))
+ (branch (label base-case))
+ ;; (test (op pair?) (reg tree))
+ ;; (test (op not) (reg flag))
+ (assign t (op pair?) (reg tree))
+ (test (op not) (reg t))
+ (branch (label count-case))
+ (save continue)          ;setup recursive call -- (count-leaves (car tree))
+ (assign continue (label after-car-tree))
+ (save tree)
+ (assign tree (op car) (reg tree))
+ (goto (label count-leaves-loop))
+ after-car-tree
+ (assign continue (label after-cdr-tree))
+ (restore tree)                     ;setup recursive call -- (count-leaves (cdr tree))
+ (save val)
+ (assign tree (op cdr) (reg tree))
+ (goto (label count-leaves-loop))
+ after-cdr-tree
+ (restore t)
+ (assign val (op +) (reg val) (reg t))
+ (restore continue)
+ (goto (reg continue))
+ base-case
+ (assign val (const 0))
+ (goto (reg continue))
+ count-case
+ (assign val (const 1))
+ (goto (reg continue))
+ count-done)
+#+END_SRC
+
+To implement above register machine program, you need to use the wishful
+thinking as we did in higher level procedure. For the commented code, it would
+work if we use the commented code other than using intermediate register t, but
+in anyway we will need =t= in later in the code, so it would be better not to
+use the =flag= directly.
+
+Then test:
+#+BEGIN_SRC scheme
+(define count-leaves-machine-a
+  (make-machine
+   `((null? ,null?)
+     (pair? ,pair?)
+     (not ,not)
+     (+ ,+)
+     (car ,car)
+     (cdr ,cdr))
+   '(
+     (assign continue (label count-done))
+     count-leaves-loop
+     (test (op null?) (reg tree))
+     (branch (label base-case))
+     ;; (test (op pair?) (reg tree))
+     ;; (test (op not) (reg flag))
+     (assign t (op pair?) (reg tree))
+     (test (op not) (reg t))
+     (branch (label count-case))
+     (save continue)          ;setup recursive call -- (count-leaves (car tree))
+     (assign continue (label after-car-tree))
+     (save tree)
+     (assign tree (op car) (reg tree))
+     (goto (label count-leaves-loop))
+     after-car-tree
+     (assign continue (label after-cdr-tree))
+     (restore tree)                     ;setup recursive call -- (count-leaves (cdr tree))
+     (save val)
+     (assign tree (op cdr) (reg tree))
+     (goto (label count-leaves-loop))
+     after-cdr-tree
+     (restore t)
+     (assign val (op +) (reg val) (reg t))
+     (restore continue)
+     (goto (reg continue))
+     base-case
+     (assign val (const 0))
+     (goto (reg continue))
+     count-case
+     (assign val (const 1))
+     (goto (reg continue))
+     count-done)))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+(set-register-contents! count-leaves-machine-a 'tree '(1 2 (3 4 (5 6) (7))))
+
+(start count-leaves-machine-a)
+
+;Value: done
+
+(get-register-contents count-leaves-machine-a 'val)
+
+;Value: 7
+#+END_SRC
+**** b.
+The next one:
+#+BEGIN_SRC scheme
+(controller
+ (assign n (const 0))
+ (assign continue (label count-done))
+ count-loop
+ (test (op null?) (reg tree))
+ (branch (label base-case))
+ (test (op pair?) (reg tree))
+ (test (op not) (reg flag))
+ (branch (label count-case))
+ (save continue)                    ;else clause
+ (assign continue (label after-car))
+ (save tree)
+ (assign tree (op car) (reg tree))
+ (goto (label count-loop))
+ after-car
+ (restore tree)
+ (assign tree (op cdr) (reg tree))
+ (assign continue (label after-cdr))
+ (goto (label count-loop))
+ after-cdr
+ (restore continue)
+ (goto (reg continue))
+ base-case
+ (goto (reg continue))
+ count-case
+ (assign n (op 1+) (reg n))
+ (goto (reg continue))
+ count-done)
+#+END_SRC
+
+Note that here we done need to use any additional register than =n= for
+returning value.
+
+And test:
+#+BEGIN_SRC scheme
+(set-register-contents! count-leaves-machine-b 'tree '(1 2 (3 4 (5) (6 (7)))))
+
+;Value: done
+
+(start count-leaves-machine-b)
+
+;Value: done
+
+(get-register-contents count-leaves-machine-b 'n)
+
+;Value: 7
+#+END_SRC

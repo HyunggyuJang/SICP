@@ -918,11 +918,100 @@ abs-done
   (machine 'cancel-all-breakpoints))
 
 ;; Test feature
-(set-register-contents! gcd-machine 'a 202)
-(set-register-contents! gcd-machine 'b 43)
-(set-breakpoint gcd-machine 'test-b 4)
-(gcd-machine 'trace-on)
-(start gcd-machine)
-(proceed-machine gcd-machine)
-(cancel-breakpoint gcd-machine 'test-b 4)
-(proceed-machine)
+;; (set-register-contents! gcd-machine 'a 202)
+;; (set-register-contents! gcd-machine 'b 43)
+;; (set-breakpoint gcd-machine 'test-b 4)
+;; (gcd-machine 'trace-on)
+;; (start gcd-machine)
+;; (proceed-machine gcd-machine)
+;; (cancel-breakpoint gcd-machine 'test-b 4)
+;; (proceed-machine gcd-machine)
+
+;; Exercise 5.21
+(define count-leaves-machine-a
+  (make-machine
+   `((null? ,null?)
+     (pair? ,pair?)
+     (not ,not)
+     (+ ,+)
+     (car ,car)
+     (cdr ,cdr))
+   '(
+     (assign continue (label count-done))
+     count-leaves-loop
+     (test (op null?) (reg tree))
+     (branch (label base-case))
+     ;; (test (op pair?) (reg tree))
+     ;; (test (op not) (reg flag))
+     (assign t (op pair?) (reg tree))
+     (test (op not) (reg t))
+     (branch (label count-case))
+     (save continue)          ;setup recursive call -- (count-leaves (car tree))
+     (assign continue (label after-car-tree))
+     (save tree)
+     (assign tree (op car) (reg tree))
+     (goto (label count-leaves-loop))
+     after-car-tree
+     (assign continue (label after-cdr-tree))
+     (restore tree)                     ;setup recursive call -- (count-leaves (cdr tree))
+     (save val)
+     (assign tree (op cdr) (reg tree))
+     (goto (label count-leaves-loop))
+     after-cdr-tree
+     (restore t)
+     (assign val (op +) (reg val) (reg t))
+     (restore continue)
+     (goto (reg continue))
+     base-case
+     (assign val (const 0))
+     (goto (reg continue))
+     count-case
+     (assign val (const 1))
+     (goto (reg continue))
+     count-done)))
+
+;;; test for count-leaves-machine-a
+;; (set-register-contents! count-leaves-machine-a 'tree '(1 2 (3 4 (5 6) (7))))
+;; (start count-leaves-machine-a)
+;; ;Value: done
+;; (get-register-contents count-leaves-machine-a 'val)
+;; ;Value: 7
+
+;;; b
+(define count-leaves-machine-b
+  (make-machine
+   ;; '(n continue tree)
+   `((null? ,null?)
+     (pair? ,pair?)
+     (not ,not)
+     (1+ ,1+)
+     (car ,car)
+     (cdr ,cdr))
+   '(
+     (assign n (const 0))
+     (assign continue (label count-done))
+     count-loop
+     (test (op null?) (reg tree))
+     (branch (label base-case))
+     (test (op pair?) (reg tree))
+     (test (op not) (reg flag))
+     (branch (label count-case))
+     (save continue)                    ;else clause
+     (assign continue (label after-car))
+     (save tree)
+     (assign tree (op car) (reg tree))
+     (goto (label count-loop))
+     after-car
+     (restore tree)
+     (assign tree (op cdr) (reg tree))
+     (assign continue (label after-cdr))
+     (goto (label count-loop))
+     after-cdr
+     (restore continue)
+     (goto (reg continue))
+     base-case
+     (goto (reg continue))
+     count-case
+     (assign n (op 1+) (reg n))
+     (goto (reg continue))
+     count-done)))
