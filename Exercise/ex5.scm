@@ -1015,3 +1015,77 @@ abs-done
      (assign n (op 1+) (reg n))
      (goto (reg continue))
      count-done)))
+
+;; Exercise 5.22
+(define (append x y)
+  (if (null? x)
+      y
+      (cons (car x)
+            (append (cdr x) y))))
+
+(define append-machine
+  (make-machine
+   '(x continue y)
+   `((null? ,null?) (pair? ,pair?)
+     (car ,car) (cdr ,cdr) (cons ,cons))
+   '((assign continue (label append-done))
+     append-loop
+     (test (op null?) (reg x))
+     (branch (label base-case))
+     (save continue)
+     (assign continue (label after-recur))
+     (save x)
+     (assign x (op cdr) (reg x))
+     (goto (label append-loop))
+     after-recur
+     (restore x)
+     (assign x (op car) (reg x))
+     (assign y (op cons) (reg x) (reg y))
+     (restore continue)
+     (goto (reg continue))
+     base-case
+     (goto (reg continue))
+     append-done)))
+
+(define (append! x y)
+  (set-cdr! (last-pair x) y)
+  x)
+
+(define (last-pair x)
+  (if (null? (cdr x))
+      x
+      (last-pair (cdr x))))
+
+;; High level description -- assume last-pair as primitive
+'(
+  (assign l-p (op last-pair) (reg x))
+  (perform (op set-cdr!) (reg l-p) (reg y))
+  )
+
+;;; last-pair unwinded
+'(
+  test-l-p
+  (assign t (op cdr) (reg x))
+  (test (op null?) (reg t))
+  (branch (label last-pair-done))
+  (assign x (reg t))
+  (goto (label test-l-p))
+  last-pair-done
+  )
+
+;; Then link together
+(define append!-machine
+  (make-machine
+   '(x y l-p t)
+   `((set-cdr! ,set-cdr!) (cdr ,cdr) (null? ,null?))
+   '(
+     (assign l-p (reg x))
+     test-l-p
+     (assign t (op cdr) (reg l-p))
+     (test (op null?) (reg t))
+     (branch (label last-pair-done))
+     (assign l-p (reg t))
+     (goto (label test-l-p))
+     last-pair-done
+     (perform (op set-cdr!) (reg l-p) (reg y))
+     )))
