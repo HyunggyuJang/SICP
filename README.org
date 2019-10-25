@@ -2067,3 +2067,32 @@ Now we can construct machine we do this simulation; the result in =x= register.
 
 Note that in this version, we haven't used any stack operation, that means this
 is iterative process unlike the preceding implementation.
+** Maintaining the Illusion of Infinite Memory
+In this section, we are going to learn how our evaluator manage the memory under
+the hood. This is quite simple and compact algorithm that we are going to see;
+but it resolves a lot of difficulties otherwise we encountered with (or should
+concern about).
+
+To keep track of the contents of this section, you should draw diagram along with
+emerging controller sequence as if you were a machine; otherwise you'll get feel
+like you understood the core concept of this simple and compact algorithm but
+only in spurious manner.
+* The Explicit-Control Evaluator
+Now we turn into the application of this new language. Actually this is not an
+application but in more presentation about what's going on under the hood --
+this is meant to explain what they assumed or omitted to describe in preceding
+chapter, [[org:../MEGAsync/MIT Challenge/6.001/Chapter4.org][Metacircular Evaluator]].
+
+Through this material, we will get the ability to implement meta circular
+evaluator or even the other variants in hardware in principal. That is, if we
+are patient enough to gathering all the stuffs to implement what we planned to
+do, say the query language we developed in preceding chapter, we got the machine
+in real world only for that purpose.
+
+So for start, here they are going to /unwind/ the metacircular evaluator in
+sections 4.1.1 through 4.1.4.
+
+From this point, we can get some intuition behind this concept through the
+[[youtube:ikvAQ_lu31s?list=PL7BcsI5ueSNFPCEisbaoQ0kXIDX9rR5FF][lectures]] available in [[youtube:cIc8ZBMcqAc?list=PLE18841CABEA24090][online]]. So for recapitulation or to understand what concepts
+the authors consider as core, before to go through this section, we'd better to
+go through all the material before this section -- Register Machines.
