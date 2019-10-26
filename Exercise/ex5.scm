@@ -1187,3 +1187,171 @@ cond-last-decide
 (define z (list 1))
 (set-cdr! z z)
 (list? z)
+
+;; Exercise 5.25 delayed one
+(define (actual-value exp env)
+  (force-it (eval exp env)))
+
+(define (force-it obj)
+  (cond ((thunk? obj)
+         (let ((result (actual-value
+                        (thunk-exp obj)
+                        (thunk-env obj))))
+           (set-car! obj 'evaluated-thunk)
+           (set-car! (cdr obj) result)  ; replace exp with its value
+           (set-cdr! (cdr obj) '())     ; forget unneeded env
+           result))
+        ((evaluated-thunk? obj)
+         (thunk-value obj))
+        (else obj)))
+
+ev-application
+(save continue)
+(save env)
+(assign unev (op operands) (reg exp))
+(save unev)
+(assign exp (op operator) (reg exp))
+(assign continue (label ev-appl-did-operator))
+(goto (label actual-value))
+ev-appl-did-operator
+(restore unev)
+(restore env)
+(assign proc (reg val))
+(branch (label apply-dispatch))
+
+apply-dispatch
+(assign argl (op empty-arglist))
+;; Input proc, unev, env, stack -- top value is return point
+;; Output val
+;; Write all
+;; Stack top value removed
+(test (op primitive-procedure?) (reg proc))
+(branch (label primitive-apply))
+(test (op compound-procedure?) (reg proc))
+(branch (label compound-apply))
+(goto (label unknown-procedure-type))
+
+primitive-apply
+(test (op no-operands?) (reg unev))
+(branch (label exec-primitive-apply))
+(save proc)
+primitive-operand-loop
+(save argl)
+(assign exp (op first-operand) (reg unev))
+(test (op last-operand?) (reg unev))
+(branch (label prim-last-arg))
+(save env)
+(save unev)
+(assign continue (label prim-accumulate-arg))
+(goto (label actual-value))
+prim-accumulate-arg
+(restore unev)
+(restore env)
+(restore argl)
+(assign argl (op adjoin-arg) (reg val) (reg argl))
+(assign unev (op rest-operands) (reg unev))
+(goto (label primitive-operand-loop))
+prim-last-arg
+(assign continue (label prim-accum-last-arg))
+(goto (label actual-value))
+prim-accum-last-arg
+(restore argl)
+(assign argl (op adjoin-arg) (reg val) (reg argl))
+(restore proc)
+(goto (label exec-primitive-apply))
+exec-primitive-apply
+(assign val (op apply-primitive-procedure)
+        (reg proc)
+        (reg argl))
+(restore continue)
+(goto (reg continue))
+
+compound-apply
+(test (op no-operands?) (reg unev))
+(branch (label exec-compound-apply))
+compound-operand-loop
+(assign exp (op first-operand) (reg unev))
+(test (op last-operand?) (reg unev))
+(branch (label compound-last-arg))
+(assign val (op delay-it) (reg exp) (reg env))
+(assign argl (op adjoin-arg) (reg val) (reg argl))
+(assign unev (op rest-operands) (reg unev))
+(goto (label compound-operand-loop))
+compound-last-arg
+(assign val (op delay-it) (reg exp) (reg env))
+compound-accum-last-arg
+(assign argl (op adjoin-arg) (reg val) (reg argl))
+(goto (label exec-compound-apply))
+
+exec-compound-apply
+(assign unev (op procedure-parameters) (reg proc))
+(assign env (op procedure-environment) (reg proc))
+(assign env (op extend-environment)
+        (reg unev) (reg argl) (reg env))
+(assign unev (op procedure-body) (reg proc))
+(goto (label ev-sequence))
+
+ev-if
+(save exp)
+(save env)
+(save continue)
+(assign continue (label ev-if-decide))
+(assign exp (op if-predicate) (reg exp))
+(goto (label actual-value))
+ev-if-decide
+(restore continue)
+(restore env)
+(restore exp)
+(test (op true?) (reg val))
+(branch (label ev-if-consequent))
+ev-if-alternative
+(assign exp (op if-alternative) (reg exp))
+(goto (label eval-dispatch))
+ev-if-consequent
+(assign exp (op if-consequent) (reg exp))
+(goto (label eval-dispatch))
+
+actual-value
+;; contract is same as eval-dispatch
+(save continue)
+(assign continue (label after-eval))
+(goto (label eval-dispatch))
+after-eval
+(restore continue)
+(goto (label force-it))
+
+force-it
+;; Input val continue
+;; Output val
+;; Write all
+;; Stack unchanged
+(test (op thunk?) (reg val))
+(branch (label force-thunk))
+(test (op evaluated-thunk?) (reg val))
+(branch (label force-evaluated))
+(goto (reg continue))
+
+force-thunk
+(save continue)
+(save val)                              ;need later -- obj
+(assign continue (label force-result))
+(assign exp (op thunk-exp) (reg val))
+(assign env (op thunk-env) (reg val))
+(goto (label actual-value))
+
+force-result
+(restore exp)                           ;clobbering the exp as obj
+(restore continue)
+(perform (op set-car!) (reg exp) (const evaluated-thunk))
+(assign exp (op cdr) (reg exp))
+(perform (op set-car!) (reg exp) (reg val))
+(perform (op set-cdr!) (reg exp) (const ()))
+(goto (reg continue))
+
+force-evaluated
+(assign val (op thunk-value) (reg val))
+(goto (reg continue))
+
+;; Test ex5.25
+(define (try a b)
+  (if (= a 0) 1 b))

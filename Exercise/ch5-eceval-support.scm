@@ -189,3 +189,17 @@
 (define (compiled-procedure-entry c-proc) (cadr c-proc))
 (define (compiled-procedure-env c-proc) (caddr c-proc))
 
+(define (delay-it exp env)
+  (list 'thunk exp env))
+
+(define (thunk? obj)
+  (tagged-list? obj 'thunk))
+
+(define (thunk-exp thunk) (cadr thunk))
+(define (thunk-env thunk) (caddr thunk))
+
+;; "thunk" that has been forced and is storing its (memoized) value
+(define (evaluated-thunk? obj)
+  (tagged-list? obj 'evaluated-thunk))
+
+(define (thunk-value evaluated-thunk) (cadr evaluated-thunk))

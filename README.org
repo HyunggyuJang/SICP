@@ -2293,3 +2293,242 @@ ok
 #+END_SRC
 
 Works as expected.
+*** Exercise 5.25
+As we learned from section 4.2, the only change is the application from the
+applicative Scheme.
+
+That is, rather than evaluating all the operands before application, we need to
+hand over the operands without evaluating since the operands needed are
+different in primitive procedure's from compound procedure's.
+
+We also need to support additional data structure called thunk since it is
+needed to distinguish the delayed object from the normal values.
+
+Also we need to handle the =if= expression somewhat differently from the
+applicative one since it need =actual-value= for value of its predicate part.
+
+Note that we can not assume the =actual-value= (implicitly =force-it= too) is
+available as machine operations as the text did; we need to unwind those
+procedure explicitly into register subroutines since =actual-value= and
+=force-it= wrapping around the =eval= process in it. So we need to unwrap those
+until we got the procedures that does not inherit the any other process that is
+implemented as subroutines in our register machine (but we are good to use the
+=delay-it= procedure since it is just syntactic procedure or representation of
+thunk ADT).
+
+So to summarize, we can assume the following procedures as machine operators:
+#+BEGIN_SRC scheme
+;; Exercise 5.25 delayed one
+(define (delay-it exp env)
+  (list 'thunk exp env))
+
+(define (thunk? obj)
+  (tagged-list? obj 'thunk))
+
+(define (thunk-exp thunk) (cadr thunk))
+(define (thunk-env thunk) (caddr thunk))
+
+;; "thunk" that has been forced and is storing its (memoized) value
+(define (evaluated-thunk? obj)
+  (tagged-list? obj 'evaluated-thunk))
+
+(define (thunk-value evaluated-thunk) (cadr evaluated-thunk))
+#+END_SRC
+
+But we should implement the following ones as subroutines:
+#+BEGIN_SRC scheme
+(define (actual-value exp env)
+  (force-it (eval exp env)))
+
+(define (force-it obj)
+  (cond ((thunk? obj)
+         (let ((result (actual-value
+                        (thunk-exp obj)
+                        (thunk-env obj))))
+           (set-car! obj 'evaluated-thunk)
+           (set-car! (cdr obj) result)  ; replace exp with its value
+           (set-cdr! (cdr obj) '())     ; forget unneeded env
+           result))
+        ((evaluated-thunk? obj)
+         (thunk-value obj))
+        (else obj)))
+#+END_SRC
+
+Here is the code translated. Observe the similarity of the accumulation argument
+loop between the primitive and compound one -- it is more easy to see in above
+high level language description; if we want to do, we could have modulate the
+duplicate code into one general subroutine which will accept more arguments as
+input registers or on stack. We will come back this issue in later.
+
+#+BEGIN_SRC scheme
+ev-application
+    (save continue)
+    (save env)
+    (assign unev (op operands) (reg exp))
+    (save unev)
+    (assign exp (op operator) (reg exp))
+    (assign continue (label ev-appl-did-operator))
+    (goto (label actual-value))
+ev-appl-did-operator
+    (restore unev)
+    (restore env)
+    (assign proc (reg val))
+    (branch (label apply-dispatch))
+
+apply-dispatch
+    (assign argl (op empty-arglist))
+;; Input proc, unev, env, stack -- top value is return point
+;; Output val
+;; Write all
+;; Stack top value removed
+    (test (op primitive-procedure?) (reg proc))
+    (branch (label primitive-apply))
+    (test (op compound-procedure?) (reg proc))
+    (branch (label compound-apply))
+    (goto (label unknown-procedure-type))
+
+primitive-apply
+    (test (op no-operands?) (reg unev))
+    (branch (label exec-primitive-apply))
+    (save proc)
+primitive-operand-loop
+    (save argl)
+    (assign exp (op first-operand) (reg unev))
+    (test (op last-operand?) (reg unev))
+    (branch (label prim-last-arg))
+    (save env)
+    (save unev)
+    (assign continue (label prim-accumulate-arg))
+    (goto (label actual-value))
+prim-accumulate-arg
+    (restore unev)
+    (restore env)
+    (restore argl)
+    (assign argl (op adjoin-arg) (reg val) (reg argl))
+    (assign unev (op rest-operands) (reg unev))
+    (goto (label primitive-operand-loop))
+prim-last-arg
+    (assign continue (label prim-accum-last-arg))
+    (goto (label actual-value))
+prim-accum-last-arg
+    (restore argl)
+    (assign argl (op adjoin-arg) (reg val) (reg argl))
+    (restore proc)
+    (goto (label exec-primitive-apply))
+exec-primitive-apply
+    (assign val (op apply-primitive-procedure)
+        (reg proc)
+        (reg argl))
+    (restore continue)
+    (goto (reg continue))
+
+compound-apply
+    (test (op no-operands?) (reg unev))
+    (branch (label exec-compound-apply))
+compound-operand-loop
+    (assign exp (op first-operand) (reg unev))
+    (test (op last-operand?) (reg unev))
+    (branch (label compound-last-arg))
+    (assign val (op delay-it) (reg exp) (reg env))
+    (assign argl (op adjoin-arg) (reg val) (reg argl))
+    (assign unev (op rest-operands) (reg unev))
+    (goto (label compound-operand-loop))
+compound-last-arg
+    (assign val (op delay-it) (reg exp) (reg env))
+compound-accum-last-arg
+    (assign argl (op adjoin-arg) (reg val) (reg argl))
+    (goto (label exec-compound-apply))
+
+exec-compound-apply
+    (assign unev (op procedure-parameters) (reg proc))
+    (assign env (op procedure-environment) (reg proc))
+    (assign env (op extend-environment)
+        (reg unev) (reg argl) (reg env))
+    (assign unev (op procedure-body) (reg proc))
+    (goto (label ev-sequence))
+
+ev-if
+    (save exp)
+    (save env)
+    (save continue)
+    (assign continue (label ev-if-decide))
+    (assign exp (op if-predicate) (reg exp))
+    (goto (label actual-value))
+ev-if-decide
+    (restore continue)
+    (restore env)
+    (restore exp)
+    (test (op true?) (reg val))
+    (branch (label ev-if-consequent))
+ev-if-alternative
+    (assign exp (op if-alternative) (reg exp))
+    (goto (label eval-dispatch))
+ev-if-consequent
+    (assign exp (op if-consequent) (reg exp))
+    (goto (label eval-dispatch))
+
+actual-value
+;; contract is same as eval-dispatch
+    (save continue)
+    (assign continue (label after-eval))
+    (goto (label eval-dispatch))
+after-eval
+    (restore continue)
+    (goto (label force-it))
+
+force-it
+;; Input val continue
+;; Output val
+;; Write all
+;; Stack unchanged
+    (test (op thunk?) (reg val))
+    (branch (label force-thunk))
+    (test (op evaluated-thunk?) (reg val))
+    (branch (label force-evaluated))
+    (goto (reg continue))
+
+force-thunk
+    (save continue)
+    (save val)                              ;need later -- obj
+    (assign continue (label force-result))
+    (assign exp (op thunk-exp) (reg val))
+    (assign env (op thunk-env) (reg val))
+    (goto (label actual-value))
+
+force-result
+    (restore exp)                           ;clobbering the exp as obj
+    (restore continue)
+    (perform (op set-car!) (reg exp) (const evaluated-thunk))
+    (assign exp (op cdr) (reg exp))
+    (perform (op set-car!) (reg exp) (reg val))
+    (perform (op set-cdr!) (reg exp) (const ()))
+    (goto (reg continue))
+
+force-evaluated
+    (assign val (op thunk-value) (reg val))
+    (goto (reg continue))
+#+END_SRC
+
+Now let's test:
+#+BEGIN_SRC scheme
+(start eceval)
+
+
+;;; EC-Eval input:
+(define (try a b)
+  (if (= a 0) 1 b))
+
+(total-pushes = 3 maximum-depth = 3)
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+(try 0 (/ 1 0))
+
+(total-pushes = 22 maximum-depth = 12)
+;;; EC-Eval value:
+1
+
+#+END_SRC
+
+It works as expected.
