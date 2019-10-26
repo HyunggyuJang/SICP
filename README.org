@@ -2178,3 +2178,118 @@ Then test:
 
 #+END_SRC
 *** Exercise 5.24
+=Cond= special form is like combination of =ev-if= and =ev-application=. That is
+it need to loop through the clauses and for each clause like =evl-application=
+loop through in =ev-appl-operand-loop=, and within that loop, it need to branch
+depending on the evaluation of =cond-predicate= of each clause as =ev-if= did,
+if it were true, it need to setup to call =ev-sequence= as
+=ev-appl-accum-last-arg= did.
+
+Here is the register code do the works:
+#+BEGIN_SRC scheme
+ev-cond
+;; Input exp env continue
+;; Output val
+;; Write all (call the ev-sequence)
+;; Stack unchanged
+    (assign unev (op cond-clauses) (reg exp))
+    (save continue)
+cond-clause-loop
+;; Input unev env stack (top as return point)
+;; Output val
+;; Write all
+;; Stack top value removed
+    (assign exp (op cond-first-clause) (reg unev))
+    (test (op cond-else-clause?) (reg exp))
+    (branch (label cond-else-clause))
+    (test (op cond-last-clause?) (reg unev))
+    (branch (label cond-last-clause))
+cond-pred
+    (save unev)
+    (save exp)
+    (save env)
+    (assign exp (op cond-predicate) (reg exp))
+    (assign continue (label cond-pred-decide))
+    (goto (label eval-dispatch))
+cond-pred-decide
+    (restore env)
+    (restore exp)
+    (restore unev)
+    (test (op true?) (reg val))
+    (branch (label cond-actions))
+    (assign unev (op cond-rest-clauses) (reg unev))
+    (goto (label cond-clause-loop))
+cond-actions
+;; Input exp, env
+;; Output val
+;; Write all
+;; Stack top removed
+    (assign unev (op cond-actions) (reg exp))
+    (goto (label ev-sequence))
+cond-else-clause
+    (test (op cond-last-clause?) (reg unev))
+    (test (op not) (reg flag))
+    (branch (label bad-cond-syntax))
+    (goto (label cond-actions))
+cond-last-clause
+    (save exp)
+    (save env)
+    (assign exp (op cond-predicate) (reg exp))
+    (assign continue (label cond-last-decide))
+    (goto (label eval-dispatch))
+cond-last-decide
+    (restore env)
+    (restore exp)
+    (test (op true?) (reg val))
+    (branch (label cond-actions))
+    (restore continue)
+    (goto (reg continue))
+#+END_SRC
+
+Now it works as expected:
+#+BEGIN_SRC scheme
+(start eceval)
+
+
+;;; EC-Eval input:
+(cond (false 5) (false 2) (true 3) (else 1))
+
+(total-pushes = 10 maximum-depth = 4)
+;;; EC-Eval value:
+3
+
+#+END_SRC
+
+Now test the tail recursion problem:
+#+BEGIN_SRC scheme
+;;; from recitation 26 of 2004
+(define (list? x)
+  (cond ((null? x) true)
+        ((pair? x) (list? (cdr x)))))
+(define z (list 1))
+(set-cdr! z z)
+(list? z)
+#+END_SRC
+
+Then
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+(define z (list 1))
+
+(total-pushes = 8 maximum-depth = 6)
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+(set-cdr! z z)
+
+(total-pushes = 8 maximum-depth = 5)
+;;; EC-Eval value:
+#!unspecific
+
+;;; EC-Eval input:
+(list? z)
+  C-c C-c;Quit!
+#+END_SRC
+
+Works as expected.

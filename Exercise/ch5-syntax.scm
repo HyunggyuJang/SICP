@@ -100,6 +100,9 @@
   (eq? (cond-predicate clause) 'else))
 (define (cond-predicate clause) (car clause))
 (define (cond-actions clause) (cdr clause))
+(define (cond-first-clause clauses) (car clauses))
+(define (cond-rest-clauses clauses) (cdr clauses))
+(define (cond-last-clause? clauses) (null? (cdr clauses)))
 
 (define (cond->if exp)
   (expand-clauses (cond-clauses exp)))

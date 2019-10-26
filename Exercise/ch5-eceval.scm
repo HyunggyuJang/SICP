@@ -63,6 +63,17 @@
    `(cond->if ,cond->if)
    `(let->combination ,let->combination)
    `(let*->let ,let*->let)
+   ;; Exercise 5.24
+   `(not ,not)
+   `(cond? ,cond?)
+   `(cond-clauses ,cond-clauses)
+   `(cond-else-clause? ,cond-else-clause?)
+   `(cond-predicate ,cond-predicate)
+   `(cond-actions ,cond-actions)
+   `(cond-first-clause ,cond-first-clause)
+   `(cond-rest-clauses ,cond-rest-clauses)
+   `(cond-last-clause? ,cond-last-clause?)
+
    ;;operations in eceval-support.scm
    (list 'true? true?)
    (list 'make-procedure make-procedure)
@@ -117,6 +128,12 @@
     (assign val (const unknown-procedure-type-error))
     (goto (label signal-error))
 
+    bad-cond-syntax
+    (restore continue)
+    (assign val (const bad-cond-syntax-error))
+    (goto (label signal-error))
+
+
     signal-error
     (perform (op user-print) (reg val))
     (goto (label read-eval-print-loop))
@@ -152,9 +169,9 @@
     (goto (label unknown-expression-type))
 
     ;; derived forms
-    ev-cond
-    (assign exp (op cond->if) (reg exp))
-    (goto (label ev-if))
+    ;; ev-cond
+    ;; (assign exp (op cond->if) (reg exp))
+    ;; (goto (label ev-if))
     ev-let
     (assign exp (op let->combination) (reg exp))
     (goto (label ev-application))
@@ -162,6 +179,66 @@
     (assign exp (op let*->let) (reg exp))
     (goto (label ev-let))
     ;;
+
+    ;; Exercise 5.24
+    ev-cond
+    ;; Input exp env continue
+    ;; Output val
+    ;; Write all (call the ev-sequence)
+    ;; Stack unchanged
+    (assign unev (op cond-clauses) (reg exp))
+    (save continue)
+    cond-clause-loop
+    ;; Input unev env stack (top as return point)
+    ;; Output val
+    ;; Write all
+    ;; Stack top value removed
+    (assign exp (op cond-first-clause) (reg unev))
+    (test (op cond-else-clause?) (reg exp))
+    (branch (label cond-else-clause))
+    (test (op cond-last-clause?) (reg unev))
+    (branch (label cond-last-clause))
+    cond-pred
+    (save unev)
+    (save exp)
+    (save env)
+    (assign exp (op cond-predicate) (reg exp))
+    (assign continue (label cond-pred-decide))
+    (goto (label eval-dispatch))
+    cond-pred-decide
+    (restore env)
+    (restore exp)
+    (restore unev)
+    (test (op true?) (reg val))
+    (branch (label cond-actions))
+    (assign unev (op cond-rest-clauses) (reg unev))
+    (goto (label cond-clause-loop))
+    cond-actions
+    ;; Input exp, env
+    ;; Output val
+    ;; Write all
+    ;; Stack top removed
+    (assign unev (op cond-actions) (reg exp))
+    (goto (label ev-sequence))
+    cond-else-clause
+    (test (op cond-last-clause?) (reg unev))
+    (test (op not) (reg flag))
+    (branch (label bad-cond-syntax))
+    (goto (label cond-actions))
+    cond-last-clause
+    (save exp)
+    (save env)
+    (assign exp (op cond-predicate) (reg exp))
+    (assign continue (label cond-last-decide))
+    (goto (label eval-dispatch))
+    cond-last-decide
+    (restore env)
+    (restore exp)
+    (test (op true?) (reg val))
+    (branch (label cond-actions))
+    (restore continue)
+    (goto (reg continue))
+
     ev-self-eval
     (assign val (reg exp))
     (goto (reg continue))
