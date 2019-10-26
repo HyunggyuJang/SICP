@@ -1355,3 +1355,12 @@ force-evaluated
 ;; Test ex5.25
 (define (try a b)
   (if (= a 0) 1 b))
+
+;; Exercise 5.26
+(define (factorial n)
+  (define (iter product counter)
+    (if (> counter n)
+        product
+        (iter (* counter product)
+              (+ counter 1))))
+  (iter 1 1))
