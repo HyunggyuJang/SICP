@@ -2603,3 +2603,58 @@ So the table gets as
 |-----------+---------------+------------------|
 | Iterative | 10            | 35n + 29         |
 | factorial |               |                  |
+*** Exercise 5.28
+Let's modify our register machine not to be tail recursive. Then let's re-run
+[[Exercise 5.26][exercise 5.26]]'s factorial -- iterative one:
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+(factorial 5)
+
+(total-pushes = 218 maximum-depth = 29)
+;;; EC-Eval value:
+120
+
+;;; EC-Eval input:
+(factorial 3)
+
+(total-pushes = 144 maximum-depth = 23)
+;;; EC-Eval value:
+6
+
+;;; EC-Eval input:
+(factorial 30)
+
+(total-pushes = 1143 maximum-depth = 104)
+;;; EC-Eval value:
+265252859812191058636308480000000
+#+END_SRC
+
+Now the =maximum-depth= gets $3n+14$ not the constant 10 and =total-pushes= gets
+$37n + 33$, which is definitely large number than previous one.
+
+How about the recurvise definition?
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+(factorial 3)
+
+(total-pushes = 86 maximum-depth = 27)
+;;; EC-Eval value:
+6
+
+;;; EC-Eval input:
+(factorial 10)
+
+(total-pushes = 324 maximum-depth = 83)
+;;; EC-Eval value:
+3628800
+
+;;; EC-Eval input:
+(factorial 30)
+
+(total-pushes = 1004 maximum-depth = 243)
+;;; EC-Eval value:
+265252859812191058636308480000000
+#+END_SRC
+
+As expected this one also has involved more stack operations than previous since
+this version of evaluator execute instructions that is useless.

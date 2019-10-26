@@ -422,22 +422,40 @@
     (save continue)
     (goto (label ev-sequence))
 
-    ev-sequence
-    (assign exp (op first-exp) (reg unev))
-    (test (op last-exp?) (reg unev))
-    (branch (label ev-sequence-last-exp))
-    (save unev)
-    (save env)
-    (assign continue (label ev-sequence-continue))
-    (goto (label eval-dispatch))
-    ev-sequence-continue
-    (restore env)
-    (restore unev)
-    (assign unev (op rest-exps) (reg unev))
-    (goto (label ev-sequence))
-    ev-sequence-last-exp
-    (restore continue)
-    (goto (label eval-dispatch))
+;; non-tail-recursive version
+ev-sequence
+  (test (op no-more-exps?) (reg unev))
+  (branch (label ev-sequence-end))
+  (assign exp (op first-exp) (reg unev))
+  (save unev)
+  (save env)
+  (assign continue (label ev-sequence-continue))
+  (goto (label eval-dispatch))
+ev-sequence-continue
+  (restore env)
+  (restore unev)
+  (assign unev (op rest-exps) (reg unev))
+  (goto (label ev-sequence))
+ev-sequence-end
+  (restore continue)
+  (goto (reg continue))
+
+    ;; ev-sequence
+    ;; (assign exp (op first-exp) (reg unev))
+    ;; (test (op last-exp?) (reg unev))
+    ;; (branch (label ev-sequence-last-exp))
+    ;; (save unev)
+    ;; (save env)
+    ;; (assign continue (label ev-sequence-continue))
+    ;; (goto (label eval-dispatch))
+    ;; ev-sequence-continue
+    ;; (restore env)
+    ;; (restore unev)
+    ;; (assign unev (op rest-exps) (reg unev))
+    ;; (goto (label ev-sequence))
+    ;; ev-sequence-last-exp
+    ;; (restore continue)
+    ;; (goto (label eval-dispatch))
 
 ;;;SECTION 5.4.3
 
