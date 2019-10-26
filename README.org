@@ -2096,3 +2096,13 @@ From this point, we can get some intuition behind this concept through the
 [[youtube:ikvAQ_lu31s?list=PL7BcsI5ueSNFPCEisbaoQ0kXIDX9rR5FF][lectures]] available in [[youtube:cIc8ZBMcqAc?list=PLE18841CABEA24090][online]]. So for recapitulation or to understand what concepts
 the authors consider as core, before to go through this section, we'd better to
 go through all the material before this section -- Register Machines.
+
+Actually we can deduce a lot of useful informations using contraction as we did
+in procedural definition (or module) in static sense -- analogous to the type
+contraction rather than behavior specifications. The [[youtube:1eQpcms7c98&t=635s][lecture]] explains this
+concept consistently through this term of lectures.
+
+So using the static information (deduced by static analysis by human not the
+machine; thus for human), we can put together all the relevant parts into one
+chuck along with the contracts not only in the high level language also in this
+very low level assembly language uniformly.
