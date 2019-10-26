@@ -2106,3 +2106,75 @@ So using the static information (deduced by static analysis by human not the
 machine; thus for human), we can put together all the relevant parts into one
 chuck along with the contracts not only in the high level language also in this
 very low level assembly language uniformly.
+** The Core of the Explicit-Control Evaluator
+** Sequence Evaluation and Tail Recursion
+To deal with the tail recursion, we need to handle the last expression in the
+evaluation of sequence differently.
+** Conditionals, Assignments, and Definitions
+*** Exercise 5.23
+#+BEGIN_SRC scheme
+,*** in explicit control evaluator controller
+    ;; Exercise 5.23 -- derived forms
+    (test (op cond?) (reg exp))
+    (branch (label ev-cond))
+    (test (op let?) (reg exp))
+    (branch (label ev-let))
+    (test (op let*?) (reg exp))
+    (branch (label ev-let*))
+    ;; end of exercise 5.23
+...
+    (branch (label ev-application))
+    (goto (label unknown-expression-type))
+
+
+    ;; derived forms
+    ev-cond
+    (assign exp (op cond->if) (reg exp))
+    (goto (label ev-if))
+    ev-let
+    (assign exp (op let->combination) (reg exp))
+    (goto (label ev-application))
+    ev-let*
+    (assign exp (op let*->let) (reg exp))
+    (goto (label ev-let))
+    ;;
+#+END_SRC
+
+Here we used the assumption or "cheat," which isn't actually cheat according to
+the footnote in the text. This is due to the analysis phase in our interpreter
+as noted in section 4.1.4; all the expression analyzed statically and the source
+level transformation is one of the static process, it is done at that phase. We
+can verify this fact -- our interpreter do the static analysis before execution
+-- with the following example:
+#+BEGIN_SRC scheme
+(lambda (x) (define y 5) (define y 2) x)
+
+;duplicate internal definitions for (#[uninterned-symbol 38 y]) in |#[unnamed-procedure]|
+;To continue, call RESTART with an option number:
+; (RESTART 1) => Return to read-eval-print level 1.
+#+END_SRC
+
+If it were not doing the static analysis, it couldn't the duplicated internal
+definitions since it is the body of lambda expression, which is not supposed to
+be evaluated until it is applied.
+
+Then test:
+#+BEGIN_SRC scheme
+(start eceval)
+
+;;; EC-Eval input:
+(cond (false 5) (false 2) (true 3) (else 1))
+
+(total-pushes = 9 maximum-depth = 3)
+;;; EC-Eval value:
+3
+
+;;; EC-Eval input:
+(let* ((x 5) (y (+ x 2))) (+ x y))
+
+(total-pushes = 26 maximum-depth = 8)
+;;; EC-Eval value:
+12
+
+#+END_SRC
+*** Exercise 5.24
