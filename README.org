@@ -2566,3 +2566,40 @@ And it turns out 10.
 **** b.
 From those data, and as it is linear, we can deduce the formular as $P(n) = 35n+29$.
 *** Exercise 5.27
+Here is the data:
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+(factorial 3)
+
+(total-pushes = 80 maximum-depth = 18)
+;;; EC-Eval value:
+6
+
+;;; EC-Eval input:
+(factorial 10)
+
+(total-pushes = 304 maximum-depth = 53)
+;;; EC-Eval value:
+3628800
+
+;;; EC-Eval input:
+(factorial 30)
+
+(total-pushes = 944 maximum-depth = 153)
+;;; EC-Eval value:
+265252859812191058636308480000000
+
+#+END_SRC
+
+From this fact, we can deduce the =maximum-depth= as $5n + 3$, and
+=total-pushes= as $32n - 16$.
+
+So the table gets as
+
+|           | Maximum depth | Number of pushes |
+|-----------+---------------+------------------|
+| Recursive | 5n + 3        | 32n - 16         |
+| factorial |               |                  |
+|-----------+---------------+------------------|
+| Iterative | 10            | 35n + 29         |
+| factorial |               |                  |
