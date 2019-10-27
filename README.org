@@ -3490,3 +3490,193 @@ unfortunately we cannot cope with the such errors handled by =read=:
 ; (RESTART 1) => Return to read-eval-print level 1.
 #+END_SRC
 **** b.
+Actually this is analogous task we have done prior to the task of *a.* to
+prevent from user producing our =error= ADT.
+
+The goal would be followings
+#+BEGIN_SRC scheme
+(car 1)
+
+;The object 1, passed as the first argument to car, is not the correct type.
+;To continue, call RESTART with an option number:
+; (RESTART 2) => Specify an argument to use in its place.
+; (RESTART 1) => Return to read-eval-print level 1.
+
+(cdr 1)
+
+;The object 1, passed as the first argument to cdr, is not the correct type.
+;To continue, call RESTART with an option number:
+; (RESTART 2) => Specify an argument to use in its place.
+; (RESTART 1) => Return to read-eval-print level 1.
+
+(car 1 2 3)
+
+;The procedure #[compiled-procedure 18 ("list" #x1) #x1a #x104588fc2] has been called with 3 arguments; it requires exactly 1 argument.
+;To continue, call RESTART with an option number:
+; (RESTART 1) => Return to read-eval-print level 1.
+#+END_SRC
+
+Or more specifically we can learn from the "professional" product:
+#+BEGIN_SRC scheme
+(pp cadr)
+(named-lambda (cadr x)
+  ((named-lambda (safe-car x)
+     (if (pair? x)
+         (car x)
+         (error:not-a pair? x 'safe-car)))
+   ((named-lambda (safe-cdr x)
+      (if (pair? x)
+          (cdr x)
+          (error:not-a pair? x 'safe-cdr)))
+    x)))
+#+END_SRC
+
+Or for the division case,
+#+BEGIN_SRC scheme
+(/ 5 0)
+
+;Division by zero signalled by /.
+;To continue, call RESTART with an option number:
+; (RESTART 1) => Return to read-eval-print level 1.
+#+END_SRC
+
+We got
+#+BEGIN_SRC scheme
+(pp /)
+(case number-of-arguments
+  ((1)
+   (named-lambda (complex:invert z)
+     (if (object-type? 60 z)
+         (let ((zr (system-pair-car z)) (zi (system-pair-cdr z)))
+           (let ((d (real:+ (real:square zr) (real:square zi))))
+             (system-pair-cons 60 (real:/ zr d) (real:/ (real:negate zi) d))))
+         ((named-lambda (real:invert x) (if (object-type? 6 x) (let ((x x)) (flonum-divide 1. x)) (rat:invert x))) z))))
+  ((2) (named-lambda (binary-/ z1 z2) (&/ z1 z2)))
+  (else (named-lambda (/ self z1 . zs) (complex:/ z1 (reduce complex:* 1 zs)))))
+;Unspecified return value
+#+END_SRC
+
+We can test this feature with following definition:
+#+BEGIN_SRC scheme
+(define test
+  (lambda x
+    (let ((number-of-arguments (length x)))
+      (case number-of-arguments
+        ((0) 'nullary)
+        ((1) 'unary)
+        ((2) 'binary)
+        (else 'recursive)))))
+#+END_SRC
+
+Then we got
+#+BEGIN_SRC scheme
+(test 1)
+
+;Value: unary
+
+(test 1 2)
+
+;Value: binary
+
+(test 1 2 3)
+
+;Value: recursive
+
+(test)
+
+;Value: nullary
+#+END_SRC
+
+From this experiment, we learned that to cope with the arity error, we need to
+take the argument as list and then check.
+
+Here is the half of that -- for the fixed arity procedures:
+#+BEGIN_SRC scheme
+(define cons*
+  (check-error-with
+   (named-lambda (cons x y) `(pair ,x ,y))
+   2))
+
+(define null?*
+  (check-error-with
+   (named-lambda (null? p)
+     (and (tagged-list? p 'pair) (null? (cdr p))))
+   1))
+
+(define pair?*
+  (check-error-with
+   (named-lambda (pair? p) (tagged-list? p 'pair))
+   1))
+
+;; (define (car* p)
+;;   (cadr p))
+
+(define car*
+  (check-error-with
+   (named-lambda (car p)
+     (if (pair?* p)
+         (cadr p)
+         (make-error-exp `("The object " ,p " is not a pair -- car"))))
+   1))
+
+(define (check-error-with proc fixed-arity)
+  (lambda x
+    (let ((number-of-arguments (length x)))
+      (if (= number-of-arguments fixed-arity)
+          (apply proc x)
+          (make-error-exp `("The procedure "
+                            ,proc
+                            " has been called with "
+                            ,number-of-arguments
+                            " arguments; it requires exactly "
+                            ,fixed-arity
+                            " argument."))))))
+
+(define cdr*
+  (check-error-with
+   (named-lambda (cdr p)
+     (if (pair?* p)
+         (caddr p)
+         (make-error-exp `("The object " ,p " is not a pair -- cdr"))))
+   1))
+;; (define (cdr* p)
+;;   (caddr p))
+#+END_SRC
+
+Then =primitive-apply= subroutine got
+#+BEGIN_SRC scheme
+    primitive-apply
+    (assign val (op apply-primitive-procedure)
+            (reg proc)
+            (reg argl))
+    (test (op error-exp?) (reg val))
+    (branch (label signal-error))
+    (restore continue)
+    (goto (reg continue))
+#+END_SRC
+
+Let's test what we have done so far:
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+(car 1)
+(error (The object  1  is not a pair -- car))
+
+;;; EC-Eval input:
+(cdr 1)
+(error (The object  1  is not a pair -- cdr))
+
+;;; EC-Eval input:
+(car 1 2 3)
+(error (The procedure  #[compound-procedure 24 car]  has been called with  3  arguments; it requires exactly  1  argument.))
+
+;;; EC-Eval input:
+(pair? (cons 1 2) 2 3)
+(error (The procedure  #[compound-procedure 25 pair?]  has been called with  3  arguments; it requires exactly  1  argument.))
+
+;;; EC-Eval input:
+(cons 1 2 3)
+(error (The procedure  #[compound-procedure 26 cons]  has been called with  3  arguments; it requires exactly  2  argument.))
+
+#+END_SRC
+
+So far so good!

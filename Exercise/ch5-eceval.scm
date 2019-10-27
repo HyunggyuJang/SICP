@@ -440,6 +440,8 @@
     (assign val (op apply-primitive-procedure)
             (reg proc)
             (reg argl))
+    (test (op error-exp?) (reg val))
+    (branch (label signal-error))
     (restore continue)
     (goto (reg continue))
 

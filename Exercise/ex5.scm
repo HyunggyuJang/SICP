@@ -1376,3 +1376,23 @@ force-evaluated
   (if (< n 2)
       n
       (+ (fib (- n 1)) (fib (- n 2)))))
+
+;; Exercise 5.30
+(define test
+  (lambda x
+    (let ((number-of-arguments (length x)))
+      (case number-of-arguments
+        ((0) 'nullary)
+        ((1) 'unary)
+        ((2) 'binary)
+        (else 'recursive)))))
+
+;; (define (test-arity arity)
+;;   (lambda x
+;;     (let ((number-of-arguments (length x)))
+;;       (case number-of-arguments
+;;         (arity 'arity)
+;;         ((0) 'nullary)
+;;         ((1) 'unary)
+;;         ((2) 'binary)
+;;         (else 'recursive)))))

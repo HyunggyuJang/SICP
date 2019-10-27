@@ -135,20 +135,56 @@
 
 (define (primitive-implementation proc) (cadr proc))
 
-(define (cons* x y)
-  `(pair ,x ,y))
+(define (check-error-with proc fixed-arity)
+  (lambda x
+    (let ((number-of-arguments (length x)))
+      (if (= number-of-arguments fixed-arity)
+          (apply proc x)
+          (make-error-exp `("The procedure "
+                            ,proc
+                            " has been called with "
+                            ,number-of-arguments
+                            " arguments; it requires exactly "
+                            ,fixed-arity
+                            " argument."))))))
 
-(define (null?* p)
-  (and (tagged-list? p 'pair) (null? (cdr p))))
+(define cons*
+  (check-error-with
+   (named-lambda (cons x y) `(pair ,x ,y))
+   2))
 
-(define (pair?* p)
-  (tagged-list? p 'pair))
+(define null?*
+  (check-error-with
+   (named-lambda (null? p)
+     (and (tagged-list? p 'pair) (null? (cdr p))))
+   1))
 
-(define (car* p)
-  (cadr p))
+(define pair?*
+  (check-error-with
+   (named-lambda (pair? p) (tagged-list? p 'pair))
+   1))
 
-(define (cdr* p)
-  (caddr p))
+;; (define (car* p)
+;;   (cadr p))
+
+(define car*
+  (check-error-with
+   (named-lambda (car p)
+     (if (pair?* p)
+         (cadr p)
+         (make-error-exp `("The object " ,p " is not a pair -- car"))))
+   1))
+
+
+(define cdr*
+  (check-error-with
+   (named-lambda (cdr p)
+     (if (pair?* p)
+         (caddr p)
+         (make-error-exp `("The object " ,p " is not a pair -- cdr"))))
+   1))
+;; (define (cdr* p)
+;;   (caddr p))
 
 (define primitive-procedures
   (list (list 'car car*)
