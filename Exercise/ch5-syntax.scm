@@ -12,7 +12,21 @@
 (define (quoted? exp)
   (tagged-list? exp 'quote))
 
-(define (text-of-quotation exp) (cadr exp))
+(define (text-of-quotation exp)
+  (tree-map identity-procedure
+            (lambda (x y) `(pair ,x ,y))
+            '(pair)
+            (cadr exp)))
+
+(define (tree-map leaf-op combine-op initial tree)
+  (cond ((null? tree) initial)
+        ((not (pair? tree)) (leaf-op tree))
+        (else                           ;pair
+         (combine-op
+          (tree-map leaf-op combine-op initial
+                    (car tree))
+          (tree-map leaf-op combine-op initial
+                    (cdr tree))))))
 
 (define (tagged-list? exp tag)
   (if (pair? exp)

@@ -86,6 +86,10 @@
    `(car ,car)
    `(cdr ,cdr)
 
+   ;; Exercise 5.30a
+   `(error-exp? ,error-exp?)
+   `(lookup-variable-value-with-error ,lookup-variable-value-with-error)
+
    ;;operations in eceval-support.scm
    (list 'true? true?)
    (list 'make-procedure make-procedure)
@@ -145,6 +149,13 @@
     (assign val (const bad-cond-syntax-error))
     (goto (label signal-error))
 
+    ;; unbound-variable
+    ;; (goto (label signal-error))
+
+    unmatched-argument-number-error
+    (restore continue)
+    (assign val (reg env))
+    (goto (label signal-error))
 
     signal-error
     (perform (op user-print) (reg val))
@@ -255,7 +266,12 @@
     (assign val (reg exp))
     (goto (reg continue))
     ev-variable
-    (assign val (op lookup-variable-value) (reg exp) (reg env))
+    ;; (assign val (op lookup-variable-value) (reg exp) (reg env))
+    (assign val (op lookup-variable-value-with-error) (reg exp) (reg env))
+    (test (op error-exp?) (reg val))
+    ;; unbound-variable
+    ;; Input: val -- Error message
+    (branch (label signal-error))
     (goto (reg continue))
     ev-quoted
     (assign val (op text-of-quotation) (reg exp))
@@ -267,92 +283,92 @@
             (reg unev) (reg exp) (reg env))
     (goto (reg continue))
 
-;;     ;; lazy evaluator
-;; ev-application
-;; (save continue)
-;; (save env)
-;; (assign unev (op operands) (reg exp))
-;; (save unev)
-;; (assign exp (op operator) (reg exp))
-;; (assign continue (label ev-appl-did-operator))
-;; (goto (label actual-value))
-;; ev-appl-did-operator
-;; (restore unev)
-;; (restore env)
-;; (assign proc (reg val))
-;; (branch (label apply-dispatch))
+    ;;     ;; lazy evaluator
+    ;; ev-application
+    ;; (save continue)
+    ;; (save env)
+    ;; (assign unev (op operands) (reg exp))
+    ;; (save unev)
+    ;; (assign exp (op operator) (reg exp))
+    ;; (assign continue (label ev-appl-did-operator))
+    ;; (goto (label actual-value))
+    ;; ev-appl-did-operator
+    ;; (restore unev)
+    ;; (restore env)
+    ;; (assign proc (reg val))
+    ;; (branch (label apply-dispatch))
 
-;; apply-dispatch
-;; (assign argl (op empty-arglist))
-;; ;; Input proc, unev, env, stack -- top value is return point
-;; ;; Output val
-;; ;; Write all
-;; ;; Stack top value removed
-;; (test (op primitive-procedure?) (reg proc))
-;; (branch (label primitive-apply))
-;; (test (op compound-procedure?) (reg proc))
-;; (branch (label compound-apply))
-;; (goto (label unknown-procedure-type))
+    ;; apply-dispatch
+    ;; (assign argl (op empty-arglist))
+    ;; ;; Input proc, unev, env, stack -- top value is return point
+    ;; ;; Output val
+    ;; ;; Write all
+    ;; ;; Stack top value removed
+    ;; (test (op primitive-procedure?) (reg proc))
+    ;; (branch (label primitive-apply))
+    ;; (test (op compound-procedure?) (reg proc))
+    ;; (branch (label compound-apply))
+    ;; (goto (label unknown-procedure-type))
 
-;; primitive-apply
-;; (test (op no-operands?) (reg unev))
-;; (branch (label exec-primitive-apply))
-;; (save proc)
-;; primitive-operand-loop
-;; (save argl)
-;; (assign exp (op first-operand) (reg unev))
-;; (test (op last-operand?) (reg unev))
-;; (branch (label prim-last-arg))
-;; (save env)
-;; (save unev)
-;; (assign continue (label prim-accumulate-arg))
-;; (goto (label actual-value))
-;; prim-accumulate-arg
-;; (restore unev)
-;; (restore env)
-;; (restore argl)
-;; (assign argl (op adjoin-arg) (reg val) (reg argl))
-;; (assign unev (op rest-operands) (reg unev))
-;; (goto (label primitive-operand-loop))
-;; prim-last-arg
-;; (assign continue (label prim-accum-last-arg))
-;; (goto (label actual-value))
-;; prim-accum-last-arg
-;; (restore argl)
-;; (assign argl (op adjoin-arg) (reg val) (reg argl))
-;; (restore proc)
-;; (goto (label exec-primitive-apply))
-;; exec-primitive-apply
-;; (assign val (op apply-primitive-procedure)
-;;         (reg proc)
-;;         (reg argl))
-;; (restore continue)
-;; (goto (reg continue))
+    ;; primitive-apply
+    ;; (test (op no-operands?) (reg unev))
+    ;; (branch (label exec-primitive-apply))
+    ;; (save proc)
+    ;; primitive-operand-loop
+    ;; (save argl)
+    ;; (assign exp (op first-operand) (reg unev))
+    ;; (test (op last-operand?) (reg unev))
+    ;; (branch (label prim-last-arg))
+    ;; (save env)
+    ;; (save unev)
+    ;; (assign continue (label prim-accumulate-arg))
+    ;; (goto (label actual-value))
+    ;; prim-accumulate-arg
+    ;; (restore unev)
+    ;; (restore env)
+    ;; (restore argl)
+    ;; (assign argl (op adjoin-arg) (reg val) (reg argl))
+    ;; (assign unev (op rest-operands) (reg unev))
+    ;; (goto (label primitive-operand-loop))
+    ;; prim-last-arg
+    ;; (assign continue (label prim-accum-last-arg))
+    ;; (goto (label actual-value))
+    ;; prim-accum-last-arg
+    ;; (restore argl)
+    ;; (assign argl (op adjoin-arg) (reg val) (reg argl))
+    ;; (restore proc)
+    ;; (goto (label exec-primitive-apply))
+    ;; exec-primitive-apply
+    ;; (assign val (op apply-primitive-procedure)
+    ;;         (reg proc)
+    ;;         (reg argl))
+    ;; (restore continue)
+    ;; (goto (reg continue))
 
-;; compound-apply
-;; (test (op no-operands?) (reg unev))
-;; (branch (label exec-compound-apply))
-;; compound-operand-loop
-;; (assign exp (op first-operand) (reg unev))
-;; (test (op last-operand?) (reg unev))
-;; (branch (label compound-last-arg))
-;; (assign val (op delay-it) (reg exp) (reg env))
-;; (assign argl (op adjoin-arg) (reg val) (reg argl))
-;; (assign unev (op rest-operands) (reg unev))
-;; (goto (label compound-operand-loop))
-;; compound-last-arg
-;; (assign val (op delay-it) (reg exp) (reg env))
-;; compound-accum-last-arg
-;; (assign argl (op adjoin-arg) (reg val) (reg argl))
-;; (goto (label exec-compound-apply))
+    ;; compound-apply
+    ;; (test (op no-operands?) (reg unev))
+    ;; (branch (label exec-compound-apply))
+    ;; compound-operand-loop
+    ;; (assign exp (op first-operand) (reg unev))
+    ;; (test (op last-operand?) (reg unev))
+    ;; (branch (label compound-last-arg))
+    ;; (assign val (op delay-it) (reg exp) (reg env))
+    ;; (assign argl (op adjoin-arg) (reg val) (reg argl))
+    ;; (assign unev (op rest-operands) (reg unev))
+    ;; (goto (label compound-operand-loop))
+    ;; compound-last-arg
+    ;; (assign val (op delay-it) (reg exp) (reg env))
+    ;; compound-accum-last-arg
+    ;; (assign argl (op adjoin-arg) (reg val) (reg argl))
+    ;; (goto (label exec-compound-apply))
 
-;; exec-compound-apply
-;; (assign unev (op procedure-parameters) (reg proc))
-;; (assign env (op procedure-environment) (reg proc))
-;; (assign env (op extend-environment)
-;;         (reg unev) (reg argl) (reg env))
-;; (assign unev (op procedure-body) (reg proc))
-;; (goto (label ev-sequence))
+    ;; exec-compound-apply
+    ;; (assign unev (op procedure-parameters) (reg proc))
+    ;; (assign env (op procedure-environment) (reg proc))
+    ;; (assign env (op extend-environment)
+    ;;         (reg unev) (reg argl) (reg env))
+    ;; (assign unev (op procedure-body) (reg proc))
+    ;; (goto (label ev-sequence))
 
     ev-application
     (save continue)
@@ -413,6 +429,8 @@
     (assign env (op procedure-environment) (reg proc))
     (assign env (op extend-environment)
             (reg unev) (reg argl) (reg env))
+    (test (op error-exp?) (reg env))
+    (branch (label unmatched-argument-number-error))
     (assign unev (op procedure-body) (reg proc))
     (goto (label ev-sequence))
 
@@ -536,8 +554,11 @@
     (restore continue)
     (restore env)
     (restore unev)
-    (perform
-     (op set-variable-value!) (reg unev) (reg val) (reg env))
+    ;; (perform
+    ;;  (op set-variable-value!) (reg unev) (reg val) (reg env))
+    (assign val (op set-variable-value!) (reg unev) (reg val) (reg env))
+    (test (op error-exp?) (reg val))
+    (branch (label signal-error))
     (assign val (const ok))
     (goto (reg continue))
 
@@ -556,7 +577,6 @@
     (perform
      (op define-variable!) (reg unev) (reg val) (reg env))
     (assign val (const ok))
-    (goto (reg continue))
-    )))
+    (goto (reg continue)))))
 
 '(EXPLICIT CONTROL EVALUATOR LOADED)

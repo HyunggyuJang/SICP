@@ -49,9 +49,31 @@
   (if (= (length vars) (length vals))
       (cons (make-frame vars vals) base-env)
       (if (< (length vars) (length vals))
-          (error "Too many arguments supplied" vars vals)
-          (error "Too few arguments supplied" vars vals))))
+          ;; (error "Too many arguments supplied" vars vals)
+          (make-error-exp `("Too many arguments supplied" ,vars ,vals))
+          ;; (error "Too few arguments supplied" vars vals)
+          (make-error-exp `("Too few arguments supplied" ,vars ,vals))
+          )))
 
+(define (error-exp? exp)
+  (tagged-list? exp 'error))
+
+(define (make-error-exp exp) `(error ,exp))
+
+(define (lookup-variable-value-with-error var env)
+  (define (env-loop env)
+    (define (scan vars vals)
+      (cond ((null? vars)
+             (env-loop (enclosing-environment env)))
+            ((eq? var (car vars))
+             (car vals))
+            (else (scan (cdr vars) (cdr vals)))))
+    (if (eq? env the-empty-environment)
+        (make-error-exp `("Unbound variable" ,var))
+        (let ((frame (first-frame env)))
+          (scan (frame-variables frame)
+                (frame-values frame)))))
+  (env-loop env))
 
 (define (lookup-variable-value var env)
   (define (env-loop env)
@@ -77,7 +99,8 @@
              (set-car! vals val))
             (else (scan (cdr vars) (cdr vals)))))
     (if (eq? env the-empty-environment)
-        (error "Unbound variable -- SET!" var)
+        ;; (error "Unbound variable -- SET!" var)
+        (make-error-exp `("Unbound variable -- SET!" ,var))
         (let ((frame (first-frame env)))
           (scan (frame-variables frame)
                 (frame-values frame)))))
@@ -111,11 +134,27 @@
 
 (define (primitive-implementation proc) (cadr proc))
 
+(define (cons* x y)
+  `(pair ,x ,y))
+
+(define (null?* p)
+  (and (tagged-list? p 'pair) (null? (cdr p))))
+
+(define (pair?* p)
+  (tagged-list? p 'pair))
+
+(define (car* p)
+  (cadr p))
+
+(define (cdr* p)
+  (caddr p))
+
 (define primitive-procedures
-  (list (list 'car car)
-        (list 'cdr cdr)
-        (list 'cons cons)
-        (list 'null? null?)
+  (list (list 'car car*)
+        (list 'cdr cdr*)
+        (list 'cons cons*)
+        (list 'null? null?*)
+        (list 'pair? pair?*)
         ;;above from book -- here are some more
 	      (list '+ +)
 	      (list '- -)
@@ -124,10 +163,10 @@
 	      (list '/ /)
 	      (list '> >)
 	      (list '< <)
-        `(not ,not)
-        `(list ,list)
-        `(set-cdr! ,set-cdr!)
-        `(pair? ,pair?)
+        ;; `(not ,not)
+        ;; `(list ,list)
+        ;; `(set-cdr! ,set-cdr!)
+        ;; `(pair? ,pair?)
         ))
 
 (define (primitive-procedure-names)
@@ -152,12 +191,32 @@
   (newline) (display string) (newline))
 
 (define (user-print object)
-  (if (compound-procedure? object)
-      (display (list 'compound-procedure
-                     (procedure-parameters object)
-                     (procedure-body object)
-                     '<procedure-env>))
-      (display object)))
+  (cond ((compound-procedure? object)
+         (display (list 'compound-procedure
+                        (procedure-parameters object)
+                        (procedure-body object)
+                        '<procedure-env>)))
+        ((pair?* object)
+         (print-pair* object))
+        (else (display object))))
+
+;; Structural induction on pair
+(define (print-pair* p)
+  (define (iter p)
+    (cond ((null?* p))
+          ((pair?* p)
+           (display " ")
+           (display (car* p))
+           (iter (cdr* p)))
+          (else
+           ;; not pair -- atomic expression
+           (display " . ")
+           (display p))))
+  (display "(")
+  (display (car* p))
+  (iter (cdr* p))
+  (display ")"))
+
 
 ;;; Simulation of new machine operations needed by
 ;;;  eceval machine (not used by compiled code)

@@ -2785,3 +2785,424 @@ left hand side in the /S(n)/ formula:
 (2) - 40/, which, in turn, means /a = 56/.
 
 So the solution is /S(n) = 56 Fib(n + 1) - 40/.
+*** Exercise 5.30
+**** a.
+We need to use =flag= register to signal that these erroneous process occurred.
+Before modifying the =loopkup= operation as outlined in the text, we need to
+inspect what the value of =flag= can be in user defined process. And then we
+should design the special value that signal error, which are set in =flag=
+register.
+
+For the current version of register machine, we set =flag= as the result of
+execution of condition operation; we need to fix this since we are going to
+define special value that can not be set in user defined process but the current
+one there is no restriction on the value of =flag= user can cause.
+
+Moreover, as we are using the =flag= register only in the =branch= to determine
+where to proceed, we don't need =flag= to be other than boolean. So it is
+reasonable to restrict the condition operation in =test= can only set the
+value of =flag= to true or false.
+
+We can make contract informally to the user of our register machine but the
+implementor of =eceval= machine is one of the user of this. And this is the
+restriction =eceval= implementor to impose to the user of his machine. So maybe
+it is none of the business for the implementor of our register machine but for
+the =eceval= evaluator; that means, if the =eceval= implementor is along with
+the contract that the value of =flag= should be boolean in processing user
+defined process -- the unwinding process, it is good to go.
+
+So now, we restricted the =flag= value to be boolean in normal process, we are
+good to define whatever value we want to use the signaling error.
+
+So for presentation let's change the =lookup-variable-value= to support the idea
+outlined above:
+#+BEGIN_SRC scheme
+(define (lookup-variable-value var env)
+  (define (env-loop env)
+    (define (scan vars vals)
+      (cond ((null? vars)
+             (env-loop (enclosing-environment env)))
+            ((eq? var (car vars))
+             (car vals))
+            (else (scan (cdr vars) (cdr vals)))))
+    (if (eq? env the-empty-environment)
+        (error "Unbound variable" var)
+        (let ((frame (first-frame env)))
+          (scan (frame-variables frame)
+                (frame-values frame)))))
+  (env-loop env))
+#+END_SRC
+
+And then
+#+BEGIN_SRC scheme
+    ev-variable
+    ;; (assign val (op lookup-variable-value) (reg exp) (reg env))
+    (assign val (op lookup-variable-value-with-error) (reg exp) (reg env) (reg flag))
+    (test (op error-flag?) (reg flag))
+    ;; unbound-variable
+    ;; Input: exp -- given unbound variable
+    (branch (label unbound-variable))
+    (goto (reg continue))
+
+    unbound-variable
+    (assign val (op list) (const "Unbound variable") (reg exp))
+    (goto (label signal-error))
+#+END_SRC
+
+With this configuration, let's test it:
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+x
+
+(total-pushes = 0 maximum-depth = 0)
+;;; EC-Eval value:
+#t
+
+;;; EC-Eval input:
+y
+
+(total-pushes = 0 maximum-depth = 0)
+;;; EC-Eval value:
+#t
+
+#+END_SRC
+
+Unfortunately this idea won't work since we can't change the actual contents of
+=flag= register unless =assign= it directly; there is a way to embody this idea,
+that is, to unwind this machine operation into subroutine. Then we are able to
+mutate the flag register as we wanted; but it thought as would be better to goto
+=signal-error= entry point rather than to mutate the flag register and then go
+back to caller. However there is some issues around this problem like the make
+the stack or other registers to be consist with the contract -- this is the
+responsibilities to the caller not the =lookup-variable= itself.
+
+Whatever it be, for now, we are not going to implement the
+=lookup-variable-value= procedure as subroutine.
+
+So it would be better to get back to the original idea suggested in the text --
+use the value that can not be set by user, that is using the type-tag I think.
+
+Here is the code:
+#+BEGIN_SRC scheme
+(define (error-exp? exp)
+  (tagged-list? exp 'error))
+
+(define (make-error-exp exp) `(error ,exp))
+
+(define (lookup-variable-value-with-error var env)
+  (define (env-loop env)
+    (define (scan vars vals)
+      (cond ((null? vars)
+             (env-loop (enclosing-environment env)))
+            ((eq? var (car vars))
+             (car vals))
+            (else (scan (cdr vars) (cdr vals)))))
+    (if (eq? env the-empty-environment)
+        (make-error-exp `("Unbound variable" ,var))
+        (let ((frame (first-frame env)))
+          (scan (frame-variables frame)
+                (frame-values frame)))))
+  (env-loop env))
+#+END_SRC
+
+#+BEGIN_SRC scheme
+    ev-variable
+    ;; (assign val (op lookup-variable-value) (reg exp) (reg env))
+    (assign val (op lookup-variable-value-with-error) (reg exp) (reg env))
+    (test (op error-exp?) (reg val))
+    ;; unbound-variable
+    ;; Input: val -- Error message
+    (branch (label signal-error))
+    (goto (reg continue))
+#+END_SRC
+
+Let's test:
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+y
+(error (Unbound variable y))
+
+;;; EC-Eval input:
+x
+
+(total-pushes = 0 maximum-depth = 0)
+;;; EC-Eval value:
+5
+
+#+END_SRC
+
+Now it runs as expected. Here we chose to delegate the duty producing error
+message to the procedure who signal this error rather than to the caller -- just
+hand over this to the =signal-error= subroutine.
+
+Now let's convert all the =error= expression into the one outlined above:
+#+BEGIN_SRC scheme
+(define (extend-environment vars vals base-env)
+  (if (= (length vars) (length vals))
+      (cons (make-frame vars vals) base-env)
+      (if (< (length vars) (length vals))
+          ;; (error "Too many arguments supplied" vars vals)
+          (make-error-exp `("Too many arguments supplied" ,vars ,vals))
+          ;; (error "Too few arguments supplied" vars vals)
+          (make-error-exp `("Too few arguments supplied" ,vars ,vals))
+          )))
+
+(define (set-variable-value! var val env)
+  (define (env-loop env)
+    (define (scan vars vals)
+      (cond ((null? vars)
+             (env-loop (enclosing-environment env)))
+            ((eq? var (car vars))
+             (set-car! vals val))
+            (else (scan (cdr vars) (cdr vals)))))
+    (if (eq? env the-empty-environment)
+        ;; (error "Unbound variable -- SET!" var)
+        (make-error-exp `("Unbound variable -- SET!" ,var))
+        (let ((frame (first-frame env)))
+          (scan (frame-variables frame)
+                (frame-values frame)))))
+  (env-loop env))
+#+END_SRC
+
+Then in =ev-assignment=,
+#+BEGIN_SRC scheme
+    ;; (perform
+    ;;  (op set-variable-value!) (reg unev) (reg val) (reg env))
+    (assign val (op set-variable-value!) (reg unev) (reg val) (reg env))
+    (test (op error-exp?) (reg val))
+    (branch (label signal-error))
+    (assign val (const ok))
+    (goto (reg continue))
+#+END_SRC
+
+And in =compound-apply=,
+#+BEGIN_SRC scheme
+    (assign env (op extend-environment)
+            (reg unev) (reg argl) (reg env))
+    (test (op error-exp?) (reg env))
+    (branch (label unmatched-argument-number-error))
+    (assign unev (op procedure-body) (reg proc))
+    (goto (label ev-sequence))
+
+
+    unmatched-argument-number-error
+    (restore continue)
+    (assign val (reg env))
+    (goto (label signal-error))
+#+END_SRC
+
+These are all the procedure signal error in [[file:Exercise/ch5-eceval-support.scm][support file]].
+
+Let's test:
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+(set! y 3)
+(error (Unbound variable -- SET! y))
+
+;;; EC-Eval input:
+(define (test x y) 5)
+
+(total-pushes = 3 maximum-depth = 3)
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+(test 2 3 1 3)
+(error (Too many arguments supplied (x y) (2 3 1 3)))
+
+;;; EC-Eval input:
+(test 1)
+(error (Too few arguments supplied (x y) (1)))
+
+#+END_SRC
+
+Great! But there is also problem in this approach, that is, user can produce
+this tagged data as they want. Like this:
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+(define x '(error "This should be forbidden by user"))
+
+(total-pushes = 3 maximum-depth = 3)
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+x
+(error This should be forbidden by user)
+
+#+END_SRC
+
+Or
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+(define y '(primitive "this also should be forbiddend"))
+
+(total-pushes = 3 maximum-depth = 3)
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+(y 5)
+;The object "this also should be forbiddend" is not applicable.
+;To continue, call RESTART with an option number:
+; (RESTART 2) => Specify a procedure to use in its place.
+; (RESTART 1) => Return to read-eval-print level 1.
+#+END_SRC
+
+We need to cope with this situation by noting that user only can construct pair
+data -- thus list data -- via the =cons=. So if we make change the pair
+structure to the tagged data like =(pair x y)= then we are free from this kind
+of error:
+#+BEGIN_SRC scheme
+,*** in primitive-procedures
+  (list (list 'car cadr)
+        (list 'cdr caddr)
+        (list 'cons (lambda (x y) `(pair ,x ,y)))
+        (list 'null? (lambda (p) (and (tagged-list? p 'pair) (null? (cdr p)))))
+        (list 'pair? (lambda (p) (tagged-list? p 'pair)))
+        ...)
+
+,*** in setup-environment
+    (define-variable! 'nil '(pair) initial-env)
+#+END_SRC
+
+Then
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+(define x (cons 'error (cons "This should be forbidden by user" nil)))
+
+(total-pushes = 19 maximum-depth = 11)
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+x
+
+(total-pushes = 0 maximum-depth = 0)
+;;; EC-Eval value:
+(pair error (pair This should be forbidden by user (pair)))
+
+#+END_SRC
+
+Here we used =cons= rather than =quote=; but it should work if we used =quote=
+instead -- we need to change the =test-of-quotation= procedure as subroutine
+that converts underlying pair structure into that of =eceval=:
+#+BEGIN_SRC scheme
+(define (text-of-quotation exp)
+  (tree-map identity-procedure
+            (lambda (x y) `(pair ,x ,y))
+            '(pair)
+            (cadr exp)))
+#+END_SRC
+
+=tree-map= is the one implemented in [[Exercise 5.12][exercise 5.12]].
+
+Then
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+(define x '(error "This should be forbidden by user"))
+
+(total-pushes = 3 maximum-depth = 3)
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+x
+
+(total-pushes = 0 maximum-depth = 0)
+;;; EC-Eval value:
+(pair error (pair This should be forbidden by user (pair)))
+
+;;; EC-Eval input:
+(define y '(primitive "this also should be forbiddend"))
+
+(total-pushes = 3 maximum-depth = 3)
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+(y 5)
+unknown-procedure-type-error
+
+#+END_SRC
+
+Now we don't need any additional definition of =nil=:
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+'()
+
+(total-pushes = 0 maximum-depth = 0)
+;;; EC-Eval value:
+(pair)
+
+;;; EC-Eval input:
+(null? '())
+
+(total-pushes = 5 maximum-depth = 3)
+;;; EC-Eval value:
+#t
+
+#+END_SRC
+
+For completeness, we should define print procedure for our pair structure:
+#+BEGIN_SRC scheme
+(define (user-print object)
+  (cond ((compound-procedure? object)
+         (display (list 'compound-procedure
+                        (procedure-parameters object)
+                        (procedure-body object)
+                        '<procedure-env>)))
+        ((pair?* object)
+         (print-pair* object))
+        (else (display object))))
+
+;; Structural induction on pair
+(define (print-pair* p)
+  (define (iter p)
+    (cond ((null?* p))
+          ((pair?* p)
+           (display " ")
+           (display (car* p))
+           (iter (cdr* p)))
+          (else
+           ;; not pair -- atomic expression
+           (display " . ")
+           (display p))))
+  (display "(")
+  (display (car* p))
+  (iter (cdr* p))
+  (display ")"))
+#+END_SRC
+
+Then
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+(define x '(error "This should be forbidden by user"))
+
+(total-pushes = 3 maximum-depth = 3)
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+x
+
+(total-pushes = 0 maximum-depth = 0)
+;;; EC-Eval value:
+(error This should be forbidden by user)
+
+;;; EC-Eval input:
+(car x)
+
+(total-pushes = 5 maximum-depth = 3)
+;;; EC-Eval value:
+error
+
+#+END_SRC
+
+Works as expected. For efficiency, professional product would use bit-wise typed
+data rather than this version -- typed using pair structure, as noted in text book.
+
+Now we are good to apply our strategy to the rest of instructions that may
+corrupt in some condition other than the ones in the support file, which
+signaling with the =error= procedure. To do that, we first look into the
+=eceval= code to figure out.
