@@ -59,7 +59,8 @@
   (tagged-list? exp 'error))
 
 (define (make-error-exp exp) `(error ,exp))
-
+(define (ill-formed-syntax-exp exp)
+  (make-error-exp `("Ill-formed syntax" ,exp)))
 (define (lookup-variable-value-with-error var env)
   (define (env-loop env)
     (define (scan vars vals)

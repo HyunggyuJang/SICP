@@ -3206,3 +3206,287 @@ Now we are good to apply our strategy to the rest of instructions that may
 corrupt in some condition other than the ones in the support file, which
 signaling with the =error= procedure. To do that, we first look into the
 =eceval= code to figure out.
+
+Here is the list:
+- =self-eval=: It is good as it is
+- =variable=: We handled this in =lookup-variable-value= procedure.
+- =quote=:
+  We need to handle
+  #+BEGIN_SRC scheme
+(quote)
+
+;Ill-formed syntax: (quote)
+;To continue, call RESTART with an option number:
+; (RESTART 1) => Return to read-eval-print level 1.
+
+(quote x . y)
+
+;Ill-formed syntax: (quote x . y)
+;To continue, call RESTART with an option number:
+; (RESTART 1) => Return to read-eval-print level 1.
+  #+END_SRC
+- =lambda=:
+  We need to handle
+  #+BEGIN_SRC scheme
+(lambda)
+
+;Ill-formed syntax: (lambda)
+;To continue, call RESTART with an option number:
+; (RESTART 1) => Return to read-eval-print level 1.
+
+(lambda x)
+
+;Ill-formed syntax: (lambda x)
+;To continue, call RESTART with an option number:
+; (RESTART 1) => Return to read-eval-print level 1.
+
+(lambda x y . z)
+
+;Ill-formed syntax: (lambda x y . z)
+;To continue, call RESTART with an option number:
+; (RESTART 1) => Return to read-eval-print level 1.
+  #+END_SRC
+- =application=: =extend-environment= handles the error case. For the error
+  during the application of primitive procedure, we will handle this *b.* part
+  of this exercise.
+
+  And should handle
+  #+BEGIN_SRC scheme
+(x 1 . 4)
+
+;Combination must be a proper list: (x 1 . 4)
+;To continue, call RESTART with an option number:
+; (RESTART 1) => Return to read-eval-print level 1.
+  #+END_SRC
+- =begin= or =ev-sequence=:
+  Should it accept empty sequence?
+  #+BEGIN_SRC scheme
+(begin)
+
+;Unspecified return value
+  #+END_SRC
+
+  For consistency with the =lambda= expression, let us choose above expression
+  as ill-formed one.
+
+  So we can say explicitly that the contraction of =ev-sequence='s input should
+  not be empty.
+- =if=:
+  Should handle
+  #+BEGIN_SRC scheme
+(if)
+
+;Ill-formed syntax: (if)
+;To continue, call RESTART with an option number:
+; (RESTART 1) => Return to read-eval-print level 1.
+
+(if x)
+
+;Ill-formed syntax: (if x)
+;To continue, call RESTART with an option number:
+; (RESTART 1) => Return to read-eval-print level 1.
+
+(if 1 2 3 4)
+
+;Ill-formed syntax: (if 1 2 3 4)
+;To continue, call RESTART with an option number:
+; (RESTART 1) => Return to read-eval-print level 1.
+
+(if 1 . 2)
+
+;Ill-formed syntax: (if 1 . 2)
+;To continue, call RESTART with an option number:
+; (RESTART 1) => Return to read-eval-print level 1.
+  #+END_SRC
+- =assignment=:
+  Should handle
+  #+BEGIN_SRC scheme
+(set! x y z)
+
+;Variable required in this context: x
+;To continue, call RESTART with an option number:
+; (RESTART 1) => Return to read-eval-print level 1.
+
+(set! x . y)
+
+;Variable required in this context: x
+;To continue, call RESTART with an option number:
+; (RESTART 1) => Return to read-eval-print level 1.
+  #+END_SRC
+
+  But should we?
+  #+BEGIN_SRC scheme
+(define x 2)
+
+;Value: x
+
+(set! x)
+
+;Value: 2
+
+x
+
+;Unassigned variable: x
+;To continue, call RESTART with an option number:
+; (RESTART 3) => Specify a value to use instead of x.
+; (RESTART 2) => Set x to a given value.
+; (RESTART 1) => Return to read-eval-print level 1.
+  #+END_SRC
+  This is just like =unset!= if it exists; but it is "Unassigned" not "Unbound"
+  as follows:
+  #+BEGIN_SRC scheme
+y
+
+;Unbound variable: y
+;To continue, call RESTART with an option number:
+; (RESTART 3) => Specify a value to use instead of y.
+; (RESTART 2) => Define y to a given value.
+; (RESTART 1) => Return to read-eval-print level 1.
+  #+END_SRC
+
+  The difference is that we can re-set the value:
+  #+BEGIN_SRC scheme
+(set! x 3)
+
+;Unspecified return value
+  #+END_SRC
+
+  Maybe it is used internally, when we want to handle expression such as
+  =letrec=. So it is not needed for now; let us choose to define such expression
+  as ill-formed one.
+- =definition=:
+  Should handle
+  #+BEGIN_SRC scheme
+(define)
+
+;Ill-formed syntax: (define)
+;To continue, call RESTART with an option number:
+; (RESTART 1) => Return to read-eval-print level 1.
+
+(define x y z)
+
+;Ill-formed syntax: (define x y z)
+;To continue, call RESTART with an option number:
+; (RESTART 1) => Return to read-eval-print level 1.
+
+(define x . y)
+
+;Ill-formed syntax: (define x . y)
+;To continue, call RESTART with an option number:
+; (RESTART 1) => Return to read-eval-print level 1.
+  #+END_SRC
+
+
+As I've implemented those, let's test them:
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+(quote x . y)
+(error (Ill-formed syntax (quote x . y)))
+
+;;; EC-Eval input:
+(quote)
+(error (Ill-formed syntax (quote)))
+
+;;; EC-Eval input:
+(lambda)
+(error (Ill-formed syntax (lambda)))
+
+;;; EC-Eval input:
+(lambda x)
+(error (Ill-formed syntax (lambda x)))
+
+;;; EC-Eval input:
+(lambda x y . z)
+(error (Ill-formed syntax (lambda x y . z)))
+
+;;; EC-Eval input:
+(x 1 . 4)
+(error (Ill-formed syntax (x 1 . 4)))
+
+;;; EC-Eval input:
+(begin)
+(error (Ill-formed syntax (begin)))
+
+;;; EC-Eval input:
+(begin x . y)
+(error (Ill-formed syntax (begin x . y)))
+
+;;; EC-Eval input:
+(if)
+(error (Ill-formed syntax (if)))
+
+;;; EC-Eval input:
+(if x)
+(error (Ill-formed syntax (if x)))
+
+;;; EC-Eval input:
+(if 1 2 3 4)
+(error (Ill-formed syntax (if 1 2 3 4)))
+
+;;; EC-Eval input:
+(if 1 . 2)
+(error (Ill-formed syntax (if 1 . 2)))
+
+;;; EC-Eval input:
+(set!)
+(error (Ill-formed syntax (set!)))
+
+;;; EC-Eval input:
+(set! x)
+(error (Ill-formed syntax (set! x)))
+
+;;; EC-Eval input:
+(set! x y z)
+(error (Ill-formed syntax (set! x y z)))
+
+;;; EC-Eval input:
+(set! x . y)
+(error (Ill-formed syntax (set! x . y)))
+
+;;; EC-Eval input:
+(define)
+(error (Ill-formed syntax (define)))
+
+;;; EC-Eval input:
+(define x y z)
+(error (Ill-formed syntax (define x y z)))
+
+;;; EC-Eval input:
+(define x . y)
+(error (Ill-formed syntax (define x . y)))
+
+;;; EC-Eval input:
+(define x 5)
+
+(total-pushes = 3 maximum-depth = 3)
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+(set! x 3)
+
+(total-pushes = 3 maximum-depth = 3)
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+x
+
+(total-pushes = 0 maximum-depth = 0)
+;;; EC-Eval value:
+3
+
+#+END_SRC
+
+Of course the proper syntax expression works normally as expected.
+
+Note that as we depends on the =read= procedure for the parsing expression,
+unfortunately we cannot cope with the such errors handled by =read=:
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+(1 . 2 . 3)
+;Ill-formed dotted list: (1 |.| 2 |.| 3)
+;To continue, call RESTART with an option number:
+; (RESTART 1) => Return to read-eval-print level 1.
+#+END_SRC
+**** b.

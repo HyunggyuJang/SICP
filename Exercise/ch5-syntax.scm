@@ -13,10 +13,13 @@
   (tagged-list? exp 'quote))
 
 (define (text-of-quotation exp)
-  (tree-map identity-procedure
-            (lambda (x y) `(pair ,x ,y))
-            '(pair)
-            (cadr exp)))
+  (if (or (null? (cdr exp))
+          (not (null? (cddr exp))))
+      (ill-formed-syntax-exp exp)
+      (tree-map identity-procedure
+                (lambda (x y) `(pair ,x ,y))
+                '(pair)
+                (cadr exp))))
 
 (define (tree-map leaf-op combine-op initial tree)
   (cond ((null? tree) initial)
@@ -39,6 +42,13 @@
 (define (assignment? exp)
   (tagged-list? exp 'set!))
 
+(define (error-exp-if-ill-formed-assignment exp)
+  (if (or (not (list? exp))
+          (null? (cdr exp))
+          (null? (cddr exp))
+          (not (null? (cdddr exp))))
+      (ill-formed-syntax-exp exp)))
+
 (define (assignment-variable exp) (cadr exp))
 
 (define (assignment-value exp) (caddr exp))
@@ -46,6 +56,13 @@
 
 (define (definition? exp)
   (tagged-list? exp 'define))
+
+(define (error-exp-if-ill-formed-definition exp)
+  (if (or (not (list? exp))
+          (null? (cdr exp))
+          (null? (cddr exp))
+          (not (null? (cdddr exp))))
+      (ill-formed-syntax-exp exp)))
 
 (define (definition-variable exp)
   (if (symbol? (cadr exp))
@@ -59,7 +76,11 @@
                    (cddr exp))))
 
 (define (lambda? exp) (tagged-list? exp 'lambda))
-
+(define (error-exp-if-ill-formed-lambda exp)
+  (if (or (null? (cdr exp))
+          (null? (cddr exp))
+          (not (list? exp)))
+      (ill-formed-syntax-exp exp)))
 (define (lambda-parameters exp) (cadr exp))
 (define (lambda-body exp) (cddr exp))
 
@@ -67,6 +88,14 @@
   (cons 'lambda (cons parameters body)))
 
 (define (if? exp) (tagged-list? exp 'if))
+
+(define (error-exp-if-ill-formed-if exp)
+  (if (or (null? (cdr exp))
+          (null? (cddr exp))
+          (not (list? (cdr exp)))
+          (and (not (null? (cdddr exp)))
+               (not (null? (cddddr exp)))))
+      (ill-formed-syntax-exp exp)))
 
 (define (if-predicate exp) (cadr exp))
 
@@ -77,15 +106,21 @@
       (cadddr exp)
       'false))
 
-
 (define (begin? exp) (tagged-list? exp 'begin))
-(define (begin-actions exp) (cdr exp))
+(define (begin-actions exp)
+  (if (or (null? (cdr exp))
+          (not (list? (cdr exp))))
+      (ill-formed-syntax-exp exp)
+      (cdr exp)))
 
 (define (last-exp? seq) (null? (cdr seq)))
 (define (first-exp seq) (car seq))
 (define (rest-exps seq) (cdr seq))
 
 (define (application? exp) (pair? exp))
+(define (error-exp-if-ill-formed-combination exp)
+  (if (not (list? exp))
+      (ill-formed-syntax-exp exp)))
 (define (operator exp) (car exp))
 (define (operands exp) (cdr exp))
 

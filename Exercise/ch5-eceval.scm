@@ -89,6 +89,11 @@
    ;; Exercise 5.30a
    `(error-exp? ,error-exp?)
    `(lookup-variable-value-with-error ,lookup-variable-value-with-error)
+   `(error-exp-if-ill-formed-assignment ,error-exp-if-ill-formed-assignment)
+   `(error-exp-if-ill-formed-lambda ,error-exp-if-ill-formed-lambda)
+   `(error-exp-if-ill-formed-combination ,error-exp-if-ill-formed-combination)
+   `(error-exp-if-ill-formed-if ,error-exp-if-ill-formed-if)
+   `(error-exp-if-ill-formed-definition ,error-exp-if-ill-formed-definition)
 
    ;;operations in eceval-support.scm
    (list 'true? true?)
@@ -155,6 +160,10 @@
     unmatched-argument-number-error
     (restore continue)
     (assign val (reg env))
+    (goto (label signal-error))
+
+    ill-formed-begin
+    (assign val (reg unev))
     (goto (label signal-error))
 
     signal-error
@@ -275,8 +284,13 @@
     (goto (reg continue))
     ev-quoted
     (assign val (op text-of-quotation) (reg exp))
+    (test (op error-exp?) (reg val))
+    (branch (label signal-error))
     (goto (reg continue))
     ev-lambda
+    (assign val (op error-exp-if-ill-formed-lambda) (reg exp))
+    (test (op error-exp?) (reg val))
+    (branch (label signal-error))
     (assign unev (op lambda-parameters) (reg exp))
     (assign exp (op lambda-body) (reg exp))
     (assign val (op make-procedure)
@@ -371,6 +385,11 @@
     ;; (goto (label ev-sequence))
 
     ev-application
+    ;; Error handling
+    (assign val (op error-exp-if-ill-formed-combination) (reg exp))
+    (test (op error-exp?) (reg val))
+    (branch (label signal-error))
+    ;;
     (save continue)
     (save env)
     (assign unev (op operands) (reg exp))
@@ -437,6 +456,8 @@
 ;;;SECTION 5.4.2
     ev-begin
     (assign unev (op begin-actions) (reg exp))
+    (test (op error-exp?) (reg unev))
+    (branch (label ill-formed-begin))
     (save continue)
     (goto (label ev-sequence))
 
@@ -460,6 +481,9 @@
 ;;;SECTION 5.4.3
 
     ev-if
+    (assign val (op error-exp-if-ill-formed-if) (reg exp))
+    (test (op error-exp?) (reg val))
+    (branch (label signal-error))
     (save exp)
     (save env)
     (save continue)
@@ -543,6 +567,9 @@
     ;; (goto (label eval-dispatch))
 
     ev-assignment
+    (assign val (op error-exp-if-ill-formed-assignment) (reg exp))
+    (test (op error-exp?) (reg val))
+    (branch (label signal-error))
     (assign unev (op assignment-variable) (reg exp))
     (save unev)
     (assign exp (op assignment-value) (reg exp))
@@ -563,6 +590,9 @@
     (goto (reg continue))
 
     ev-definition
+    (assign val (op error-exp-if-ill-formed-definition) (reg exp))
+    (test (op error-exp?) (reg val))
+    (branch (label signal-error))
     (assign unev (op definition-variable) (reg exp))
     (save unev)
     (assign exp (op definition-value) (reg exp))
