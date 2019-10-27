@@ -148,6 +148,112 @@
                             ,fixed-arity
                             " argument."))))))
 
+(define (ensure-arity-number-gt minimum-arity proc)
+  (lambda x
+    (let ((number-of-arguments (length x)))
+      (if (< number-of-arguments minimum-arity)
+          (make-error-exp `("The procedure "
+                            ,proc
+                            " has been called with "
+                            ,number-of-arguments
+                            " arguments; it requires at least "
+                            ,minimum-arity
+                            " argument."))
+          (apply proc x)))))
+
+(define (tree-map* leaf-op combine-op initial tree)
+  (cond ((null?* tree) initial)
+        ((not (pair?* tree)) (leaf-op tree))
+        (else                           ;pair
+         (combine-op
+          (tree-map* leaf-op combine-op initial
+                    (car* tree))
+          (tree-map* leaf-op combine-op initial
+                    (cdr* tree))))))
+
+(define (pair*->pair p)
+  (tree-map* identity-procedure cons '() p))
+
+(define (represent-object* o)
+  (if (pair?* o)
+      (pair*->pair o)
+      o))
+
+(define (all-arguments-to-be? pred? args)
+  (let loop
+      ((args args))
+    (if (null? args)
+        true
+        (and (pred? (car args))
+             (loop (cdr args))))))
+
+(define -*
+  (ensure-arity-number-gt
+   1
+   (named-lambda (- . as)
+     (if (all-arguments-to-be? number? as)
+         (apply - as)
+         (make-error-exp
+          `("The object" ,(map represent-object* as)
+            ", passed as an argument to -, is not a number."))))))
+
+(define /*
+  (ensure-arity-number-gt
+   1
+   (named-lambda (/ a . as)
+     (if (all-arguments-to-be? number? (cons a as))
+         (if (or (and (null? as) (zero? a))
+                 (not (all-arguments-to-be?
+                       (lambda (a) (not (zero? a)))
+                       as)))
+             (make-error-exp
+              `("Division by zero signalled by / from arguments "
+                ,(cons a as)))
+             (apply / (cons a as)))
+         (make-error-exp
+          `("The object" ,(map represent-object* (cons a as))
+            ", passed as an argument to -, is not a number."))))))
+
+(define =*
+  (named-lambda (= . as)
+    (if (all-arguments-to-be? number? as)
+        (apply = as)
+        (make-error-exp
+         `("The object" ,(map represent-object* as)
+           ", passed as an argument to =, is not a number.")))))
+
+(define +*
+  (named-lambda (+ . as)
+    (if (all-arguments-to-be? number? as)
+        (apply + as)
+        (make-error-exp
+         `("The object" ,(map represent-object* as)
+           ", passed as an argument to +, is not a number.")))))
+
+(define **
+  (named-lambda (* . as)
+    (if (all-arguments-to-be? number? as)
+        (apply * as)
+        (make-error-exp
+         `("The object" ,(map represent-object* as)
+           ", passed as an argument to *, is not a number.")))))
+
+(define <*
+  (named-lambda (< . as)
+    (if (all-arguments-to-be? real? as)
+        (apply < as)
+        (make-error-exp
+         `("The object" ,(map represent-object* as)
+           ", passed as an argument to <, is not a real number.")))))
+
+(define >*
+  (named-lambda (> . as)
+    (if (all-arguments-to-be? real? as)
+        (apply > as)
+        (make-error-exp
+         `("The object" ,(map represent-object* as)
+           ", passed as an argument to >, is not a real number.")))))
+
 (define cons*
   (check-error-with
    (named-lambda (cons x y) `(pair ,x ,y))
@@ -193,13 +299,13 @@
         (list 'null? null?*)
         (list 'pair? pair?*)
         ;;above from book -- here are some more
-	      (list '+ +)
-	      (list '- -)
-	      (list '* *)
-	      (list '= =)
-	      (list '/ /)
-	      (list '> >)
-	      (list '< <)
+	      (list '+ +*)
+	      (list '- -*)
+	      (list '* **)
+	      (list '= =*)
+	      (list '/ /*)
+	      (list '> >*)
+	      (list '< <*)
         ;; `(not ,not)
         ;; `(list ,list)
         ;; `(set-cdr! ,set-cdr!)
