@@ -1364,3 +1364,15 @@ force-evaluated
         (iter (* counter product)
               (+ counter 1))))
   (iter 1 1))
+
+;; Exercise 5.27
+(define (factorial n)
+  (if (= n 1)
+      1
+      (* (factorial (- n 1)) n)))
+
+;; Exercise 5.29
+(define (fib n)
+  (if (< n 2)
+      n
+      (+ (fib (- n 1)) (fib (- n 2)))))

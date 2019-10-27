@@ -2658,3 +2658,130 @@ How about the recurvise definition?
 
 As expected this one also has involved more stack operations than previous since
 this version of evaluator execute instructions that is useless.
+*** Exercise 5.29
+**** a.
+From the experiments, we extracted the following data:
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+(fib 5)
+
+(total-pushes = 408 maximum-depth = 28)
+;;; EC-Eval value:
+5
+
+;;; EC-Eval input:
+(fib 10)
+
+(total-pushes = 4944 maximum-depth = 53)
+;;; EC-Eval value:
+55
+
+;;; EC-Eval input:
+(fib 15)
+
+(total-pushes = 55232 maximum-depth = 78)
+;;; EC-Eval value:
+610
+
+#+END_SRC
+
+So we can deduce that =maximum-depth= is given as $5n + 3$.
+**** b.
+From the experiments conducted in *a.*, we can inspect that the =total-pushes=
+increase proportionally to the value of =(fib n)=. As we reasoned in the
+exercise of 1.2.2 section, we know the =(fib n)= is exponential; so as to
+=total-pushes=.
+
+As we did in that exercise to deduce the exact number of =(fib n)=, here we
+analyze the =total-pushes= using the induction on the definition of =fib=. We
+can do this analysis since from the controller sequence of =eceval= should
+evaluate the subproblems in exact same manner with the entry calling of =(fib
+n)=.
+
+From this argument, we can formulate =total-pushes= as
+\[S(n) = S(n - 1) + S(n - 2) + k\]
+, where /S/ denotes the =total-pushes= of input number =n=.
+
+Now let's deduce the =k= from the experiments:
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+(fib 3)
+
+(total-pushes = 128 maximum-depth = 18)
+;;; EC-Eval value:
+2
+
+;;; EC-Eval input:
+(fib 4)
+
+(total-pushes = 240 maximum-depth = 23)
+;;; EC-Eval value:
+3
+
+#+END_SRC
+
+From =(fib 3)=, =(fib 4)=, =(fib 5)=, we can get $k = 40$. Let's verify this on
+different data:
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+(fib 14)
+
+(total-pushes = 34120 maximum-depth = 73)
+;;; EC-Eval value:
+377
+
+;;; EC-Eval input:
+(fib 16)
+
+(total-pushes = 89392 maximum-depth = 83)
+;;; EC-Eval value:
+987
+
+#+END_SRC
+
+From these set of data, we also get $k = 40$, as expected.
+
+Now let's try to answer final question of this exercise. So far we deduced that
+/S/ also can be formulated "Fibonacci" number like equation -- the doubly
+recursive equation.
+
+So now we turn to what is the initial conditions of that equation, that is, like
+the ones from =fib= -- the base cases =(fib 0)= equals 0, =(fib 1)= equals 1.
+
+After that, we can relate these numbers with the numbers of Fibonacci as we
+required.
+
+Here is the base cases:
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+(fib 0)
+
+(total-pushes = 16 maximum-depth = 8)
+;;; EC-Eval value:
+0
+
+;;; EC-Eval input:
+(fib 1)
+
+(total-pushes = 16 maximum-depth = 8)
+;;; EC-Eval value:
+1
+
+;;; EC-Eval input:
+(fib 2)
+
+(total-pushes = 72 maximum-depth = 13)
+;;; EC-Eval value:
+1
+
+#+END_SRC
+
+So /S(0) = 16/ and /S(1) = 16/; and for verification, /S(2) = S(1) + S(0) + 40 =
+72/ as expected. From these data, it seems like we can equate as /S(n) = a
+Fib(n + 1) + b/. Let's verify by plugging the right hand side formula into the
+left hand side in the /S(n)/ formula:
+/a Fib(n + 1) + b = a Fib (n) + a Fib (n - 1) + 2 b + 40/, which reduced to
+/b = - 40/ and if we plug this result into the base case, we got /S(1) = a Fib
+(2) - 40/, which, in turn, means /a = 56/.
+
+So the solution is /S(n) = 56 Fib(n + 1) - 40/.
