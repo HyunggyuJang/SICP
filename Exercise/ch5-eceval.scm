@@ -391,15 +391,22 @@
     (branch (label signal-error))
     ;;
     (save continue)
-    (save env)
     (assign unev (op operands) (reg exp))
-    (save unev)
     (assign exp (op operator) (reg exp))
+    ;; Exercise 5.32a
+    (test (op variable?) (reg exp))
+    (branch (label ev-appl-sym-op))
+    (save env)
+    (save unev)
     (assign continue (label ev-appl-did-operator))
     (goto (label eval-dispatch))
+    ev-appl-sym-op
+    (assign continue (label ev-appl-did-sym-op))
+    (goto (label ev-variable))
     ev-appl-did-operator
     (restore unev)
     (restore env)
+    ev-appl-did-sym-op
     (assign argl (op empty-arglist))
     (assign proc (reg val))
     (test (op no-operands?) (reg unev))

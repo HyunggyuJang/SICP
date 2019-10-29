@@ -1396,3 +1396,408 @@ force-evaluated
 ;;         ((1) 'unary)
 ;;         ((2) 'binary)
 ;;         (else 'recursive)))))
+
+;; Section 5.5.5
+(compile
+ '(define (factorial n)
+    (if (= n 1)
+        1
+        (* (factorial (- n 1)) n)))
+ 'val
+ 'next)
+
+((env)
+ (val)
+ ((assign val (op make-compiled-procedure) (label entry2) (reg env))
+  (goto (label after-lambda1))
+  entry2
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (n)) (reg argl) (reg env))
+  (save continue)
+  (save env)
+  (assign proc (op lookup-variable-value) (const =) (reg env))
+  (assign val (const 1))
+  (assign argl (op list) (reg val))
+  (assign val (op lookup-variable-value) (const n) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch17))
+  compiled-branch16
+  (assign continue (label after-call15))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch17
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call15
+  (restore env)
+  (restore continue)
+  (test (op false?) (reg val))
+  (branch (label false-branch4))
+  true-branch5
+  (assign val (const 1))
+  (goto (reg continue))
+  false-branch4
+  (assign proc (op lookup-variable-value) (const *) (reg env))
+  (save continue)                       ;this would be restored after recursive call
+  (save proc)                           ;this one too
+  (assign val (op lookup-variable-value) (const n) (reg env))
+  (assign argl (op list) (reg val))
+  (save argl)                           ;difference -- this one also
+  (assign proc (op lookup-variable-value) (const factorial) (reg env))
+  (save proc)
+  (assign proc (op lookup-variable-value) (const -) (reg env))
+  (assign val (const 1))
+  (assign argl (op list) (reg val))
+  (assign val (op lookup-variable-value) (const n) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch8))
+  compiled-branch7
+  (assign continue (label after-call6))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch8
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call6                           ; val contains (- n 1)
+  (assign argl (op list) (reg val))
+  (restore proc)
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch11))
+  compiled-branch10
+  (assign continue (label after-call9))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch11
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call9                           ;val conatins (factorial (- n 1))
+  (restore argl)                        ;restore the stacked argument list
+  (assign argl (op cons) (reg val) (reg argl))
+  (restore proc)                        ;restore the defered operation
+  (restore continue)
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch14))
+  compiled-branch13
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch14
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  (goto (reg continue))
+  after-call12
+  after-if3
+  after-lambda1
+  (perform (op define-variable!) (const factorial) (reg val) (reg env))
+  (assign val (const ok))))
+
+(compile
+ '(define (factorial-alt n)
+    (if (= n 1)
+        1
+        (* n (factorial-alt (- n 1)))))
+ 'val
+ 'next)
+
+((env)
+ (val)
+ ((assign val (op make-compiled-procedure) (label entry2) (reg env))
+  (goto (label after-lambda1))
+  entry2
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (n)) (reg argl) (reg env))
+  (save continue)
+  (save env)
+  (assign proc (op lookup-variable-value) (const =) (reg env))
+  (assign val (const 1))
+  (assign argl (op list) (reg val))
+  (assign val (op lookup-variable-value) (const n) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch17))
+  compiled-branch16
+  (assign continue (label after-call15))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch17
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call15
+  (restore env)
+  (restore continue)
+  (test (op false?) (reg val))
+  (branch (label false-branch4))
+  true-branch5
+  (assign val (const 1))
+  (goto (reg continue))
+  false-branch4
+  (assign proc (op lookup-variable-value) (const *) (reg env))
+  (save continue)
+  (save proc)
+  (save env)                            ;this is the major difference
+  (assign proc (op lookup-variable-value) (const factorial-alt) (reg env))
+  (save proc)
+  (assign proc (op lookup-variable-value) (const -) (reg env))
+  (assign val (const 1))
+  (assign argl (op list) (reg val))
+  (assign val (op lookup-variable-value) (const n) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch8))
+  compiled-branch7
+  (assign continue (label after-call6))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch8
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call6                           ;val now contains (- n 1)
+  (assign argl (op list) (reg val))
+  (restore proc)
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch11))
+  compiled-branch10
+  (assign continue (label after-call9))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch11
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call9
+  (assign argl (op list) (reg val))
+  (restore env)                         ;***
+  (assign val (op lookup-variable-value) (const n) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (restore proc)
+  (restore continue)
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch14))
+  compiled-branch13
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch14
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  (goto (reg continue))
+  after-call12
+  after-if3
+  after-lambda1
+  (perform (op define-variable!) (const factorial-alt) (reg val) (reg env))
+  (assign val (const ok))))
+
+;; Exercise 5.34
+(compile
+ '(define (factorial n)
+    (define (iter product counter)
+      (if (> counter n)
+          product
+          (iter (* counter product)
+                (+ counter 1))))
+    (iter 1 1))
+ 'val
+ 'next)
+
+((env)
+ (val)
+ (
+  ;; construct the procedure and skip over code for the procedure body
+  (assign val (op make-compiled-procedure) (label entry2) (reg env))
+  (goto (label after-lambda1))
+  entry2                                ;calls to factorial will enter here
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (n)) (reg argl) (reg env))
+  ;; begin the procedure body
+  ;; it actually first define internal procedure
+  ;; so, it construct the internal procedure and skip over code for the
+  ;; interanl procedure body
+  (assign val (op make-compiled-procedure) (label entry7) (reg env))
+  (goto (label after-lambda6))
+  entry7                                ;internal procedure call will enter here
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (product counter)) (reg argl) (reg env))
+  ;; actual iterative process starts
+  (save continue)
+  (save env)
+  ;; compute (> counter n)
+  (assign proc (op lookup-variable-value) (const >) (reg env))
+  (assign val (op lookup-variable-value) (const n) (reg env))
+  (assign argl (op list) (reg val))
+  (assign val (op lookup-variable-value) (const counter) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch22))
+  compiled-branch21
+  (assign continue (label after-call20))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch22
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call20                         ;val now contains result of (> counter n)
+  (restore env)
+  (restore continue)
+  (test (op false?) (reg val))
+  (branch (label false-branch9))
+  true-branch10         ;return the value of product that bound to (factorial n)
+  (assign val (op lookup-variable-value) (const product) (reg env))
+  (goto (reg continue))
+  false-branch9
+  ;; compute and return (iter (* counter product) (+ counter 1))
+  (assign proc (op lookup-variable-value) (const iter) (reg env))
+  (save continue)
+  (save proc)
+  (save env)
+  ;; compute (+ counter 1)
+  (assign proc (op lookup-variable-value) (const +) (reg env))
+  (assign val (const 1))
+  (assign argl (op list) (reg val))
+  (assign val (op lookup-variable-value) (const counter) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch16))
+  compiled-branch15
+  (assign continue (label after-call14))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch16
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call14                         ;val now contains result of (+ counter 1)
+  (assign argl (op list) (reg val))
+  (restore env)
+  (save argl)
+  ;; compute (* counter product)
+  (assign proc (op lookup-variable-value) (const *) (reg env))
+  (assign val (op lookup-variable-value) (const product) (reg env))
+  (assign argl (op list) (reg val))
+  (assign val (op lookup-variable-value) (const counter) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch13))
+  compiled-branch12
+  (assign continue (label after-call11))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch13
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call11                   ;val now contains result of (* counter product)
+  (restore argl)
+  (assign argl (op cons) (reg val) (reg argl))
+  (restore proc)                        ;restore iter
+  (restore continue)
+  ;; apply iter
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch19))
+  compiled-branch18
+  ;; note that a compound procedure here is called tail-recursively
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch19
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  (goto (reg continue))
+  after-call17    ;val now contains (factorial n)
+  ;; there is no restore operations after this point
+  ;; which means there is no defered operations and arguments --
+  ;; the stack doesn't grow and get reduced before and after the
+  ;; recursive call; this is why it is iterative process but above.
+  after-if8
+  after-lambda6        ;end of procedure body of iter
+  ;; assign the procedure to the variable iter (internally)
+  (perform (op define-variable!) (const iter) (reg val) (reg env))
+  (assign val (const ok))
+  ;; setup the initial call of iter -- (iter 1 1)
+  (assign proc (op lookup-variable-value) (const iter) (reg env))
+  (assign val (const 1))
+  (assign argl (op list) (reg val))
+  (assign val (const 1))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch5))
+  compiled-branch4
+  ;; note also that this compound procedure call is tail-recursive
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch5
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  (goto (reg continue))
+  after-call3
+  after-lambda1                ;end of procedure body of factorial
+  ;; assign the procedure to the variable factorial
+  (perform (op define-variable!) (const factorial) (reg val) (reg env))
+  (assign val (const ok))))
+
+;;EXERCISE 5.35 (FIGURE 5.18)
+(assign val
+        (op make-compiled-procedure)    ;compilation of lambda expression
+        (label entry16)
+        (reg env))
+(goto (label after-lambda15))
+entry16
+(assign env (op compiled-procedure-env) (reg proc))
+(assign env
+        (op extend-environment)
+        (const (x))                   ;formal parameter list is (x)
+        (reg argl)
+        (reg env))
+;; the actual procedure body of f
+(assign proc
+        (op lookup-variable-value)
+        (const +)                       ;compliation of application of (+ ...)
+        (reg env))
+(save continue)
+(save proc)
+(save env)
+;; the last argument of given application was actually another application expression
+;; (g ...)
+(assign proc (op lookup-variable-value) (const g) (reg env))
+(save proc)
+;; the last argument of inner application was yet another application (+ ...)
+(assign proc (op lookup-variable-value) (const +) (reg env))
+;; the last argument of innermost application was 2
+(assign val (const 2))
+(assign argl (op list) (reg val))
+;; the next one (the argument in front of 2) was variable x
+(assign val (op lookup-variable-value) (const x) (reg env))
+(assign argl (op cons) (reg val) (reg argl))
+;; start procedure call
+;; which means argument list was (x 2)
+(test (op primitive-procedure?) (reg proc))
+(branch (label primitive-branch19))
+compiled-branch18
+(assign continue (label after-call17))
+(assign val (op compiled-procedure-entry) (reg proc))
+(goto (reg val))
+primitive-branch19
+(assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+after-call17                            ;val now contains the value of (+ x 2)
+(assign argl (op list) (reg val))
+;; turns out (+ x 2) was the only argument of application of procedure g
+(restore proc)
+(test (op primitive-procedure?) (reg proc))
+(branch (label primitive-branch22))
+compiled-branch21
+(assign continue (label after-call20))
+(assign val (op compiled-procedure-entry) (reg proc))
+(goto (reg val))
+primitive-branch22
+(assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+after-call20                            ;now val contains (g (+ x 2))
+(assign argl (op list) (reg val))
+(restore env)
+;; the next argument of outermost application was variable x
+(assign val (op lookup-variable-value) (const x) (reg env))
+(assign argl (op cons) (reg val) (reg argl))
+;; the outermost application was (+ x (g (+ x 2)))
+(restore proc)
+(restore continue)
+(test (op primitive-procedure?) (reg proc))
+(branch (label primitive-branch25))
+compiled-branch24
+(assign val (op compiled-procedure-entry) (reg proc))
+(goto (reg val))
+primitive-branch25
+(assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+(goto (reg continue))
+after-call23                            ;now val contains the value of (+ x (g (+ x 2)))
+after-lambda15
+;; the whole expression was defintion that binds f to the given lambda expression
+(perform (op define-variable!) (const f) (reg val) (reg env))
+(assign val (const ok))
+;;end of exercise
+
+(compile
+ '(define (f x)
+    (+ x (g (+ x 2))))
+ 'val
+ 'next)

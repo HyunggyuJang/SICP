@@ -3950,3 +3950,437 @@ Then re-run!
 #+END_SRC
 
 Now works as expected.
+* Compilation
+Compilation is another strategy that takes opposite to what explicit control
+evaluator takes: It lowers the higher level language into the very lower level
+language, /natural language/ or /assembly language/. And this translated program
+would be interpreted by the machine language interpreter -- CPU -- after
+assembled.
+
+This different strategy causes the great deal of changes of properties from the
+evaluator. In evaluator, as it loads all the library -- the collection of
+subroutines that implements the primitive operations of source language -- since
+it does not what subroutines are going to be needed in interpreting, we can
+develop the program dynamically. On the other hand, in the compile method, only the
+required subroutines are going to be loaded in execution, since it knows what
+the source code used in priori.
+
+This is analogous situation from section 4.1.7; the compiler analyze or optimize
+the instructions using the informations of the source code that can be deducted
+in static manner. We should come to understand why modern computer programming
+language especially the one for system program, use the strongly typed language:
+The compiler can deduce more information from the code than weakly typed one
+since it knows what going to be returned and what would be passed, and so on in
+compile time in addition to the type inference for assisting the programmer.
+
+As Scheme is the dynamically typed language, the compiler can not do the clever
+things done by the compiler of strongly typed language like Java or Scala or
+Clojure; although this fact, the compiler can works a lot than the evaluator.
+
+The main idea that is implemented in this section is annotate between the
+instruction sequences; and using that information, compiler can save additional
+stack operations around instruction sequences. It is embodied by structural
+definition over the compiler clause structure: Defining manually for all the
+primitive clauses and inductive combination rule.
+
+In addition to this quite "clever" idea, we can eliminates all the evaluator
+specific instructions -- e.g. the instructions involving the =exp= and =unev=
+registers and the =continue= to go to next entry point, and so on. Since our
+compiler is not the program in the machine language but in the Scheme -- higher
+level language, it can manipulate the given expression directly using the
+pointer to the data structure allocated heap (or list structured memory).
+
+** Structure of the Compiler
+*** Exercise 5.31
+You should look through the lecture, 10A of SICP, since the relevant and useful
+diagram appears in the lecture. I've drawn that diagram based on the given
+examples with my digital paper.
+
+For the conclusion, the first one and second one can be eliminated all the stack
+operations otherwise involved, and third one results in pair of =env= save and
+store, that of =proc=, and that of =argl= register. For the last one, pair of
+=proc= and =argl= survived.
+*** Exercise 5.32
+**** a.
+#+BEGIN_SRC scheme
+    ev-application
+    ;; Error handling
+    (assign val (op error-exp-if-ill-formed-combination) (reg exp))
+    (test (op error-exp?) (reg val))
+    (branch (label signal-error))
+    ;;
+    (save continue)
+    (assign unev (op operands) (reg exp))
+    (assign exp (op operator) (reg exp))
+    ;; Exercise 5.32a
+    (test (op variable?) (reg exp))
+    (branch (label ev-appl-sym-op))
+    (save env)
+    (save unev)
+    (assign continue (label ev-appl-did-operator))
+    (goto (label eval-dispatch))
+    ev-appl-sym-op
+    (assign continue (label ev-appl-did-sym-op))
+    (goto (label ev-variable))
+    ev-appl-did-operator
+    (restore unev)
+    (restore env)
+    ev-appl-did-sym-op
+    (assign argl (op empty-arglist))
+    (assign proc (reg val))
+    (test (op no-operands?) (reg unev))
+    (branch (label apply-dispatch))
+    (save proc)
+...
+#+END_SRC
+Using the information that the operator expression is symbol, we could reduce
+the 2 pair of stack operation from previous version.
+**** b.
+Alyssa P. Hacker ignores the time it takes to analyze the instructions to
+optimize the code. As we already have seen in section 4.1.7, the analysis times
+can not be ignored especially if it trying to extract great deal of information
+from the code, and then exploit that fact to optimize.
+
+So if we do analyze in the execution time, it will have overhead when the code
+executed for the first time; well, it can achieve efficient execution after that
+evaluation but the overhead would not the one user ever expected.
+
+On the other hand, the compiler can analyze the code in compile time, which is
+not the execution time, so the user get the behavior of the program consistently
+with their expectation -- it takes same time for execution. So compiler can
+introduce more sophisticated algorithm to improve the efficiency of resulting
+code since it is done once and compile time.
+** Compiling Expressions
+** Compiling Combinations
+** Combining Instruction Sequences
+** An Example of Compiled Code
+*** Exercise 5.33
+Before compiling this altered one, we can expect what difference it would make
+from the informal (or the code) from this section. We expect this altered one
+and original one different in view point of efficiency. Here is why:
+
+Since this altered version place the recursive call to the last argument of last
+combination expression, it needs to preserve the =env= register around the
+compilation of last argument (since in our compiler, last argument would be
+compiled first and the first to be last); since it alter =env= and the first
+code compiled needs =env=, =env= should be wrapped by =save= and =restore=
+around the compilation of last argument -- recursive call.
+
+However the original version compile the recursive call lastly (or put
+in other way, appended at the very end), and the last argument does not modify
+the =env= register -- =lookup-variable-value= -- it saves pair of =save= &
+=restore= stack operation compared with altered version.
+
+Consequently the original one would be more efficient. Then let's verify this
+fact:
+#+BEGIN_SRC scheme
+(compile
+ '(define (factorial-alt n)
+    (if (= n 1)
+        1
+        (* n (factorial-alt (- n 1)))))
+ 'val
+ 'next)
+
+((env)
+ (val)
+ ((assign val (op make-compiled-procedure) (label entry2) (reg env))
+  (goto (label after-lambda1))
+  entry2
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (n)) (reg argl) (reg env))
+  (save continue)
+  (save env)
+  (assign proc (op lookup-variable-value) (const =) (reg env))
+  (assign val (const 1))
+  (assign argl (op list) (reg val))
+  (assign val (op lookup-variable-value) (const n) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch17))
+  compiled-branch16
+  (assign continue (label after-call15))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch17
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call15
+  (restore env)
+  (restore continue)
+  (test (op false?) (reg val))
+  (branch (label false-branch4))
+  true-branch5
+  (assign val (const 1))
+  (goto (reg continue))
+  false-branch4
+  (assign proc (op lookup-variable-value) (const *) (reg env))
+  (save continue)
+  (save proc)
+  (save env)                            ;this is the major difference
+  (assign proc (op lookup-variable-value) (const factorial-alt) (reg env))
+  (save proc)
+  (assign proc (op lookup-variable-value) (const -) (reg env))
+  (assign val (const 1))
+  (assign argl (op list) (reg val))
+  (assign val (op lookup-variable-value) (const n) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch8))
+  compiled-branch7
+  (assign continue (label after-call6))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch8
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call6
+  (assign argl (op list) (reg val))
+  (restore proc)
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch11))
+  compiled-branch10
+  (assign continue (label after-call9))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch11
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call9
+  (assign argl (op list) (reg val))
+  (restore env)                         ;***
+  (assign val (op lookup-variable-value) (const n) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (restore proc)
+  (restore continue)
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch14))
+  compiled-branch13
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch14
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  (goto (reg continue))
+  after-call12
+  after-if3
+  after-lambda1
+  (perform (op define-variable!) (const factorial-alt) (reg val) (reg env))
+  (assign val (const ok))))
+#+END_SRC
+
+Unfortunately our expectation is invalid: The number of instructions are same in
+both; the original one should =argl= register rather than =env= register. So the
+overall efficiency would equal opposed our first expectation since the
+accumulated stack contents equal in both.
+*** Exercise 5.34
+Here is the result:
+#+BEGIN_SRC scheme
+((env)
+ (val)
+ (
+  ;; construct the procedure and skip over code for the procedure body
+  (assign val (op make-compiled-procedure) (label entry2) (reg env))
+  (goto (label after-lambda1))
+  entry2                                ;calls to factorial will enter here
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (n)) (reg argl) (reg env))
+  ;; begin the procedure body
+  ;; it actually first define internal procedure
+  ;; so, it construct the internal procedure and skip over code for the
+  ;; interanl procedure body
+  (assign val (op make-compiled-procedure) (label entry7) (reg env))
+  (goto (label after-lambda6))
+  entry7                                ;internal procedure call will enter here
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (product counter)) (reg argl) (reg env))
+  ;; actual iterative process starts
+  (save continue)
+  (save env)
+  ;; compute (> counter n)
+  (assign proc (op lookup-variable-value) (const >) (reg env))
+  (assign val (op lookup-variable-value) (const n) (reg env))
+  (assign argl (op list) (reg val))
+  (assign val (op lookup-variable-value) (const counter) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch22))
+  compiled-branch21
+  (assign continue (label after-call20))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch22
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call20                         ;val now contains result of (> counter n)
+  (restore env)
+  (restore continue)
+  (test (op false?) (reg val))
+  (branch (label false-branch9))
+  true-branch10         ;return the value of product that bound to (factorial n)
+  (assign val (op lookup-variable-value) (const product) (reg env))
+  (goto (reg continue))
+  false-branch9
+  ;; compute and return (iter (* counter product) (+ counter 1))
+  (assign proc (op lookup-variable-value) (const iter) (reg env))
+  (save continue)
+  (save proc)
+  (save env)
+  ;; compute (+ counter 1)
+  (assign proc (op lookup-variable-value) (const +) (reg env))
+  (assign val (const 1))
+  (assign argl (op list) (reg val))
+  (assign val (op lookup-variable-value) (const counter) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch16))
+  compiled-branch15
+  (assign continue (label after-call14))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch16
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call14                         ;val now contains result of (+ counter 1)
+  (assign argl (op list) (reg val))
+  (restore env)
+  (save argl)
+  ;; compute (* counter product)
+  (assign proc (op lookup-variable-value) (const *) (reg env))
+  (assign val (op lookup-variable-value) (const product) (reg env))
+  (assign argl (op list) (reg val))
+  (assign val (op lookup-variable-value) (const counter) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch13))
+  compiled-branch12
+  (assign continue (label after-call11))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch13
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call11                   ;val now contains result of (* counter product)
+  (restore argl)
+  (assign argl (op cons) (reg val) (reg argl))
+  (restore proc)                        ;restore iter
+  (restore continue)
+  ;; apply iter
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch19))
+  compiled-branch18
+  ;; note that a compound procedure here is called tail-recursively
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch19
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  (goto (reg continue))
+  after-call17    ;val now contains (factorial n)
+  ;; there is no restore operations after this point
+  ;; which means there is no defered operations and arguments --
+  ;; the stack doesn't grow and get reduced before and after the
+  ;; recursive call; this is why it is iterative process but above.
+  after-if8
+  after-lambda6        ;end of procedure body of iter
+  ;; assign the procedure to the variable iter (internally)
+  (perform (op define-variable!) (const iter) (reg val) (reg env))
+  (assign val (const ok))
+  ;; setup the initial call of iter -- (iter 1 1)
+  (assign proc (op lookup-variable-value) (const iter) (reg env))
+  (assign val (const 1))
+  (assign argl (op list) (reg val))
+  (assign val (const 1))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch5))
+  compiled-branch4
+  ;; note also that this compound procedure call is tail-recursive
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch5
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  (goto (reg continue))
+  after-call3
+  after-lambda1                ;end of procedure body of factorial
+  ;; assign the procedure to the variable factorial
+  (perform (op define-variable!) (const factorial) (reg val) (reg env))
+  (assign val (const ok))))
+#+END_SRC
+
+We included the analysis about the essential difference within the annotation.
+*** Exercise 5.35
+#+BEGIN_SRC scheme
+(assign val
+        (op make-compiled-procedure)    ;compilation of lambda expression
+        (label entry16)
+        (reg env))
+(goto (label after-lambda15))
+entry16
+(assign env (op compiled-procedure-env) (reg proc))
+(assign env
+        (op extend-environment)
+        (const (x))                   ;formal parameter list is (x)
+        (reg argl)
+        (reg env))
+;; the actual procedure body of f
+(assign proc
+        (op lookup-variable-value)
+        (const +)                       ;compliation of application of (+ ...)
+        (reg env))
+(save continue)
+(save proc)
+(save env)
+;; the last argument of given application was actually another application expression
+;; (g ...)
+(assign proc (op lookup-variable-value) (const g) (reg env))
+(save proc)
+;; the last argument of inner application was yet another application (+ ...)
+(assign proc (op lookup-variable-value) (const +) (reg env))
+;; the last argument of innermost application was 2
+(assign val (const 2))
+(assign argl (op list) (reg val))
+;; the next one (the argument in front of 2) was variable x
+(assign val (op lookup-variable-value) (const x) (reg env))
+(assign argl (op cons) (reg val) (reg argl))
+;; start procedure call
+;; which means argument list was (x 2)
+(test (op primitive-procedure?) (reg proc))
+(branch (label primitive-branch19))
+compiled-branch18
+(assign continue (label after-call17))
+(assign val (op compiled-procedure-entry) (reg proc))
+(goto (reg val))
+primitive-branch19
+(assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+after-call17                            ;val now contains the value of (+ x 2)
+(assign argl (op list) (reg val))
+;; turns out (+ x 2) was the only argument of application of procedure g
+(restore proc)
+(test (op primitive-procedure?) (reg proc))
+(branch (label primitive-branch22))
+compiled-branch21
+(assign continue (label after-call20))
+(assign val (op compiled-procedure-entry) (reg proc))
+(goto (reg val))
+primitive-branch22
+(assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+after-call20                            ;now val contains (g (+ x 2))
+(assign argl (op list) (reg val))
+(restore env)
+;; the next argument of outermost application was variable x
+(assign val (op lookup-variable-value) (const x) (reg env))
+(assign argl (op cons) (reg val) (reg argl))
+;; the outermost application was (+ x (g (+ x 2)))
+(restore proc)
+(restore continue)
+(test (op primitive-procedure?) (reg proc))
+(branch (label primitive-branch25))
+compiled-branch24
+(assign val (op compiled-procedure-entry) (reg proc))
+(goto (reg val))
+primitive-branch25
+(assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+(goto (reg continue))
+after-call23                            ;now val contains the value of (+ x (g (+ x 2)))
+after-lambda15
+;; the whole expression was defintion that binds f to the given lambda expression
+(perform (op define-variable!) (const f) (reg val) (reg env))
+(assign val (const ok))
+;;end of exercise
+#+END_SRC
+
+We analyzed given code and annotated it; the result being posted above. From
+this facts we can reconfigure what source code produced this instructions.
