@@ -5778,3 +5778,107 @@ Then let's test:
 #+END_SRC
 
 Looks fine!
+*** Exercise 5.44
+The reasoning behind what we trying to implement is follows: If the given open
+coded primitive procedure found in the given compile time environment (with
+=find-variable= procedure), then we should hand over given expression to the
+=compile-application=; otherwise, it means either given procedure variable bound
+in global environment which is dynamic one so we can not access that in compile
+time or not bound at all (to be used compile time).
+
+This analysis means the only case we can not cope with in this scheme is the one
+defined in global environment by =define= or through =set!= what primitive
+procedure bound in the global environment for the interpreter.
+
+Well, enough for word; let's implement it:
+#+BEGIN_SRC scheme
+(define (not-bound? var env)
+  (eq? (find-variable var env) 'not-found))
+#+END_SRC
+
+And then
+#+BEGIN_SRC scheme
+,*** in compile clause
+        ((and (not-bound? (operator exp) env)
+              (+? exp))
+         (compile-+ exp target linkage env))
+        ((and (not-bound? (operator exp) env)
+              (*? exp))
+         (compile-* exp target linkage env))
+        ((and (not-bound? (operator exp) env)
+              (open-coded-prims? exp)) =>
+         (lambda (op-binding)
+           (compile-open-coded-prim exp target linkage env (cadr op-binding))))
+        ((application? exp)
+         (compile-application exp target linkage env))
+#+END_SRC
+
+We just delegated if the given operator is rebound.
+
+Then test!
+#+BEGIN_SRC scheme
+;; Test for this new feature
+(pp (compile
+     '(lambda (+ * a b x y)
+        (+ (* a x) (* b y)))
+     'val 'next the-empty-compile-time-env))
+
+((env)
+ (val)
+ ((assign val (op make-compiled-procedure) (label entry13) (reg env))
+  (goto (label after-lambda12))
+  entry13
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (+ * a b x y)) (reg argl) (reg env))
+  (assign proc (op lexical-address-lookup) (const (0 0)) (reg env))
+  (save continue)
+  (save proc)
+  (save env)
+  (assign proc (op lexical-address-lookup) (const (0 1)) (reg env))
+  (assign val (op lexical-address-lookup) (const (0 5)) (reg env))
+  (assign argl (op list) (reg val))
+  (assign val (op lexical-address-lookup) (const (0 3)) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch19))
+  compiled-branch18
+  (assign continue (label after-call17))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch19
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call17
+  (assign argl (op list) (reg val))
+  (restore env)
+  (save argl)
+  (assign proc (op lexical-address-lookup) (const (0 1)) (reg env))
+  (assign val (op lexical-address-lookup) (const (0 4)) (reg env))
+  (assign argl (op list) (reg val))
+  (assign val (op lexical-address-lookup) (const (0 2)) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch16))
+  compiled-branch15
+  (assign continue (label after-call14))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch16
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call14
+  (restore argl)
+  (assign argl (op cons) (reg val) (reg argl))
+  (restore proc)
+  (restore continue)
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch22))
+  compiled-branch21
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch22
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  (goto (reg continue))
+  after-call20
+  after-lambda12))
+#+END_SRC
+
+Works well.

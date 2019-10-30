@@ -36,9 +36,14 @@
         ((cond? exp) (compile (cond->if exp) target linkage env))
         ((let? exp) (compile (let->combination exp) target linkage env))
         ((let*? exp) (compile (let*->let exp) target linkage env))
-        ((+? exp) (compile-+ exp target linkage env))
-        ((*? exp) (compile-* exp target linkage env))
-        ((open-coded-prims? exp) =>
+        ((and (not-bound? (operator exp) env)
+              (+? exp))
+         (compile-+ exp target linkage env))
+        ((and (not-bound? (operator exp) env)
+              (*? exp))
+         (compile-* exp target linkage env))
+        ((and (not-bound? (operator exp) env)
+              (open-coded-prims? exp)) =>
          (lambda (op-binding)
            (compile-open-coded-prim exp target linkage env (cadr op-binding))))
         ((application? exp)
@@ -582,5 +587,9 @@
 (define (first-var compile-time-frame) (car compile-time-frame))
 (define (rest-vars compile-time-frame) (cdr compile-time-frame))
 (define (empty-vars? compile-time-frame) (null? compile-time-frame))
+
+;; Exercise 5.44
+(define (not-bound? var env)
+  (eq? (find-variable var env) 'not-found))
 
 '(COMPILER LOADED)

@@ -2899,3 +2899,80 @@ after-lambda15
         (define y 5)
         (+ y (test-internal x y 3)))
      'val 'next the-empty-compile-time-env))
+
+((env)
+ (val)
+ ((assign val (op make-compiled-procedure) (label entry2) (reg env))
+  (goto (label after-lambda1))
+  entry2
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (x y)) (reg argl) (reg env))
+  (assign proc (op make-compiled-procedure) (label entry4) (reg env))
+  (goto (label after-lambda3))
+  entry4
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (test-internal y)) (reg argl) (reg env))
+  (assign val (op make-compiled-procedure) (label entry10) (reg env))
+  (goto (label after-lambda9))
+  entry10
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (x y z)) (reg argl) (reg env))
+  (assign val (op lexical-address-lookup) (const (0 2)) (reg env))
+  (goto (reg continue))
+  after-lambda9
+  (perform (op lexical-address-set!) (const (0 0)) (reg val) (reg env))
+  (assign val (const ok))
+  (assign val (const 5))
+  (perform (op lexical-address-set!) (const (0 1)) (reg val) (reg env))
+  (assign val (const ok))
+  (save continue)
+  (save env)
+  (assign proc (op lexical-address-lookup) (const (0 0)) (reg env))
+  (assign val (const 3))
+  (assign argl (op list) (reg val))
+  (assign val (op lexical-address-lookup) (const (0 1)) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (assign val (op lexical-address-lookup) (const (1 0)) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch7))
+  compiled-branch6
+  (assign continue (label proc-return8))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  proc-return8
+  (assign arg2 (reg val))
+  (goto (label after-call5))
+  primitive-branch7
+  (assign arg2 (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call5
+  (restore env)
+  (assign arg1 (op lexical-address-lookup) (const (0 1)) (reg env))
+  (assign val (op +) (reg arg1) (reg arg2))
+  (restore continue)
+  (goto (reg continue))
+  after-lambda3
+  (assign val (const *unassigned*))
+  (assign argl (op list) (reg val))
+  (assign val (const *unassigned*))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch13))
+  compiled-branch12
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch13
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  (goto (reg continue))
+  after-call11
+  after-lambda1))
+
+;; Exercise 5.44
+(define (not-bound? var env)
+  (eq? (find-variable var env) 'not-found))
+
+;; Test for this new feature
+(pp (compile
+     '(lambda (+ * a b x y)
+        (+ (* a x) (* b y)))
+     'val 'next the-empty-compile-time-env))
