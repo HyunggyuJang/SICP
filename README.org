@@ -5367,7 +5367,7 @@ Here is the main code:
 (define the-empty-compile-time-env '())
 
 (define (compile-lambda-body exp proc-entry env)
-  (let ((formals (lambda-parameters exp))
+  (let* ((formals (lambda-parameters exp))
         (env (extend-compile-time-env formals env)))
     (append-instruction-sequences
      (make-instruction-sequence '(env proc argl) '(env)
@@ -5428,4 +5428,214 @@ Then let's test:
 (find-variable 'w '((y z) (a b c d e) (x y)))
 
 ;Value: not-found
+#+END_SRC
+*** Exercise 5.42
+Here is the code that exploit the lexical address; and incorporated the strategy
+suggested in the text:
+#+BEGIN_SRC scheme
+(define (compile-variable exp target linkage env)
+  (let ((address (find-variable exp env)))
+    (end-with-linkage
+     linkage
+     (if (eq? address 'not-found)
+         (make-instruction-sequence
+          '() (list-union '(env) (list target))
+          `((assign env (op get-global-environment))
+            (assign ,target
+                    (op lookup-variable-value)
+                    (const ,exp)
+                    (reg env))))
+         (make-instruction-sequence
+          '(env) (list target)
+          `((assign ,target
+                    (op lexical-address-lookup)
+                    (const ,address)
+                    (reg env))))))))
+#+END_SRC
+
+Then let's test:
+#+BEGIN_SRC scheme
+;;; Test for new compile-variable
+(pp (compile
+     '((lambda (x y)
+         (lambda (a b c d e)
+           ((lambda (y z) (* x y z))
+            (* a b x)
+            (+ c d x))))
+       3
+       4)
+     'val 'next the-empty-compile-time-env))
+
+((env)
+ (env proc argl continue val)
+ ((assign proc (op make-compiled-procedure) (label entry2) (reg env))
+  (goto (label after-lambda1))
+  entry2
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (x y)) (reg argl) (reg env))
+  (assign val (op make-compiled-procedure) (label entry4) (reg env))
+  (goto (reg continue))
+  entry4
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (a b c d e)) (reg argl) (reg env))
+  (assign proc (op make-compiled-procedure) (label entry6) (reg env))
+  (goto (label after-lambda5))
+  entry6
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (y z)) (reg argl) (reg env))
+  (assign arg2 (op lexical-address-lookup) (const (0 1)) (reg env))
+  (assign arg1 (op lexical-address-lookup) (const (0 0)) (reg env))
+  (assign arg2 (op *) (reg arg1) (reg arg2))
+  (assign arg1 (op lexical-address-lookup) (const (2 0)) (reg env))
+  (assign val (op *) (reg arg1) (reg arg2))
+  (goto (reg continue))
+  after-lambda5
+  (assign arg2 (op lexical-address-lookup) (const (1 0)) (reg env))
+  (assign arg1 (op lexical-address-lookup) (const (0 3)) (reg env))
+  (assign arg2 (op +) (reg arg1) (reg arg2))
+  (assign arg1 (op lexical-address-lookup) (const (0 2)) (reg env))
+  (assign val (op +) (reg arg1) (reg arg2))
+  (assign argl (op list) (reg val))
+  (assign arg2 (op lexical-address-lookup) (const (1 0)) (reg env))
+  (assign arg1 (op lexical-address-lookup) (const (0 1)) (reg env))
+  (assign arg2 (op *) (reg arg1) (reg arg2))
+  (assign arg1 (op lexical-address-lookup) (const (0 0)) (reg env))
+  (assign val (op *) (reg arg1) (reg arg2))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch9))
+  compiled-branch8
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch9
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  (goto (reg continue))
+  after-call7
+  after-lambda3
+  after-lambda1
+  (assign val (const 4))
+  (assign argl (op list) (reg val))
+  (assign val (const 3))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch12))
+  compiled-branch11
+  (assign continue (label after-call10))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch12
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call10))
+#+END_SRC
+
+Looks fine. Let's implement the other one also:
+#+BEGIN_SRC scheme
+(define (compile-assignment exp target linkage env)
+  (let* ((var (assignment-variable exp))
+         (get-value-code
+          (compile (assignment-value exp) 'val 'next env))
+         (address (find-variable var env)))
+    (end-with-linkage
+     linkage
+     (if (eq? address 'not-found)
+         (append-instruction-sequences
+          get-value-code
+          (make-instruction-sequence
+           '(val) (list-union (list target) '(env))
+           `((assign env (op get-global-environment))
+             (perform (op set-variable-value!)
+                      (const ,var)
+                      (reg val)
+                      (reg env))
+             (assign ,target (const ok)))))
+         (preserving
+          '(env)
+          get-value-code
+          (make-instruction-sequence
+           '(env val) (list target)
+           `((perform (op lexical-address-set!)
+                      (const ,address)
+                      (reg val)
+                      (reg env))
+             (assign ,target (const ok)))))))))
+#+END_SRC
+
+Then do the test:
+#+BEGIN_SRC scheme
+;;; Test for new compile-assignment
+(pp (compile
+     '((lambda (x y)
+         (lambda (a b c d e)
+           ((lambda (y z)
+              (set! a 5)
+              (* x y z))
+            (* a b x)
+            (+ c d x))))
+       3
+       4)
+     'val 'next the-empty-compile-time-env))
+
+((env)
+ (env proc argl continue val)
+ ((assign proc (op make-compiled-procedure) (label entry2) (reg env))
+  (goto (label after-lambda1))
+  entry2
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (x y)) (reg argl) (reg env))
+  (assign val (op make-compiled-procedure) (label entry4) (reg env))
+  (goto (reg continue))
+  entry4
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (a b c d e)) (reg argl) (reg env))
+  (assign proc (op make-compiled-procedure) (label entry6) (reg env))
+  (goto (label after-lambda5))
+  entry6
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (y z)) (reg argl) (reg env))
+  (assign val (const 5))
+  (perform (op lexical-address-set!) (const (1 0)) (reg val) (reg env))
+  (assign val (const ok))
+  (assign arg2 (op lexical-address-lookup) (const (0 1)) (reg env))
+  (assign arg1 (op lexical-address-lookup) (const (0 0)) (reg env))
+  (assign arg2 (op *) (reg arg1) (reg arg2))
+  (assign arg1 (op lexical-address-lookup) (const (2 0)) (reg env))
+  (assign val (op *) (reg arg1) (reg arg2))
+  (goto (reg continue))
+  after-lambda5
+  (assign arg2 (op lexical-address-lookup) (const (1 0)) (reg env))
+  (assign arg1 (op lexical-address-lookup) (const (0 3)) (reg env))
+  (assign arg2 (op +) (reg arg1) (reg arg2))
+  (assign arg1 (op lexical-address-lookup) (const (0 2)) (reg env))
+  (assign val (op +) (reg arg1) (reg arg2))
+  (assign argl (op list) (reg val))
+  (assign arg2 (op lexical-address-lookup) (const (1 0)) (reg env))
+  (assign arg1 (op lexical-address-lookup) (const (0 1)) (reg env))
+  (assign arg2 (op *) (reg arg1) (reg arg2))
+  (assign arg1 (op lexical-address-lookup) (const (0 0)) (reg env))
+  (assign val (op *) (reg arg1) (reg arg2))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch9))
+  compiled-branch8
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch9
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  (goto (reg continue))
+  after-call7
+  after-lambda3
+  after-lambda1
+  (assign val (const 4))
+  (assign argl (op list) (reg val))
+  (assign val (const 3))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch12))
+  compiled-branch11
+  (assign continue (label after-call10))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch12
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call10))
 #+END_SRC

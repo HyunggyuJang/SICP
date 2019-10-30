@@ -34,6 +34,11 @@
                            target
                            linkage env))
         ((cond? exp) (compile (cond->if exp) target linkage env))
+        ((+? exp) (compile-+ exp target linkage env))
+        ((*? exp) (compile-* exp target linkage env))
+        ((open-coded-prims? exp) =>
+         (lambda (op-binding)
+           (compile-open-coded-prim exp target linkage env (cadr op-binding))))
         ((application? exp)
          (compile-application exp target linkage env))
         (else
@@ -80,26 +85,52 @@
     `((assign ,target (const ,(text-of-quotation exp)))))))
 
 (define (compile-variable exp target linkage env)
-  (end-with-linkage linkage
-   (make-instruction-sequence '(env) (list target)
-    `((assign ,target
-              (op lookup-variable-value)
-              (const ,exp)
-              (reg env))))))
+  (let ((address (find-variable exp env)))
+    (end-with-linkage
+     linkage
+     (if (eq? address 'not-found)
+         (make-instruction-sequence
+          '() (list-union '(env) (list target))
+          `((assign env (op get-global-environment))
+            (assign ,target
+                    (op lookup-variable-value)
+                    (const ,exp)
+                    (reg env))))
+         (make-instruction-sequence
+          '(env) (list target)
+          `((assign ,target
+                    (op lexical-address-lookup)
+                    (const ,address)
+                    (reg env))))))))
 
 (define (compile-assignment exp target linkage env)
-  (let ((var (assignment-variable exp))
-        (get-value-code
-         (compile (assignment-value exp) 'val 'next env)))
-    (end-with-linkage linkage
-     (preserving '(env)
-      get-value-code
-      (make-instruction-sequence '(env val) (list target)
-       `((perform (op set-variable-value!)
-                  (const ,var)
-                  (reg val)
-                  (reg env))
-         (assign ,target (const ok))))))))
+  (let* ((var (assignment-variable exp))
+         (get-value-code
+          (compile (assignment-value exp) 'val 'next env))
+         (address (find-variable var env)))
+    (end-with-linkage
+     linkage
+     (if (eq? address 'not-found)
+         (append-instruction-sequences
+          get-value-code
+          (make-instruction-sequence
+           '(val) (list-union (list target) '(env))
+           `((assign env (op get-global-environment))
+             (perform (op set-variable-value!)
+                      (const ,var)
+                      (reg val)
+                      (reg env))
+             (assign ,target (const ok)))))
+         (preserving
+          '(env)
+          get-value-code
+          (make-instruction-sequence
+           '(env val) (list target)
+           `((perform (op lexical-address-set!)
+                      (const ,address)
+                      (reg val)
+                      (reg env))
+             (assign ,target (const ok)))))))))
 
 (define (compile-definition exp target linkage env)
   (let ((var (definition-variable exp))
@@ -182,7 +213,7 @@
        after-lambda))))
 
 (define (compile-lambda-body exp proc-entry env)
-  (let ((formals (lambda-parameters exp))
+  (let* ((formals (lambda-parameters exp))
         (env (extend-compile-time-env formals env)))
     (append-instruction-sequences
      (make-instruction-sequence '(env proc argl) '(env)
@@ -465,7 +496,7 @@
       (case number-of-arguments
         ((0)
          (end-with-linkage
-          linkage env
+          linkage
           (make-instruction-sequence
            '() (list target))
           `((assign ,target (const 1)))))
@@ -475,7 +506,7 @@
         (else
          (let ((operands (reverse operands)))
            (end-with-linkage
-            linkage env
+            linkage
             (preserving
              '(env)
              (compile (first-operand operands)
