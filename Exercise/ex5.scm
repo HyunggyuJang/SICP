@@ -1801,3 +1801,273 @@ after-lambda15
     (+ x (g (+ x 2))))
  'val
  'next)
+
+((env)
+ (val)
+ ((assign val (op make-compiled-procedure) (label entry2) (reg env))
+  (goto (label after-lambda1))
+  entry2
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (x)) (reg argl) (reg env))
+  (assign proc (op lookup-variable-value) (const +) (reg env))
+  (save continue)
+  (save proc)
+  (save env)
+  (assign proc (op lookup-variable-value) (const g) (reg env))
+  (save proc)
+  (assign proc (op lookup-variable-value) (const +) (reg env))
+  (assign val (const 2))
+  (assign argl (op list) (reg val))
+  (assign val (op lookup-variable-value) (const x) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch5))
+  compiled-branch4
+  (assign continue (label after-call3))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch5
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call3
+  (assign argl (op list) (reg val))
+  (restore proc)
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch8))
+  compiled-branch7
+  (assign continue (label after-call6))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch8
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call6
+  (assign argl (op list) (reg val))
+  (restore env)
+  (assign val (op lookup-variable-value) (const x) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (restore proc)
+  (restore continue)
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch11))
+  compiled-branch10
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch11
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  (goto (reg continue))
+  after-call9
+  after-lambda1
+  (perform (op define-variable!) (const f) (reg val) (reg env))
+  (assign val (const ok))))
+
+;; Exercise 5.36
+(define (construct-arglist operand-codes)
+  (if (null? operand-codes)
+      (make-instruction-sequence '() '(argl)
+                                 '((assign argl (const ()))))
+      (let ((code-to-get-last-arg
+             (append-instruction-sequences
+              (car operand-codes)
+              (make-instruction-sequence '(val) '(argl)
+                                         '((assign argl (op list) (reg val)))))))
+        (if (null? (cdr operand-codes))
+            code-to-get-last-arg
+            (preserving '(env)
+                        code-to-get-last-arg
+                        (code-to-get-rest-args
+                         (cdr operand-codes)))))))
+
+(define (code-to-get-rest-args operand-codes)
+  (let ((code-for-next-arg
+         (preserving '(argl)
+          (car operand-codes)
+          (make-instruction-sequence
+           '(val argl) '(val argl)
+           '((assign val (op list) (reg val))
+             (assign argl
+                     (op append) (reg argl) (reg val)))))))
+    (if (null? (cdr operand-codes))
+        code-for-next-arg
+        (preserving '(env)
+         code-for-next-arg
+         (code-to-get-rest-args (cdr operand-codes))))))
+
+(define (preserving regs seq1 seq2)
+  (if (null? regs)
+      (append-instruction-sequences seq1 seq2)
+      (let ((first-reg (car regs)))
+        (preserving (cdr regs)
+             (make-instruction-sequence
+              (list-union (list first-reg)
+                          (registers-needed seq1))
+              (list-difference (registers-modified seq1)
+                               (list first-reg))
+              (append `((save ,first-reg))
+                      (statements seq1)
+                      `((restore ,first-reg))))
+             seq2))))
+
+;; Case 1
+(compile
+ '(f 'x 'y)
+ 'val
+ 'next)
+
+;; Modified version
+((env continue)
+ (env proc argl continue val)
+ ((save continue)
+  (save env)
+  (save continue)
+  (assign proc (op lookup-variable-value) (const f) (reg env))
+  (restore continue)
+  (restore env)
+  (restore continue)
+  (save continue)
+  (save proc)
+  (save env)
+  (save continue)
+  (assign val (const y))
+  (restore continue)
+  (assign argl (op list) (reg val))
+  (restore env)
+  (save argl)
+  (save continue)
+  (assign val (const x))
+  (restore continue)
+  (restore argl)
+  (assign argl (op cons) (reg val) (reg argl))
+  (restore proc)
+  (restore continue)
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch3))
+  compiled-branch2
+  (assign continue (label after-call1))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch3
+  (save continue)
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  (restore continue)
+  after-call1))
+
+;; Original version
+
+((env)
+ (env proc argl continue val)
+ ((assign proc (op lookup-variable-value) (const f) (reg env))
+  (assign val (const y))
+  (assign argl (op list) (reg val))
+  (assign val (const x))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch6))
+  compiled-branch5
+  (assign continue (label after-call4))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch6
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call4))
+
+;; Case 2
+(compile
+ '((f) 'x 'y)
+ 'val
+ 'next)
+;; Modified version
+
+((env continue)
+ (env proc argl continue val)
+ ((save continue)
+  (save env)
+  (save continue)
+  (save env)
+  (save continue)
+  (assign proc (op lookup-variable-value) (const f) (reg env))
+  (restore continue)
+  (restore env)
+  (restore continue)
+  (save continue)
+  (save proc)
+  (assign argl (const ()))
+  (restore proc)
+  (restore continue)
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch9))
+  compiled-branch8
+  (assign continue (label proc-return10))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  proc-return10
+  (assign proc (reg val))
+  (goto (label after-call7))
+  primitive-branch9
+  (save continue)
+  (assign proc (op apply-primitive-procedure) (reg proc) (reg argl))
+  (restore continue)
+  after-call7
+  (restore env)
+  (restore continue)
+  (save continue)
+  (save proc)
+  (save env)
+  (save continue)
+  (assign val (const y))
+  (restore continue)
+  (assign argl (op list) (reg val))
+  (restore env)
+  (save argl)
+  (save continue)
+  (assign val (const x))
+  (restore continue)
+  (restore argl)
+  (assign argl (op cons) (reg val) (reg argl))
+  (restore proc)
+  (restore continue)
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch13))
+  compiled-branch12
+  (assign continue (label after-call11))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch13
+  (save continue)
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  (restore continue)
+  after-call11))
+
+;; Original version
+((env)
+ (env proc argl continue val)
+ ((assign proc (op lookup-variable-value) (const f) (reg env))
+  (assign argl (const ()))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch16))
+  compiled-branch15
+  (assign continue (label proc-return17))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  proc-return17
+  (assign proc (reg val))
+  (goto (label after-call14))
+  primitive-branch16
+  (assign proc (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call14
+  (assign val (const y))
+  (assign argl (op list) (reg val))
+  (assign val (const x))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch20))
+  compiled-branch19
+  (assign continue (label after-call18))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch20
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call18))
+
+;; Case 3
+(compile
+ '(f (g 'x) y)
+ 'val 'next)
