@@ -2538,7 +2538,7 @@ after-lambda15
 ;; detector for *
 (define (*? exp) (tagged-list? exp '*))
 
-(define (compile-+ exp target linkage)
+(define (compile-* exp target linkage)
   (let ((operands (operands exp)))
     (let ((number-of-arguments (length operands)))
       (case number-of-arguments
@@ -2559,4 +2559,52 @@ after-lambda15
              '(env)
              (compile (first-operand operands)
                       'arg2 'next)
-             (apply-recursively- '+ target (rest-operands operands))))))))))
+             (apply-recursively- '* target (rest-operands operands))))))))))
+
+;; Exercise 5.39
+(define (lexical-address-lookup address env)
+  (let ((val
+         (list-ref
+          (frame-values
+           (frame-ref env (frame-number address)))
+          (displacement-number address))))
+    (if (eq? val '*unassigned*)
+        (error "Unassigned variable:"
+               (list-ref
+                (frame-variables
+                 (frame-ref env (frame-number address)))
+                (displacement-number address)))
+        val)))
+
+;; ADT for environment
+(define (frame-ref env index) (list-ref env index))
+
+;; ADT for lexical-address
+(define (make-lexical-address frame-num displacement-num)
+  `(,frame-num ,displacement-num))
+(define (frame-number address) (car address))
+(define (displacement-number address) (cadr address))
+
+;; Test for lexical-address-lookup
+(define test-environment
+  (extend-environment
+   '(y z) '((* a b x) (+ c d x))
+   (extend-environment
+    '(a b c d e)
+    '(*unassigned* *unassigned* *unassigned* *unassigned* *unassigned*)
+    (extend-environment
+     '(x y)
+     '(3 4)
+     the-empty-environment))))
+
+;; variable x
+(lexical-address-lookup '(2 0) test-environment)
+
+;Value: 3
+
+;; variable a
+(lexical-address-lookup '(1 0) test-environment)
+
+;Unassigned variable: a
+;To continue, call RESTART with an option number:
+; (RESTART 1) => Return to read-eval-print level 1.
