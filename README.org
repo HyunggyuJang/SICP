@@ -5639,3 +5639,142 @@ Then do the test:
   (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
   after-call10))
 #+END_SRC
+*** Exercise 5.43
+Like =cond->if=, this one is also just one of the derived form! So we can reuse
+the previous =scan-out-defines=. Here we modified the previous definition using
+the continuation for the efficiency and to return the body if there is no
+internal definitions rather than transforming to =let= expression:
+#+BEGIN_SRC scheme
+(define (scan-out-defines proc-body)
+  (let loop
+      ((exps proc-body)
+       (accept
+        (lambda (internal-defs rest-body)
+          (if (null? internal-defs)
+              rest-body
+              (let ((vars (map definition-variable internal-defs))
+                    (exps (map definition-value internal-defs)))
+                (let ((bindings
+                       (map (lambda (var) (list var (list 'quote '*unassigned*)))
+                            vars))
+                      (set-exps
+                       (map (lambda (var val)
+                              (make-assignment var val))
+                            vars
+                            exps)))
+                  (make-let bindings (append set-exps rest-body))))))))
+    (if (null? exps)
+        (accept '() '())
+        (let ((exp (car exps))
+              (rest (cdr exps)))
+          (loop
+           rest
+           (lambda (defs rest-body)
+             (if (definition? exp)
+                 (accept (cons exp defs)
+                         rest-body)
+                 (if (null? defs)
+                     (accept defs
+                             (cons exp rest-body))
+                     (error "Internal defintions intertwines with others" proc-body)))))))))
+#+END_SRC
+
+Then =compile-lambda-body= got
+#+BEGIN_SRC scheme
+(define (compile-lambda-body exp proc-entry env)
+  (let* ((formals (lambda-parameters exp))
+         (env (extend-compile-time-env formals env)))
+    (append-instruction-sequences
+     (make-instruction-sequence '(env proc argl) '(env)
+      `(,proc-entry
+        (assign env (op compiled-procedure-env) (reg proc))
+        (assign env
+                (op extend-environment)
+                (const ,formals)
+                (reg argl)
+                (reg env))))
+     (let ((scanned (scan-out-defines (lambda-body exp))))
+       (if (let? scanned)
+           (compile scanned 'val 'return env)
+           (compile-sequence scanned 'val 'return env))))))
+#+END_SRC
+
+Then let's test:
+#+BEGIN_SRC scheme
+;;; test for new feature!
+(pp (compile
+     '(lambda (x y)
+        (define (test-internal x y z) z)
+        (define y 5)
+        (+ y (test-internal x y 3)))
+     'val 'next the-empty-compile-time-env))
+
+((env)
+ (val)
+ ((assign val (op make-compiled-procedure) (label entry2) (reg env))
+  (goto (label after-lambda1))
+  entry2
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (x y)) (reg argl) (reg env))
+  (assign proc (op make-compiled-procedure) (label entry4) (reg env))
+  (goto (label after-lambda3))
+  entry4
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (test-internal y)) (reg argl) (reg env))
+  (assign val (op make-compiled-procedure) (label entry10) (reg env))
+  (goto (label after-lambda9))
+  entry10
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (x y z)) (reg argl) (reg env))
+  (assign val (op lexical-address-lookup) (const (0 2)) (reg env))
+  (goto (reg continue))
+  after-lambda9
+  (perform (op lexical-address-set!) (const (0 0)) (reg val) (reg env))
+  (assign val (const ok))
+  (assign val (const 5))
+  (perform (op lexical-address-set!) (const (0 1)) (reg val) (reg env))
+  (assign val (const ok))
+  (save continue)
+  (save env)
+  (assign proc (op lexical-address-lookup) (const (0 0)) (reg env))
+  (assign val (const 3))
+  (assign argl (op list) (reg val))
+  (assign val (op lexical-address-lookup) (const (0 1)) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (assign val (op lexical-address-lookup) (const (1 0)) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch7))
+  compiled-branch6
+  (assign continue (label proc-return8))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  proc-return8
+  (assign arg2 (reg val))
+  (goto (label after-call5))
+  primitive-branch7
+  (assign arg2 (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call5
+  (restore env)
+  (assign arg1 (op lexical-address-lookup) (const (0 1)) (reg env))
+  (assign val (op +) (reg arg1) (reg arg2))
+  (restore continue)
+  (goto (reg continue))
+  after-lambda3
+  (assign val (const *unassigned*))
+  (assign argl (op list) (reg val))
+  (assign val (const *unassigned*))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch13))
+  compiled-branch12
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch13
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  (goto (reg continue))
+  after-call11
+  after-lambda1))
+#+END_SRC
+
+Looks fine!

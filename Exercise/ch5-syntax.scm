@@ -204,3 +204,40 @@
             (expand-let* rest))))))
     (expand-let* (let-bindings exp)))
 ;; end of let support
+;; Exercise 5.43
+;;; modified from exercise 4.16 as continuation version
+(define (scan-out-defines proc-body)
+  (let loop
+      ((exps proc-body)
+       (accept
+        (lambda (internal-defs rest-body)
+          (if (null? internal-defs)
+              rest-body
+              (let ((vars (map definition-variable internal-defs))
+                    (exps (map definition-value internal-defs)))
+                (let ((bindings
+                       (map (lambda (var) (list var (list 'quote '*unassigned*)))
+                            vars))
+                      (set-exps
+                       (map (lambda (var val)
+                              (make-assignment var val))
+                            vars
+                            exps)))
+                  (make-let bindings (append set-exps rest-body))))))))
+    (if (null? exps)
+        (accept '() '())
+        (let ((exp (car exps))
+              (rest (cdr exps)))
+          (loop
+           rest
+           (lambda (defs rest-body)
+             (if (definition? exp)
+                 (accept (cons exp defs)
+                         rest-body)
+                 (if (null? defs)
+                     (accept defs
+                             (cons exp rest-body))
+                     (error "Internal defintions intertwines with others" proc-body)))))))))
+
+(define (make-assignment var val)
+  (list 'set! var val))

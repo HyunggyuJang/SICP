@@ -2890,3 +2890,12 @@ after-lambda15
   primitive-branch12
   (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
   after-call10))
+
+;; Exercise 5.43
+;;; test for new feature!
+(pp (compile
+     '(lambda (x y)
+        (define (test-internal x y z) z)
+        (define y 5)
+        (+ y (test-internal x y 3)))
+     'val 'next the-empty-compile-time-env))

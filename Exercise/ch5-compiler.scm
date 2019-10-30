@@ -34,6 +34,8 @@
                            target
                            linkage env))
         ((cond? exp) (compile (cond->if exp) target linkage env))
+        ((let? exp) (compile (let->combination exp) target linkage env))
+        ((let*? exp) (compile (let*->let exp) target linkage env))
         ((+? exp) (compile-+ exp target linkage env))
         ((*? exp) (compile-* exp target linkage env))
         ((open-coded-prims? exp) =>
@@ -214,7 +216,7 @@
 
 (define (compile-lambda-body exp proc-entry env)
   (let* ((formals (lambda-parameters exp))
-        (env (extend-compile-time-env formals env)))
+         (env (extend-compile-time-env formals env)))
     (append-instruction-sequences
      (make-instruction-sequence '(env proc argl) '(env)
       `(,proc-entry
@@ -224,7 +226,10 @@
                 (const ,formals)
                 (reg argl)
                 (reg env))))
-     (compile-sequence (lambda-body exp) 'val 'return env))))
+     (let ((scanned (scan-out-defines (lambda-body exp))))
+       (if (let? scanned)
+           (compile scanned 'val 'return env)
+           (compile-sequence scanned 'val 'return env)))))) ;no internal defs
 
 
 ;;;SECTION 5.5.3
@@ -549,5 +554,33 @@
 (define (extend-compile-time-env params env)
   (cons params env))
 (define the-empty-compile-time-env '())
+
+;; Exercise 5.41
+(define (find-variable var env)
+  (let traverse-env ((current-env env)
+                     (frame-num 0))
+    (if (empty-env? current-env)
+        'not-found
+        (let traverse-frame ((current-vars (frame-vars current-env))
+                             (displacement-num 0))
+          (cond ((empty-vars? current-vars)
+                 (traverse-env (enclosing-env current-env)
+                               (1+ frame-num)))
+                ((eq? var (first-var current-vars))
+                 (make-lexical-address frame-num displacement-num))
+                (else
+                 (traverse-frame (rest-vars current-vars)
+                                 (1+ displacement-num))))))))
+;; ADT for compile-time-env
+(define (frame-vars compile-time-env)
+  (car compile-time-env))
+(define (enclosing-env compile-time-env)
+  (cdr compile-time-env))
+(define (empty-env? compile-time-env) (null? compile-time-env))
+
+;; ADT for compile-time-frame
+(define (first-var compile-time-frame) (car compile-time-frame))
+(define (rest-vars compile-time-frame) (cdr compile-time-frame))
+(define (empty-vars? compile-time-frame) (null? compile-time-frame))
 
 '(COMPILER LOADED)
