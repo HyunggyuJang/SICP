@@ -5335,3 +5335,51 @@ Test:
 ;To continue, call RESTART with an option number:
 ; (RESTART 1) => Return to read-eval-print level 1.
 #+END_SRC
+
+Then =lexical-address-set!= can be implemented similarly:
+#+BEGIN_SRC scheme
+(define (lexical-address-set! address val env)
+  (set-car!
+   (list-tail
+    (frame-values
+     (frame-ref env (frame-number address)))
+    (displacement-number address))
+   val))
+#+END_SRC
+
+Let's test:
+#+BEGIN_SRC scheme
+;; setting the value for a
+(lexical-address-set! '(1 0) 1 test-environment)
+
+;Unspecified return value
+
+(lexical-address-lookup '(1 0) test-environment)
+
+;Value: 1
+#+END_SRC
+*** Exercise 5.40
+Here is the main code:
+#+BEGIN_SRC scheme
+;;; environemnt ADT
+(define (extend-compile-time-env params env)
+  (cons params env))
+(define the-empty-compile-time-env '())
+
+(define (compile-lambda-body exp proc-entry env)
+  (let ((formals (lambda-parameters exp))
+        (env (extend-compile-time-env formals env)))
+    (append-instruction-sequences
+     (make-instruction-sequence '(env proc argl) '(env)
+      `(,proc-entry
+        (assign env (op compiled-procedure-env) (reg proc))
+        (assign env
+                (op extend-environment)
+                (const ,formals)
+                (reg argl)
+                (reg env))))
+     (compile-sequence (lambda-body exp) 'val 'return env))))
+#+END_SRC
+
+Then we should modify current =compile= clauses to accept =env= as additional
+argument. Please see the [[file:Exercise/ch5-compiler.scm][code]] for the result.

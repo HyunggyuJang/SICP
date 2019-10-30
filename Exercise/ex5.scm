@@ -2319,7 +2319,9 @@ after-lambda15
   (assign val (op =) (reg arg1) (reg arg2))))
 
 ;; open-code primitive dictionary
-(define open-coded-prims '((= =) (* *) (- -) (+ +)))
+(define open-coded-prims '((= =) ;; (* *)
+                           (- -) ;; (+ +)
+                           ))
 
 (define (open-coded-prims? exp)
   (and (= (length (operands exp)) 2)    ;binary
@@ -2367,34 +2369,6 @@ after-lambda15
   (assign arg1 (op +) (reg arg1) (reg arg2))
   (assign arg2 (const 5))
   (assign val (op =) (reg arg1) (reg arg2))))
-
-(define (compile exp target linkage)
-  (cond ((self-evaluating? exp)
-         (compile-self-evaluating exp target linkage))
-        ((quoted? exp) (compile-quoted exp target linkage))
-        ((variable? exp)
-         (compile-variable exp target linkage))
-        ((assignment? exp)
-         (compile-assignment exp target linkage))
-        ((definition? exp)
-         (compile-definition exp target linkage))
-        ((if? exp) (compile-if exp target linkage))
-        ((lambda? exp) (compile-lambda exp target linkage))
-        ((begin? exp)
-         (compile-sequence (begin-actions exp)
-                           target
-                           linkage))
-        ((cond? exp) (compile (cond->if exp) target linkage))
-        ;; ((=? exp) (compile-= exp target linkage))
-        ((+? exp) (compile-+ exp target linkage))
-        ((open-coded-prims? exp) =>
-         (lambda (op-binding)
-           (compile-open-coded-prim exp target linkage (cadr op-binding))))
-        ((application? exp)
-         (compile-application exp target linkage))
-        (else
-         (error "Unknown expression type -- COMPILE" exp))))
-
 ;; c.
 (pp (compile
  '(define (factorial n)
@@ -2576,6 +2550,13 @@ after-lambda15
                 (displacement-number address)))
         val)))
 
+(define (lexical-address-set! address val env)
+  (set-car!
+   (list-tail
+    (frame-values
+     (frame-ref env (frame-number address)))
+    (displacement-number address))
+   val))
 ;; ADT for environment
 (define (frame-ref env index) (list-ref env index))
 
@@ -2608,3 +2589,65 @@ after-lambda15
 ;Unassigned variable: a
 ;To continue, call RESTART with an option number:
 ; (RESTART 1) => Return to read-eval-print level 1.
+
+;; setting the value for a
+(lexical-address-set! '(1 0) 1 test-environment)
+
+;Unspecified return value
+
+(lexical-address-lookup '(1 0) test-environment)
+
+;Value: 1
+
+;; Exercise 5.40
+;;; environemnt ADT
+(define (extend-compile-time-env params env)
+  (cons params env))
+
+(define (compile exp target linkage env)
+  (cond ((self-evaluating? exp)
+         (compile-self-evaluating exp target linkage env))
+        ((quoted? exp) (compile-quoted exp target linkage env))
+        ((variable? exp)
+         (compile-variable exp target linkage env))
+        ((assignment? exp)
+         (compile-assignment exp target linkage env))
+        ((definition? exp)
+         (compile-definition exp target linkage env))
+        ((if? exp) (compile-if exp target linkage env))
+        ((lambda? exp) (compile-lambda exp target linkage env))
+        ((begin? exp)
+         (compile-sequence (begin-actions exp)
+                           target
+                           linkage env))
+        ((cond? exp) (compile (cond->if exp) target linkage env))
+        ;; ((=? exp) (compile-= exp target linkage env))
+        ((+? exp) (compile-+ exp target linkage env))
+        ((open-coded-prims? exp) =>
+         (lambda (op-binding)
+           (compile-open-coded-prim exp target linkage env (cadr op-binding))))
+        ((application? exp)
+         (compile-application exp target linkage env))
+        (else
+         (error "Unknown expression type -- COMPILE" exp))))
+
+(define (compile-lambda-body exp proc-entry env)
+  (let ((formals (lambda-parameters exp))
+        (env (extend-compile-time-env formals env)))
+    (append-instruction-sequences
+     (make-instruction-sequence '(env proc argl) '(env)
+      `(,proc-entry
+        (assign env (op compiled-procedure-env) (reg proc))
+        (assign env
+                (op extend-environment)
+                (const ,formals)
+                (reg argl)
+                (reg env))))
+     (compile-sequence (lambda-body exp) 'val 'return env))))
+
+(define (compile-sequence seq target linkage env)
+  (if (last-exp? seq)
+      (compile (first-exp seq) target linkage env)
+      (preserving '(env continue)
+       (compile (first-exp seq) target 'next env)
+       (compile-sequence (rest-exps seq) target linkage env))))
