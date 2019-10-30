@@ -4851,3 +4851,434 @@ Modified version:
 57 versus 29.
 **** Conclusion
 By using the "annotate" feature of =preserving=, we can halve the instructions.
+*** Exercise 5.38
+**** a.
+Based on the problem statement, =spread-arguments= has form of
+=(spread-arguments <operands>)=; and it should have following skeleton code:
+#+BEGIN_SRC text
+<complie first argument; targeted to arg1; linkage to next>
+<complie last (second) argument; targeted to arg2; linkage to next;
+ preserving arg1 register>
+#+END_SRC
+
+For the last linkage point is arbitrary; but if we think about the use cases
+followed by this sub-exercise, it implies we should link these code with =next=.
+
+In addition to these, we need to preserve the =env= register around the compiled
+code of first argument since the second argument need to be evaluated in that =env=.
+
+Here is the code:
+#+BEGIN_SRC scheme
+(define (spread-arguments args)
+  (let ((a1 (car args))
+        (a2 (cadr args)))
+    (preserving
+     '(env)
+     (compile a1 'arg1 'next)
+     (preserving
+      '(arg1)
+      (compile a2 'arg2 'next)
+      (make-instruction-sequence
+       '(arg1) '() '())))))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+(pp (spread-arguments '(x y)))
+((env) (arg1 arg2)
+ ((assign arg1 (op lookup-variable-value) (const x) (reg env))
+  (assign arg2 (op lookup-variable-value) (const y) (reg env))))
+#+END_SRC
+
+For the test of recursive case -- compiling each argument can alter the
+preceding target register, we delegate after *b.* since for now we don't have
+any compile clause that alter the argument registers.
+**** b.
+Then we can easily implements the open-code clauses. First let's implement the
+equal procedure:
+#+BEGIN_SRC scheme
+(define (compile-= exp target linkage)
+  (end-with-linkage
+   linkage
+   (append-instruction-sequences
+    (spread-arguments (operands exp))
+    (make-instruction-sequence
+     '(arg1 arg2)
+     (list target)
+     `((assign ,target (op =) (reg arg1) (reg arg2)))))))
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+(pp (compile-= '(= 5 2) 'val 'next))
+(() (arg1 arg2 val)
+ ((assign arg1 (const 5))
+  (assign arg2 (const 2))
+  (assign val (op =) (reg arg1) (reg arg2))))
+#+END_SRC
+
+Let's install it into the =compile=:
+#+BEGIN_SRC scheme
+(define (=? exp) (tagged-list? exp '=))
+#+END_SRC
+
+And then
+#+BEGIN_SRC scheme
+,*** in compile
+        ((=? exp) (compile-= exp target linkage))
+        ((application? exp)
+         (compile-application exp target linkage))
+#+END_SRC
+
+Then we can test the recursive case, which we couldn't in *a.*
+#+BEGIN_SRC scheme
+(pp (compile '(= (= 5 2) (= 2 1))
+         'val 'next))
+
+(()
+ (arg1 arg2 val)
+ ((assign arg1 (const 5))
+  (assign arg2 (const 2))
+  (assign arg1 (op =) (reg arg1) (reg arg2))
+  (save arg1)
+  (assign arg1 (const 2))
+  (assign arg2 (const 1))
+  (assign arg2 (op =) (reg arg1) (reg arg2))
+  (restore arg1)
+  (assign val (op =) (reg arg1) (reg arg2))))
+#+END_SRC
+
+As it verified, now let's add the rest open-code primitives.
+
+Before implementing each of the primitives, observe the commonalities among the
+open-code things; the only difference is the operation name: Let's exploit them!
+If we restrict the open code primitives only allowed to be binary, then we can
+exploit that a lot:
+#+BEGIN_SRC scheme
+(define (compile-open-coded-prim exp target linkage op)
+  (end-with-linkage
+   linkage
+   (append-instruction-sequences
+    (spread-arguments (operands exp))
+    (make-instruction-sequence
+     '(arg1 arg2)
+     (list target)
+     `((assign ,target (op ,op) (reg arg1) (reg arg2)))))))
+
+;; open-code primitive dictionary
+(define open-coded-prims '((= =) (* *) (- -) (+ +)))
+
+(define (open-coded-prims? exp)
+  (assoc (operator exp) open-coded-prims))
+#+END_SRC
+
+Then
+#+BEGIN_SRC scheme
+,**+ in compile procedure
+...
+        ;; ((=? exp) (compile-= exp target linkage))
+        ((open-coded-prims? exp) =>
+         (lambda (op-binding)
+           (compile-open-coded-prim exp target linkage (cadr op-binding))))
+        (application? exp)
+...
+#+END_SRC
+
+But since in *d.* part we want to extend particular operations to take arbitrary
+number of argument, they needs special treatment other than this; we'll comeback
+this issue at *d.* part.
+
+Then test:
+#+BEGIN_SRC scheme
+;; The previous one works well in this new scheme
+(pp (compile '(= (= 5 2) (= 2 1))
+         'val 'next))
+(()
+ (arg1 arg2 val)
+ ((assign arg1 (const 5))
+  (assign arg2 (const 2))
+  (assign arg1 (op =) (reg arg1) (reg arg2))
+  (save arg1)
+  (assign arg1 (const 2))
+  (assign arg2 (const 1))
+  (assign arg2 (op =) (reg arg1) (reg arg2))
+  (restore arg1)
+  (assign val (op =) (reg arg1) (reg arg2))))
+
+;; Complex one also works well
+(pp (compile '(= (+ (- 5 2) (* 1 2)) 5)
+             'val 'next))
+(()
+ (arg1 arg2 val)
+ ((assign arg1 (const 5))
+  (assign arg2 (const 2))
+  (assign arg1 (op -) (reg arg1) (reg arg2))
+  (save arg1)
+  (assign arg1 (const 1))
+  (assign arg2 (const 2))
+  (assign arg2 (op *) (reg arg1) (reg arg2))
+  (restore arg1)
+  (assign arg1 (op +) (reg arg1) (reg arg2))
+  (assign arg2 (const 5))
+  (assign val (op =) (reg arg1) (reg arg2))))
+#+END_SRC
+
+In addition to this feature, we may want to ensure the given expression has only
+two operands. We can ensure this with following modification:
+#+BEGIN_SRC scheme
+(define (open-coded-prims? exp)
+  (and (= (length (operands exp)) 2)    ;binary
+       (assoc (operator exp) open-coded-prims)))
+#+END_SRC
+**** c.
+Then now let's try to compile =factorial= in this new strategy:
+#+BEGIN_SRC scheme
+(pp (compile
+ '(define (factorial n)
+    (if (= n 1)
+        1
+        (* (factorial (- n 1)) n)))
+ 'val
+ 'next))
+
+((env)
+ (val)
+ ((assign val (op make-compiled-procedure) (label entry55) (reg env))
+  (goto (label after-lambda54))
+  entry55
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (n)) (reg argl) (reg env))
+  (assign arg1 (op lookup-variable-value) (const n) (reg env))
+  (assign arg2 (const 1))
+  (assign val (op =) (reg arg1) (reg arg2))
+  (test (op false?) (reg val))
+  (branch (label false-branch57))
+  true-branch58
+  (assign val (const 1))
+  (goto (reg continue))
+  false-branch57
+  (save continue)
+  (save env)
+  (assign proc (op lookup-variable-value) (const factorial) (reg env))
+  (assign arg1 (op lookup-variable-value) (const n) (reg env))
+  (assign arg2 (const 1))
+  (assign val (op -) (reg arg1) (reg arg2))
+  (assign argl (op list) (reg val))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch61))
+  compiled-branch60
+  (assign continue (label proc-return62))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  proc-return62
+  (assign arg1 (reg val))
+  (goto (label after-call59))
+  primitive-branch61
+  (assign arg1 (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call59
+  (restore env)
+  (assign arg2 (op lookup-variable-value) (const n) (reg env))
+  (assign val (op *) (reg arg1) (reg arg2))
+  (restore continue)
+  (goto (reg continue))
+  after-if56
+  after-lambda54
+  (perform (op define-variable!) (const factorial) (reg val) (reg env))
+  (assign val (const ok))))
+#+END_SRC
+
+Got way more cleaner than [[Exercise 5.33][previous]].
+**** d.
+Since =*= and =+= satisfy the associative rule, we may exploit this property to
+the compiler; but for the consistency with possible further extension where
+primitive procedure does not satisfy the associative rule -- =-= , =/= , and so
+on -- here we are going to implement the arithmetic operation with arbitrary
+arity in =fold-right= manner -- calculate the rightmost operands first.
+
+To deduce the algorithm, we should play with simple examples: Let's think about
+=(+ 1 2 3 4)=. We would like to produce the code by compiling as follows
+#+BEGIN_SRC scheme
+(assign arg2 (const 4))
+(assign arg1 (const 3))
+(assign arg2 (op +) (reg arg1) (reg arg2))
+(assign arg1 (const 2))
+(assign arg2 (op +) (reg arg1) (reg arg2))
+(assign arg1 (const 1))
+(assign target (op +) (reg arg1) (reg arg2))
+#+END_SRC
+
+From this example, we can observe the first and last instruction treated specially.
+
+As consequence, in general, compiling =(+ a1 a2 a3 a4)= should produce
+#+BEGIN_SRC text
+<compile a4; target to arg2; linkage to next; preserving env>
+<compile a3; target to arg1; linkage to next; preserving env, arg2>
+(assign arg2 (op +) (reg arg1) (reg arg2))
+<compile a2; target to arg1; linkage to next; preserving env, arg2>
+(assign arg2 (op +) (reg arg1) (reg arg2))
+<compile a1; target to arg1; linkage to next; preserving arg2>
+(assign target (op +) (reg arg1) (reg arg2))
+<code for goto linkage point>
+#+END_SRC
+
+This is very much the same as the =construct-arglist=. Here is the code for =+=:
+#+BEGIN_SRC scheme
+(define (compile-+ exp target linkage)
+
+  (define (code-to-rest-+ operands)
+    (let* ((last-operand? (no-operands? (rest-operands operands)))
+           (next-target
+            (if last-operand?
+                target
+                'arg2))
+           (code-for-next-+
+            (preserving
+             '(arg2)
+             (compile (first-operand operands)
+                      'arg1 'next)
+             (make-instruction-sequence
+              '(arg1 arg2) (list next-target)
+              `((assign ,next-target (op +) (reg arg1) (reg arg2)))))))
+      (if last-operand?
+          code-for-next-+
+          (preserving
+           '(env)
+           code-for-next-+
+           (code-to-rest-+ (rest-operands operands))))))
+
+  (let ((operands (operands exp)))
+    (let ((number-of-arguments (length operands)))
+      (case number-of-arguments
+        ((0)
+         (end-with-linkage
+          linkage
+          (make-instruction-sequence
+           '() (list target))
+          `((assign ,target (const 0)))))
+        ((1)
+         (compile (first-operand operands)
+                  target linkage))
+        (else
+         (let ((operands (reverse operands)))
+           (end-with-linkage
+            linkage
+            (preserving
+             '(env)
+             (compile (first-operand operands)
+                      'arg2 'next)
+             (code-to-rest-+ (rest-operands operands))))))))))
+#+END_SRC
+
+Then let's install this:
+#+BEGIN_SRC scheme
+;; detector for +
+(define (+? exp) (tagged-list? exp '+))
+#+END_SRC
+
+And
+#+BEGIN_SRC scheme
+,*** in compile clause
+        ;; ((=? exp) (compile-= exp target linkage))
+        ((+? exp) (compile-+ exp target linkage))
+        ((open-coded-prims? exp) =>
+         (lambda (op-binding)
+           (compile-open-coded-prim exp target linkage (cadr op-binding))))
+        (application? exp)
+#+END_SRC
+
+Then test:
+#+BEGIN_SRC scheme
+;; test for compile-+
+(pp (compile '(+ 1 2 3 4) 'val 'next))
+(()
+ (arg2 arg1 val)
+ ((assign arg2 (const 4))
+  (assign arg1 (const 3))
+  (assign arg2 (op +) (reg arg1) (reg arg2))
+  (assign arg1 (const 2))
+  (assign arg2 (op +) (reg arg1) (reg arg2))
+  (assign arg1 (const 1))
+  (assign val (op +) (reg arg1) (reg arg2))))
+#+END_SRC
+
+Note that =code-to-rest-+= can be generalized to any of expression that use
+recursive definition. Let's extract out from the =compile-+=:
+#+BEGIN_SRC scheme
+(define (apply-recursively- op target operands)
+  (let* ((last-operand? (no-operands? (rest-operands operands)))
+         (next-target
+          (if last-operand?
+              target
+              'arg2))
+         (code-for-next-op
+          (preserving
+           '(arg2)
+           (compile (first-operand operands)
+                    'arg1 'next)
+           (make-instruction-sequence
+            '(arg1 arg2) (list next-target)
+            `((assign ,next-target (op ,op) (reg arg1) (reg arg2)))))))
+    (if last-operand?
+        code-for-next-op
+        (preserving
+         '(env)
+         code-for-next-op
+         (apply-recursively- op target (rest-operands operands))))))
+#+END_SRC
+
+Then our original =compile-+= got
+#+BEGIN_SRC scheme
+(define (compile-+ exp target linkage)
+  (let ((operands (operands exp)))
+    (let ((number-of-arguments (length operands)))
+      (case number-of-arguments
+        ((0)
+         (end-with-linkage
+          linkage
+          (make-instruction-sequence
+           '() (list target))
+          `((assign ,target (const 0)))))
+        ((1)
+         (compile (first-operand operands)
+                  target linkage))
+        (else
+         (let ((operands (reverse operands)))
+           (end-with-linkage
+            linkage
+            (preserving
+             '(env)
+             (compile (first-operand operands)
+                      'arg2 'next)
+             (apply-recursively- '+ target (rest-operands operands))))))))))
+#+END_SRC
+
+The other is almost same as above:
+#+BEGIN_SRC scheme
+;; detector for *
+(define (*? exp) (tagged-list? exp '*))
+
+(define (compile-* exp target linkage)
+  (let ((operands (operands exp)))
+    (let ((number-of-arguments (length operands)))
+      (case number-of-arguments
+        ((0)
+         (end-with-linkage
+          linkage
+          (make-instruction-sequence
+           '() (list target))
+          `((assign ,target (const 1))))) ;difference
+        ((1)
+         (compile (first-operand operands)
+                  target linkage))
+        (else
+         (let ((operands (reverse operands)))
+           (end-with-linkage
+            linkage
+            (preserving
+             '(env)
+             (compile (first-operand operands)
+                      'arg2 'next)
+             (apply-recursively- '* target (rest-operands operands)))))))))) ;the other one
+#+END_SRC
+Only the ones annotated is the change from =compile-+=
+** Lexical Addressing

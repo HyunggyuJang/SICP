@@ -2071,3 +2071,492 @@ after-lambda15
 (compile
  '(f (g 'x) y)
  'val 'next)
+
+;; Modified version
+((env continue)
+ (env proc argl continue val)
+ ((save continue)
+  (save env)
+  (save continue)
+  (assign proc (op lookup-variable-value) (const f) (reg env))
+  (restore continue)
+  (restore env)
+  (restore continue)
+  (save continue)
+  (save proc)
+  (save env)
+  (save continue)
+  (assign val (op lookup-variable-value) (const y) (reg env))
+  (restore continue)
+  (assign argl (op list) (reg val))
+  (restore env)
+  (save argl)
+  (save continue)
+  (save env)
+  (save continue)
+  (assign proc (op lookup-variable-value) (const g) (reg env))
+  (restore continue)
+  (restore env)
+  (restore continue)
+  (save continue)
+  (save proc)
+  (save continue)
+  (assign val (const x))
+  (restore continue)
+  (assign argl (op list) (reg val))
+  (restore proc)
+  (restore continue)
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch29))
+  compiled-branch28
+  (assign continue (label after-call27))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch29
+  (save continue)
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  (restore continue)
+  after-call27
+  (restore argl)
+  (assign argl (op cons) (reg val) (reg argl))
+  (restore proc)
+  (restore continue)
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch32))
+  compiled-branch31
+  (assign continue (label after-call30))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch32
+  (save continue)
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  (restore continue)
+  after-call30))
+
+;; Original version
+((env)
+ (env proc argl continue val)
+ ((assign proc (op lookup-variable-value) (const f) (reg env))
+  (save proc)
+  (assign val (op lookup-variable-value) (const y) (reg env))
+  (assign argl (op list) (reg val))
+  (save argl)
+  (assign proc (op lookup-variable-value) (const g) (reg env))
+  (assign val (const x))
+  (assign argl (op list) (reg val))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch23))
+  compiled-branch22
+  (assign continue (label after-call21))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch23
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call21
+  (restore argl)
+  (assign argl (op cons) (reg val) (reg argl))
+  (restore proc)
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch26))
+  compiled-branch25
+  (assign continue (label after-call24))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch26
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call24))
+
+;; Case 4
+(compile '(f (g 'x) 'y) 'val 'next)
+
+;; Modified version
+((env continue)
+ (env proc argl continue val)
+ ((save continue)
+  (save env)
+  (save continue)
+  (assign proc (op lookup-variable-value) (const f) (reg env))
+  (restore continue)
+  (restore env)
+  (restore continue)
+  (save continue)
+  (save proc)
+  (save env)
+  (save continue)
+  (assign val (const y))
+  (restore continue)
+  (assign argl (op list) (reg val))
+  (restore env)
+  (save argl)
+  (save continue)
+  (save env)
+  (save continue)
+  (assign proc (op lookup-variable-value) (const g) (reg env))
+  (restore continue)
+  (restore env)
+  (restore continue)
+  (save continue)
+  (save proc)
+  (save continue)
+  (assign val (const x))
+  (restore continue)
+  (assign argl (op list) (reg val))
+  (restore proc)
+  (restore continue)
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch35))
+  compiled-branch34
+  (assign continue (label after-call33))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch35
+  (save continue)
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  (restore continue)
+  after-call33
+  (restore argl)
+  (assign argl (op cons) (reg val) (reg argl))
+  (restore proc)
+  (restore continue)
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch38))
+  compiled-branch37
+  (assign continue (label after-call36))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch38
+  (save continue)
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  (restore continue)
+  after-call36))
+
+;; Original version
+((env)
+ (env proc argl continue val)
+ ((assign proc (op lookup-variable-value) (const f) (reg env))
+  (save proc)
+  (assign val (const y))
+  (assign argl (op list) (reg val))
+  (save argl)
+  (assign proc (op lookup-variable-value) (const g) (reg env))
+  (assign val (const x))
+  (assign argl (op list) (reg val))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch41))
+  compiled-branch40
+  (assign continue (label after-call39))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch41
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call39
+  (restore argl)
+  (assign argl (op cons) (reg val) (reg argl))
+  (restore proc)
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch44))
+  compiled-branch43
+  (assign continue (label after-call42))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch44
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call42))
+
+;; Exercise 5.38
+;;; a
+(define (spread-arguments args)
+  (let ((a1 (car args))
+        (a2 (cadr args)))
+    (preserving
+     '(env)
+     (compile a1 'arg1 'next)
+     (preserving
+      '(arg1)
+      (compile a2 'arg2 'next)
+      (make-instruction-sequence
+       '(arg1) '() '())))))
+;; test
+(spread-arguments '(x y))
+((env) (arg1 arg2)
+ ((assign arg1 (op lookup-variable-value) (const x) (reg env))
+  (assign arg2 (op lookup-variable-value) (const y) (reg env))))
+
+(define (compile-= exp target linkage)
+  (end-with-linkage
+   linkage
+   (append-instruction-sequences
+    (spread-arguments (operands exp))
+    (make-instruction-sequence
+     '(arg1 arg2)
+     (list target)
+     `((assign ,target (op =) (reg arg1) (reg arg2)))))))
+
+;; Test compile-=
+;;; simple case
+(compile-= '(= 5 2) 'val 'next)
+(() (arg1 arg2 val)
+ ((assign arg1 (const 5))
+  (assign arg2 (const 2))
+  (assign val (op =) (reg arg1) (reg arg2))))
+
+(define (=? exp) (tagged-list? exp '=))
+
+;;; recursive case
+(compile '(= (= 5 2) (= 2 1))
+         'val 'next)
+
+(()
+ (arg1 arg2 val)
+ ((assign arg1 (const 5))
+  (assign arg2 (const 2))
+  (assign arg1 (op =) (reg arg1) (reg arg2))
+  (save arg1)
+  (assign arg1 (const 2))
+  (assign arg2 (const 1))
+  (assign arg2 (op =) (reg arg1) (reg arg2))
+  (restore arg1)
+  (assign val (op =) (reg arg1) (reg arg2))))
+
+;; open-code primitive dictionary
+(define open-coded-prims '((= =) (* *) (- -) (+ +)))
+
+(define (open-coded-prims? exp)
+  (and (= (length (operands exp)) 2)    ;binary
+       (assoc (operator exp) open-coded-prims)))
+
+(define (compile-open-coded-prim exp target linkage op)
+  (end-with-linkage
+   linkage
+   (append-instruction-sequences
+    (spread-arguments (operands exp))
+    (make-instruction-sequence
+     '(arg1 arg2)
+     (list target)
+     `((assign ,target (op ,op) (reg arg1) (reg arg2)))))))
+
+;; test compile-open-coded-prim
+;; The previous one works well in this new scheme
+(pp (compile '(= (= 5 2) (= 2 1))
+         'val 'next))
+(()
+ (arg1 arg2 val)
+ ((assign arg1 (const 5))
+  (assign arg2 (const 2))
+  (assign arg1 (op =) (reg arg1) (reg arg2))
+  (save arg1)
+  (assign arg1 (const 2))
+  (assign arg2 (const 1))
+  (assign arg2 (op =) (reg arg1) (reg arg2))
+  (restore arg1)
+  (assign val (op =) (reg arg1) (reg arg2))))
+
+;; Complex one also works well
+(pp (compile '(= (+ (- 5 2) (* 1 2)) 5)
+             'val 'next))
+(()
+ (arg1 arg2 val)
+ ((assign arg1 (const 5))
+  (assign arg2 (const 2))
+  (assign arg1 (op -) (reg arg1) (reg arg2))
+  (save arg1)
+  (assign arg1 (const 1))
+  (assign arg2 (const 2))
+  (assign arg2 (op *) (reg arg1) (reg arg2))
+  (restore arg1)
+  (assign arg1 (op +) (reg arg1) (reg arg2))
+  (assign arg2 (const 5))
+  (assign val (op =) (reg arg1) (reg arg2))))
+
+(define (compile exp target linkage)
+  (cond ((self-evaluating? exp)
+         (compile-self-evaluating exp target linkage))
+        ((quoted? exp) (compile-quoted exp target linkage))
+        ((variable? exp)
+         (compile-variable exp target linkage))
+        ((assignment? exp)
+         (compile-assignment exp target linkage))
+        ((definition? exp)
+         (compile-definition exp target linkage))
+        ((if? exp) (compile-if exp target linkage))
+        ((lambda? exp) (compile-lambda exp target linkage))
+        ((begin? exp)
+         (compile-sequence (begin-actions exp)
+                           target
+                           linkage))
+        ((cond? exp) (compile (cond->if exp) target linkage))
+        ;; ((=? exp) (compile-= exp target linkage))
+        ((+? exp) (compile-+ exp target linkage))
+        ((open-coded-prims? exp) =>
+         (lambda (op-binding)
+           (compile-open-coded-prim exp target linkage (cadr op-binding))))
+        ((application? exp)
+         (compile-application exp target linkage))
+        (else
+         (error "Unknown expression type -- COMPILE" exp))))
+
+;; c.
+(pp (compile
+ '(define (factorial n)
+    (if (= n 1)
+        1
+        (* (factorial (- n 1)) n)))
+ 'val
+ 'next))
+
+((env)
+ (val)
+ ((assign val (op make-compiled-procedure) (label entry55) (reg env))
+  (goto (label after-lambda54))
+  entry55
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (n)) (reg argl) (reg env))
+  (assign arg1 (op lookup-variable-value) (const n) (reg env))
+  (assign arg2 (const 1))
+  (assign val (op =) (reg arg1) (reg arg2))
+  (test (op false?) (reg val))
+  (branch (label false-branch57))
+  true-branch58
+  (assign val (const 1))
+  (goto (reg continue))
+  false-branch57
+  (save continue)
+  (save env)
+  (assign proc (op lookup-variable-value) (const factorial) (reg env))
+  (assign arg1 (op lookup-variable-value) (const n) (reg env))
+  (assign arg2 (const 1))
+  (assign val (op -) (reg arg1) (reg arg2))
+  (assign argl (op list) (reg val))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch61))
+  compiled-branch60
+  (assign continue (label proc-return62))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  proc-return62
+  (assign arg1 (reg val))
+  (goto (label after-call59))
+  primitive-branch61
+  (assign arg1 (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call59
+  (restore env)
+  (assign arg2 (op lookup-variable-value) (const n) (reg env))
+  (assign val (op *) (reg arg1) (reg arg2))
+  (restore continue)
+  (goto (reg continue))
+  after-if56
+  after-lambda54
+  (perform (op define-variable!) (const factorial) (reg val) (reg env))
+  (assign val (const ok))))
+
+;; d.
+;;; design phase
+
+(compile '(+ 1 2 3 4) 'val 'next)
+
+;; should spit out
+(assign arg2 (const 4))
+(assign arg1 (const 3))
+(assign arg2 (op +) (reg arg1) (reg arg2))
+(assign arg1 (const 2))
+(assign arg2 (op +) (reg arg1) (reg arg2))
+(assign arg1 (const 1))
+(assign val (op +) (reg arg1) (reg arg2))
+
+;; In general
+(compile `(+ ,a1 ,a2 ,a3 ,a4) 'val 'next)
+
+;; should produce
+<compile a4; target to arg2; linkage to next; preserving env>
+<compile a3; target to arg1; linkage to next; preserving env, arg2>
+(assign arg2 (op +) (reg arg1) (reg arg2))
+<compile a2; target to arg1; linkage to next; preserving env, arg2>
+(assign arg2 (op +) (reg arg1) (reg arg2))
+<compile a1; target to arg1; linkage to next; preserving arg2>
+(assign target (op +) (reg arg1) (reg arg2))
+<code for goto linkage point>
+
+
+(define (compile-+ exp target linkage)
+  (let ((operands (operands exp)))
+    (let ((number-of-arguments (length operands)))
+      (case number-of-arguments
+        ((0)
+         (end-with-linkage
+          linkage
+          (make-instruction-sequence
+           '() (list target))
+          `((assign ,target (const 0)))))
+        ((1)
+         (compile (first-operand operands)
+                  target linkage))
+        (else
+         (let ((operands (reverse operands)))
+           (end-with-linkage
+            linkage
+            (preserving
+             '(env)
+             (compile (first-operand operands)
+                      'arg2 'next)
+             (apply-recursively- '+ target (rest-operands operands))))))))))
+
+;; detector for +
+(define (+? exp) (tagged-list? exp '+))
+;; test for compile-+
+(pp (compile '(+ 1 2 3 4) 'val 'next))
+(()
+ (arg2 arg1 val)
+ ((assign arg2 (const 4))
+  (assign arg1 (const 3))
+  (assign arg2 (op +) (reg arg1) (reg arg2))
+  (assign arg1 (const 2))
+  (assign arg2 (op +) (reg arg1) (reg arg2))
+  (assign arg1 (const 1))
+  (assign val (op +) (reg arg1) (reg arg2))))
+
+(define (apply-recursively- op target operands)
+  (let* ((last-operand? (no-operands? (rest-operands operands)))
+         (next-target
+          (if last-operand?
+              target
+              'arg2))
+         (code-for-next-op
+          (preserving
+           '(arg2)
+           (compile (first-operand operands)
+                    'arg1 'next)
+           (make-instruction-sequence
+            '(arg1 arg2) (list next-target)
+            `((assign ,next-target (op ,op) (reg arg1) (reg arg2)))))))
+    (if last-operand?
+        code-for-next-op
+        (preserving
+         '(env)
+         code-for-next-op
+         (apply-recursively- op target (rest-operands operands))))))
+
+;; detector for *
+(define (*? exp) (tagged-list? exp '*))
+
+(define (compile-+ exp target linkage)
+  (let ((operands (operands exp)))
+    (let ((number-of-arguments (length operands)))
+      (case number-of-arguments
+        ((0)
+         (end-with-linkage
+          linkage
+          (make-instruction-sequence
+           '() (list target))
+          `((assign ,target (const 1)))))
+        ((1)
+         (compile (first-operand operands)
+                  target linkage))
+        (else
+         (let ((operands (reverse operands)))
+           (end-with-linkage
+            linkage
+            (preserving
+             '(env)
+             (compile (first-operand operands)
+                      'arg2 'next)
+             (apply-recursively- '+ target (rest-operands operands))))))))))
