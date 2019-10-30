@@ -2651,3 +2651,37 @@ after-lambda15
       (preserving '(env continue)
        (compile (first-exp seq) target 'next env)
        (compile-sequence (rest-exps seq) target linkage env))))
+
+;; Exercise 5.41
+(define (find-variable var env)
+  (let traverse-env ((current-env env)
+                     (frame-num 0))
+    (if (empty-env? current-env)
+        'not-found
+        (let traverse-frame ((current-vars (frame-vars current-env))
+                             (displacement-num 0))
+          (cond ((empty-vars? current-vars)
+                 (traverse-env (enclosing-env current-env)
+                               (1+ frame-num)))
+                ((eq? var (first-var current-vars))
+                 (make-lexical-address frame-num displacement-num))
+                (else
+                 (traverse-frame (rest-vars current-vars)
+                                 (1+ displacement-num))))))))
+;; ADT for compile-time-env
+(define (frame-vars compile-time-env)
+  (car compile-time-env))
+(define (enclosing-env compile-time-env)
+  (cdr compile-time-env))
+(define (empty-env? compile-time-env) (null? compile-time-env))
+
+;; ADT for compile-time-frame
+(define (first-var compile-time-frame) (car compile-time-frame))
+(define (rest-vars compile-time-frame) (cdr compile-time-frame))
+(define (empty-vars? compile-time-frame) (null? compile-time-frame))
+
+;; test for find-variable
+(find-variable 'c '((y z) (a b c d e) (x y)))
+;Value: (1 2)
+(find-variable 'x '((y z) (a b c d e) (x y)))
+;Value: (2 0)
