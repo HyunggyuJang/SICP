@@ -3291,3 +3291,43 @@ after-lambda15
   after-lambda17
   (perform (op define-variable!) (const fib) (reg val) (reg env))
   (assign val (const ok))))
+
+;; Exercise 5.47
+(compile-and-go
+ '(define (f x)
+    (g x)))
+
+(pp (compile
+     '(define (f x)
+        (g x))
+     'val 'next the-empty-compile-time-env))
+
+((env)
+ (val)
+ ((assign val (op make-compiled-procedure) (label entry8) (reg env))
+  (goto (label after-lambda7))
+  entry8
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (x)) (reg argl) (reg env))
+  (assign proc (op lookup-variable-value-in-frame) (const g) (reg env) (const 1))
+  (assign val (op lexical-address-lookup) (const (0 0)) (reg env))
+  (assign argl (op list) (reg val))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch12))
+  (test (op compound-procedure?) (reg proc))
+  (branch (label primitive-branch12))
+  compound-branch10
+  (save continue)
+  (goto (reg compapp))
+  compiled-branch11
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch12
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  (goto (reg continue))
+  after-call9
+  after-lambda7
+  (perform (op define-variable!) (const f) (reg val) (reg env))
+  (assign val (const ok))))
+
+;; Debugging we didn't updated the compound branch!

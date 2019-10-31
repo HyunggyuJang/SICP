@@ -6544,3 +6544,125 @@ Now we resolved the duplicative code:
   (perform (op define-variable!) (const fib) (reg val) (reg env))
   (assign val (const ok))))
 #+END_SRC
+*** Exercise 5.47
+This exercise is a lot like the analogous process of extension of evaluator to
+use the compiled procedure.
+
+From the contraction of =compound-apply= subroutine, all we need to do is to
+save the return point into the stack. The rest is obvious. Here is the resulting
+code:
+#+BEGIN_SRC scheme
+(define (compile-procedure-call target linkage)
+  (let ((primitive-branch (make-label 'primitive-branch))
+        (compiled-branch (make-label 'compiled-branch))
+        (compound-branch (make-label 'compound-branch))
+        (after-call (make-label 'after-call)))
+    (let ((not-primitive-linkage
+           (if (eq? linkage 'next) after-call linkage)))
+      (append-instruction-sequences
+       (make-instruction-sequence
+        '(proc) '()
+        `((test (op primitive-procedure?) (reg proc))
+          (branch (label ,primitive-branch))))
+       (make-instruction-sequence
+        '(proc) '()
+        `((test (op compound-procedure?) (reg proc))
+          (branch (label ,compound-branch))))
+       (parallel-instruction-sequences
+        (append-instruction-sequences
+         compound-branch
+         (compound-proc-appl target not-primitive-linkage))
+        (append-instruction-sequences
+         compiled-branch
+         (compile-proc-appl target not-primitive-linkage))
+        (append-instruction-sequences
+         primitive-branch
+         (end-with-linkage
+          linkage
+          (make-instruction-sequence
+           '(proc argl)
+           (list target)
+           `((assign ,target
+                     (op apply-primitive-procedure)
+                     (reg proc)
+                     (reg argl)))))))
+       after-call))))
+#+END_SRC
+
+Then =compound-proc-appl= becomes
+#+BEGIN_SRC scheme
+(define (compound-proc-appl target linkage)
+  (cond ((and (eq? target 'val) (not (eq? linkage 'return)))
+         (make-instruction-sequence
+          '(compapp) all-regs
+          `((assign continue (label ,linkage))
+            (save continue)
+            (goto (reg compapp)))))
+        ((and (not (eq? target 'val))
+              (not (eq? linkage 'return)))
+         (let ((proc-return (make-label 'proc-return)))
+           (make-instruction-sequence
+            '(compapp) all-regs
+            `((assign continue (label ,proc-return))
+              (save continue)
+              (goto (reg compapp))
+              ,proc-return
+              (assign ,target (reg val))
+              (goto (label ,linkage))))))
+        ((and (eq? target 'val) (eq? linkage 'return))
+         (make-instruction-sequence
+          '(compapp continue) all-regs
+          '((save continue)
+            (goto (reg compapp)))))
+        ((and (not (eq? target 'val)) (eq? linkage 'return))
+         (error "return linkage, target not val -- COMPILE"
+                target))))
+#+END_SRC
+
+To accommodate arbitrary arguments for =parallel-instruction-sequence= like
+above, we need to change that procedure analogous to
+=append-instruction-sequence=:
+#+BEGIN_SRC scheme
+(define (parallel-instruction-sequences . seqs)
+  (define (parallel-2-sequences seq1 seq2)
+    (make-instruction-sequence
+     (list-union (registers-needed seq1)
+                 (registers-needed seq2))
+     (list-union (registers-modified seq1)
+                 (registers-modified seq2))
+     (append (statements seq1) (statements seq2))))
+  (define (parallel-seq-list seqs)
+    (if (null? seqs)
+        (empty-instruction-sequence)
+        (parallel-2-sequences (car seqs)
+                              (parallel-seq-list (cdr seqs)))))
+  (parallel-seq-list seqs))
+#+END_SRC
+
+Now let's test:
+#+BEGIN_SRC scheme
+(compile-and-go
+ '(define (f x)
+    (g x)))
+
+(total-pushes = 0 maximum-depth = 0)
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+(define (g x) (* x x))
+
+(total-pushes = 3 maximum-depth = 3)
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+(f 5)
+
+(total-pushes = 14 maximum-depth = 5)
+;;; EC-Eval value:
+25
+
+#+END_SRC
+
+Works as expected!

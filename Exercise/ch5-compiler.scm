@@ -287,22 +287,33 @@
 (define (compile-procedure-call target linkage)
   (let ((primitive-branch (make-label 'primitive-branch))
         (compiled-branch (make-label 'compiled-branch))
+        (compound-branch (make-label 'compound-branch))
         (after-call (make-label 'after-call)))
-    (let ((compiled-linkage
+    (let ((not-primitive-linkage
            (if (eq? linkage 'next) after-call linkage)))
       (append-instruction-sequences
-       (make-instruction-sequence '(proc) '()
+       (make-instruction-sequence
+        '(proc) '()
         `((test (op primitive-procedure?) (reg proc))
           (branch (label ,primitive-branch))))
+       (make-instruction-sequence
+        '(proc) '()
+        `((test (op compound-procedure?) (reg proc))
+          (branch (label ,compound-branch))))
        (parallel-instruction-sequences
         (append-instruction-sequences
+         compound-branch
+         (compound-proc-appl target not-primitive-linkage))
+        (append-instruction-sequences
          compiled-branch
-         (compile-proc-appl target compiled-linkage))
+         (compile-proc-appl target not-primitive-linkage))
         (append-instruction-sequences
          primitive-branch
-         (end-with-linkage linkage
-          (make-instruction-sequence '(proc argl)
-                                     (list target)
+         (end-with-linkage
+          linkage
+          (make-instruction-sequence
+           '(proc argl)
+           (list target)
            `((assign ,target
                      (op apply-primitive-procedure)
                      (reg proc)
@@ -338,8 +349,35 @@
          (error "return linkage, target not val -- COMPILE"
                 target))))
 
+(define (compound-proc-appl target linkage)
+  (cond ((and (eq? target 'val) (not (eq? linkage 'return)))
+         (make-instruction-sequence
+          '(compapp) all-regs
+          `((assign continue (label ,linkage))
+            (save continue)
+            (goto (reg compapp)))))
+        ((and (not (eq? target 'val))
+              (not (eq? linkage 'return)))
+         (let ((proc-return (make-label 'proc-return)))
+           (make-instruction-sequence
+            '(compapp) all-regs
+            `((assign continue (label ,proc-return))
+              (save continue)
+              (goto (reg compapp))
+              ,proc-return
+              (assign ,target (reg val))
+              (goto (label ,linkage))))))
+        ((and (eq? target 'val) (eq? linkage 'return))
+         (make-instruction-sequence
+          '(compapp continue) all-regs
+          '((save continue)
+            (goto (reg compapp)))))
+        ((and (not (eq? target 'val)) (eq? linkage 'return))
+         (error "return linkage, target not val -- COMPILE"
+                target))))
+
 ;; footnote
-(define all-regs '(env proc val argl continue))
+(define all-regs '(env proc val argl continue arg1 arg2))
 
 
 ;;;SECTION 5.5.4
@@ -411,13 +449,28 @@
    (registers-modified seq)
    (append (statements seq) (statements body-seq))))
 
-(define (parallel-instruction-sequences seq1 seq2)
-  (make-instruction-sequence
-   (list-union (registers-needed seq1)
-               (registers-needed seq2))
-   (list-union (registers-modified seq1)
-               (registers-modified seq2))
-   (append (statements seq1) (statements seq2))))
+;; (define (parallel-instruction-sequences seq1 seq2)
+;;   (make-instruction-sequence
+;;    (list-union (registers-needed seq1)
+;;                (registers-needed seq2))
+;;    (list-union (registers-modified seq1)
+;;                (registers-modified seq2))
+;;    (append (statements seq1) (statements seq2))))
+
+(define (parallel-instruction-sequences . seqs)
+  (define (parallel-2-sequences seq1 seq2)
+    (make-instruction-sequence
+     (list-union (registers-needed seq1)
+                 (registers-needed seq2))
+     (list-union (registers-modified seq1)
+                 (registers-modified seq2))
+     (append (statements seq1) (statements seq2))))
+  (define (parallel-seq-list seqs)
+    (if (null? seqs)
+        (empty-instruction-sequence)
+        (parallel-2-sequences (car seqs)
+                              (parallel-seq-list (cdr seqs)))))
+  (parallel-seq-list seqs))
 
 ;; Exercise 5.38
 (define (spread-arguments args env)
