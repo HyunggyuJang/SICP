@@ -405,3 +405,28 @@
   (tagged-list? obj 'evaluated-thunk))
 
 (define (thunk-value evaluated-thunk) (cadr evaluated-thunk))
+
+;; Exercise 5.39
+(define (lexical-address-lookup address env)
+  (let ((val
+         (list-ref
+          (frame-values
+           (frame-ref env (frame-number address)))
+          (displacement-number address))))
+    (if (eq? val '*unassigned*)
+        (error "Unassigned variable:"
+               (list-ref
+                (frame-variables
+                 (frame-ref env (frame-number address)))
+                (displacement-number address)))
+        val)))
+
+(define (lexical-address-set! address val env)
+  (set-car!
+   (list-tail
+    (frame-values
+     (frame-ref env (frame-number address)))
+    (displacement-number address))
+   val))
+;; ADT for environment
+(define (frame-ref env index) (list-ref env index))

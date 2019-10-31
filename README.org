@@ -5882,3 +5882,248 @@ Then test!
 #+END_SRC
 
 Works well.
+** Interfacing Compiled Code to the Evaluator
+If we allowed to optimize our compiler using the preceding exercises, that is,
+to use the opencoded primitive procedures and lexical operations, we can cause
+even more dramatic result:
+#+BEGIN_SRC scheme
+(compile-and-go
+ '(define (factorial n)
+    (if (= n 1)
+        1
+        (* (factorial (- n 1)) n))))
+
+(total-pushes = 0 maximum-depth = 0)
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+(factorial 5)
+
+(total-pushes = 17 maximum-depth = 9)
+;;; EC-Eval value:
+120
+
+#+END_SRC
+
+Versus normal version of compiler:
+#+BEGIN_SRC scheme
+(compile-and-go
+ '(define (factorial n)
+    (if (= n 1)
+        1
+        (* (factorial (- n 1)) n))))
+
+(total-pushes = 0 maximum-depth = 0)
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+(factorial 5)
+
+(total-pushes = 31 maximum-depth = 14)
+;;; EC-Eval value:
+120
+
+#+END_SRC
+*** Exercise 5.45
+**** a.
+We have already deduced the formulas for interpreted =factorial= and
+special-purpose factorial machine; all the left is for the =factorial= using
+=compile=. We'll do the analysis using two different versions of our compiler:
+One for the unoptimized and the other for optimized using lexical operations and
+open-coded primitives.
+
+***** Via unoptimized compiler
+Let's get the data to deduce the formulas for =total-pushes= and
+=maximum-depth=. Actually as we know the resulting formula should be linear in
+both, we can deduce wanting formula using only two data:
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+(factorial 5)
+
+(total-pushes = 31 maximum-depth = 14)
+;;; EC-Eval value:
+120
+
+;;; EC-Eval input:
+(factorial 4)
+
+(total-pushes = 25 maximum-depth = 11)
+;;; EC-Eval value:
+24
+
+#+END_SRC
+
+From this data, we can formulate as
+- =total-pushes= = /6n + 1/
+- =maximum-depth= = /3n - 1/
+
+
+So the ratio for the =total-pushes= in compiled version to interpreted version
+converges to 3/16; and that for =maximum-depth= is 3/5.
+
+And that of compiled version to special-purpose factorial machine are 3 and 3/2,
+respectively.
+***** Via optimized compiler
+If we do the same thing as we did preceding one, we got
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+(factorial 5)
+
+(total-pushes = 17 maximum-depth = 9)
+;;; EC-Eval value:
+120
+
+;;; EC-Eval input:
+(factorial 4)
+
+(total-pushes = 14 maximum-depth = 7)
+;;; EC-Eval value:
+24
+
+#+END_SRC
+
+Then,
+- =total-pushes= = /3n + 2/
+- =maximum-depth= = /2n - 1/
+
+
+So the ratio for the =total-pushes= in this to interpreted version converges to
+3/32; and that for =maximum-depth= is 2/5.
+
+And that of this to special-purpose factorial machine are 3/2 and 1, respectively.
+**** b.
+For the unoptimized compiler, just use the optimized one; but if we aren't
+satisfied with the difference the performance produced by optimized compiler
+from special-purpose factorial machine, we should analyze the controller code to
+realize what causes that difference:
+
+Here is the generated code from optimized compiler:
+#+BEGIN_SRC scheme
+(pp (compile
+     '(define (factorial n)
+        (if (= n 1)
+            1
+            (* (factorial (- n 1)) n)))
+     'val 'next
+     the-empty-compile-time-env))
+
+((env)
+ (val)
+ ((assign val (op make-compiled-procedure) (label entry11) (reg env))
+  (goto (label after-lambda10))
+  entry11
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (n)) (reg argl) (reg env))
+  (assign arg1 (op lexical-address-lookup) (const (0 0)) (reg env))
+  (assign arg2 (const 1))
+  (assign val (op =) (reg arg1) (reg arg2))
+  (test (op false?) (reg val))
+  (branch (label false-branch13))
+  true-branch14
+  (assign val (const 1))
+  (goto (reg continue))
+  false-branch13
+  (save continue)
+  (assign arg2 (op lexical-address-lookup) (const (0 0)) (reg env))
+  (save arg2)
+  (save env)                            ;the overhead
+  (assign env (op get-global-environment))
+  (assign proc (op lookup-variable-value) (const factorial) (reg env))
+  (restore env)                         ;***
+  (assign arg1 (op lexical-address-lookup) (const (0 0)) (reg env))
+  (assign arg2 (const 1))
+  (assign val (op -) (reg arg1) (reg arg2))
+  (assign argl (op list) (reg val))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch17))
+  compiled-branch16
+  (assign continue (label proc-return18))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  proc-return18
+  (assign arg1 (reg val))
+  (goto (label after-call15))
+  primitive-branch17
+  (assign arg1 (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call15
+  (restore arg2)
+  (assign val (op *) (reg arg1) (reg arg2))
+  (restore continue)
+  (goto (reg continue))
+  after-if12
+  after-lambda10
+  (perform (op define-variable!) (const factorial) (reg val) (reg env))
+  (assign val (const ok))))
+#+END_SRC
+
+If we compare this code with the =fact-machine= in [[Exercise 5.14][Exercise 5.14]], we come to
+know that the only overhead of stack operation is =(save env)= as annotated
+above code; we have introduced this overhead when we dealing with the lexical
+address to lookup variable, if the given variable not found in the lexical
+environment then it means it should be found in global environment; we've
+exploited this fact into our compiler.
+
+If we reverse this optimization we can remove this overhead stack operation, but
+this only disguise the overhead into the operation =lookup-variable-value=,
+which, in principle, should be implemented as subroutines; so basically we
+couldn't resolved the optimization problem.
+
+Nevertheless, let's verify our observation by reverting noted optimization:
+#+BEGIN_SRC scheme
+(define (compile-variable exp target linkage env)
+  (let ((address (find-variable exp env)))
+    (end-with-linkage
+     linkage
+     (if (eq? address 'not-found)
+         (make-instruction-sequence
+          ;; '() (list-union '(env) (list target))
+          '(env) (list target)
+          `(;; (assign env (op get-global-environment))
+            (assign ,target
+                    (op lookup-variable-value)
+                    (const ,exp)
+                    (reg env))))
+         (make-instruction-sequence
+          '(env) (list target)
+          `((assign ,target
+                    (op lexical-address-lookup)
+                    (const ,address)
+                    (reg env))))))))
+#+END_SRC
+
+Then
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+(factorial 5)
+
+(total-pushes = 13 maximum-depth = 8)
+;;; EC-Eval value:
+120
+
+;;; EC-Eval input:
+(factorial 4)
+
+(total-pushes = 11 maximum-depth = 6)
+;;; EC-Eval value:
+24
+
+#+END_SRC
+
+As expected, now the asymptotic complexity of these stack operations got same as
+the special-purpose factorial machine -- both ratio became just 1 together; but
+as noted above this is not the real improvement -- just spurious appearance.
+
+To make this produced code improved, not just spuriously, we need to get rid of
+the =lookup-variable-value= operation which possibly be the main place of the
+overhead if the global environment has a lot of bindings and so on.
+
+So one strategy we can come up with is replace all the =lookup-variable-value=
+with =lexical-address-lookup= since it exploit the compile time environment,
+compiler can alleviate the work of machine should do in execution time a lot.
+
+To do this, we need to change the definition of =factorial= using =named-let=
+expression, which does not change the algorithm of the original =factorial= at
+all. This would make close our machine's behavior that execute compiled code to
+the special-purpose machine.

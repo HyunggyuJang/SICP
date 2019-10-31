@@ -523,30 +523,6 @@
                       'arg2 'next env)
              (apply-recursively- '* target (rest-operands operands) env)))))))))
 
-;; Exercise 5.39
-(define (lexical-address-lookup address env)
-  (let ((val
-         (list-ref
-          (frame-values
-           (frame-ref env (frame-number address)))
-          (displacement-number address))))
-    (if (eq? val '*unassigned*)
-        (error "Unassigned variable:"
-               (list-ref
-                (frame-variables
-                 (frame-ref env (frame-number address)))
-                (displacement-number address)))
-        val)))
-
-(define (lexical-address-set! address val env)
-  (set-car!
-   (list-tail
-    (frame-values
-     (frame-ref env (frame-number address)))
-    (displacement-number address))
-   val))
-;; ADT for environment
-(define (frame-ref env index) (list-ref env index))
 
 ;; ADT for lexical-address
 (define (make-lexical-address frame-num displacement-num)
