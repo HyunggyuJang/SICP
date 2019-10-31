@@ -302,11 +302,11 @@
           (branch (label ,compound-branch))))
        (parallel-instruction-sequences
         (append-instruction-sequences
-         compound-branch
-         (compound-proc-appl target not-primitive-linkage))
-        (append-instruction-sequences
          compiled-branch
          (compile-proc-appl target not-primitive-linkage))
+        (append-instruction-sequences
+         compound-branch
+         (compound-proc-appl target not-primitive-linkage))
         (append-instruction-sequences
          primitive-branch
          (end-with-linkage

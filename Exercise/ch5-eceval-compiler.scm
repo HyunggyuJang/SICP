@@ -285,11 +285,16 @@ compiled-apply
   (goto (reg val))
 
 primitive-apply
+  (restore continue)
+  (assign flag (const #f))          ;initialize the flag
   (assign val (op apply-primitive-procedure)
               (reg proc)
               (reg argl))
-  (restore continue)
+  (branch (label temporary-external-entry))
   (goto (reg continue))
+
+temporary-external-entry
+  (goto (reg val))
 
 compound-apply
   (assign unev (op procedure-parameters) (reg proc))

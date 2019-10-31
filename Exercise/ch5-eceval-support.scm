@@ -94,8 +94,10 @@
 (define (lookup-variable-value-in-frame var env frame-num)
   (lookup-variable-value
    var
-   (extend-compile-time-env (frame-ref env frame-num)
-                            the-empty-compile-time-env)))
+   (extend-env-with-frame (frame-ref env frame-num)
+                          the-empty-environment)))
+
+(define (extend-env-with-frame frame env) (cons frame env))
 
 (define (set-variable-value! var val env)
   (define (env-loop env)
@@ -298,6 +300,27 @@
 ;; (define (cdr* p)
 ;;   (caddr p))
 
+;; Exercise 5.48
+;; (define (compile-and-run user-exp)
+;;   ;; provided that continue register contains return point
+;;   (let* ((exp (pair*->pair user-exp))
+;;          (instructions
+;;           (assemble
+;;            (statements
+;;             (compile exp 'val 'return the-empty-compile-time-env))
+;;            eceval)))
+;;     (set-register-contents! eceval 'pc (cons 'dummy instructions))))
+
+(define (compile-and-run user-exp)
+  (let* ((exp (pair*->pair user-exp))
+         (instructions
+          (assemble
+           (statements
+            (compile exp 'val 'return the-empty-compile-time-env))
+           eceval)))
+    (set-register-contents! eceval 'flag true)
+    instructions))
+
 (define primitive-procedures
   (list (list 'car car*)
         (list 'cdr cdr*)
@@ -305,17 +328,19 @@
         (list 'null? null?*)
         (list 'pair? pair?*)
         ;;above from book -- here are some more
-	      (list '+ +*)
-	      (list '- -*)
-	      (list '* **)
-	      (list '= =*)
-	      (list '/ /*)
-	      (list '> >*)
-	      (list '< <*)
+	    (list '+ +*)
+	    (list '- -*)
+	    (list '* **)
+	    (list '= =*)
+	    (list '/ /*)
+	    (list '> >*)
+	    (list '< <*)
         ;; `(not ,not)
         ;; `(list ,list)
         ;; `(set-cdr! ,set-cdr!)
         ;; `(pair? ,pair?)
+        ;; Exercise 5.48
+        `(compile-and-run ,compile-and-run)
         ))
 
 (define (primitive-procedure-names)

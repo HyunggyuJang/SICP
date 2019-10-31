@@ -6432,8 +6432,10 @@ So for now, let us fix this problem using ad-hoc procedure:
 (define (lookup-variable-value-in-frame var env frame-num)
   (lookup-variable-value
    var
-   (extend-compile-time-env (frame-ref env frame-num)
-                            the-empty-compile-time-env)))
+   (extend-env-with-frame (frame-ref env frame-num)
+                          the-empty-environment)))
+
+(define (extend-env-with-frame frame env) (cons frame env))
 #+END_SRC
 
 Then:
@@ -6570,11 +6572,11 @@ code:
           (branch (label ,compound-branch))))
        (parallel-instruction-sequences
         (append-instruction-sequences
-         compound-branch
-         (compound-proc-appl target not-primitive-linkage))
-        (append-instruction-sequences
          compiled-branch
          (compile-proc-appl target not-primitive-linkage))
+        (append-instruction-sequences
+         compound-branch
+         (compound-proc-appl target not-primitive-linkage))
         (append-instruction-sequences
          primitive-branch
          (end-with-linkage
@@ -6666,3 +6668,210 @@ ok
 #+END_SRC
 
 Works as expected!
+*** Exercise 5.48
+To implement given task, we should realize that the assembled instructions, the
+instruction procedures, are just mutating the machine's state -- the contents of
+registers, the contents of stack, (implicitly) the contents of heap. So by
+defining the =compile-and-run= procedure as primitive in global environment, we
+can actually access the machine state with =eceval= since at that point,
+=eceval= defined underlying Scheme's global environment.
+
+As it is similar procedure with =compile-and-go= in that behavior, we can learn
+from that procedure to get idea what we have to do to implement
+=compile-and-run=.
+
+As noted above, we can use the current state of machine, and our
+=compile-and-run= procedure executed with =pritivie-apply= subroutine, we should
+organize that combination to the analogous expression of =external-entry= except
+for the initializing process as we are going to use current state.
+
+That is, we need to arrange =compile-and-run= to get =continue= register have
+the return point before =goto= the newly compiled instructions.
+
+As =apply-primitive-procedure= does not change the contents of =continue=, we
+can change the order as follows safely:
+#+BEGIN_SRC scheme
+primitive-apply
+  (restore continue)                    ;changed
+  (assign val (op apply-primitive-procedure)
+              (reg proc)
+              (reg argl))
+  (goto (reg continue))
+#+END_SRC
+
+Then now =compile-and-run= called with =continue= register having return point,
+all the left is =goto= the newly compiled code, which produced from the given
+expression. As we can treat =eceval= machine as if we were in the outside of
+that machine, we can mimic the behavior of =goto= rather direct fashion:
+#+BEGIN_SRC scheme
+(define (compile-and-run user-exp)
+  ;; provided that continue register contains return point
+  (let* ((exp (pair*->pair user-exp))
+         (instructions
+          (assemble
+           (statements
+            (compile exp 'val 'return the-empty-compile-time-env))
+           eceval)))
+    (set-register-contents! eceval 'pc instructions)))
+#+END_SRC
+
+(Here we used =pair*->pair= since the pair object constructed by user is
+different from the underlying pair object to protect the tagged data.)
+
+Then let's test this:
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+(compile-and-run
+ '(define (factorial n)
+    (if (= n 1)
+        1
+        (* (factorial (- n 1)) n))))
+
+(total-pushes = 5 maximum-depth = 3)
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+factorial
+
+(total-pushes = 0 maximum-depth = 0)
+;;; EC-Eval value:
+done
+
+#+END_SRC
+
+Unfortunately this won't work; if we trace the execution, we realize that our
+evaluator start to execute from the second instruction of what compiled, not
+first.
+
+To verify this observation, let's modify above defintion as follows
+#+BEGIN_SRC scheme
+(define (compile-and-run user-exp)
+  ;; provided that continue register contains return point
+  (let* ((exp (pair*->pair user-exp))
+         (instructions
+          (assemble
+           (statements
+            (compile exp 'val 'return the-empty-compile-time-env))
+           eceval)))
+    (set-register-contents! eceval 'pc (cons 'dummy instructions))))
+#+END_SRC
+
+Then we get
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+(compile-and-run
+ '(define (factorial n)
+    (if (= n 1)
+        1
+        (* (factorial (- n 1)) n))))
+
+(total-pushes = 5 maximum-depth = 3)
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+factorial
+
+(total-pushes = 0 maximum-depth = 0)
+;;; EC-Eval value:
+<compiled-procedure>
+
+;;; EC-Eval input:
+(factorial 5)
+
+(total-pushes = 13 maximum-depth = 8)
+;;; EC-Eval value:
+120
+
+#+END_SRC
+
+But this strategy destroy the ADT of machine; we would be better to treat
+=compile-and-run= explicitly like =compile-and-go=; but it would cause overhead
+to apply primitivie procedures since now it should ensure the flag =false=
+before applying the primitive procedure.
+
+It was not a big deal when it comes to the =compile-and-go= since we =start=
+machine just once to start up the REPL.
+
+Whatever, let's just try this idea:
+#+BEGIN_SRC scheme
+primitive-apply
+  (restore continue)
+  (assign flag (op get-false))          ;initialize the flag
+  (assign val (op apply-primitive-procedure)
+              (reg proc)
+              (reg argl))
+  (branch (label temporary-external-entry))
+  (goto (reg continue))
+
+temporary-external-entry
+  (goto (reg val))
+#+END_SRC
+
+With
+
+#+BEGIN_SRC scheme
+(define (compile-and-run user-exp)
+  ;; provided that continue register contains return point
+  (let* ((exp (pair*->pair user-exp))
+         (instructions
+          (assemble
+           (statements
+            (compile exp 'val 'return the-empty-compile-time-env))
+           eceval)))
+    (set-register-contents! eceval 'flag true)
+    instructions))
+#+END_SRC
+
+And in the =eceval-operations=
+#+BEGIN_SRC scheme
+   ;; alternative implementation for exercise 5.48
+   `(get-false ,(lambda () false))
+#+END_SRC
+
+Then
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+(compile-and-run
+ '(define (factorial n)
+    (if (= n 1)
+        1
+        (* (factorial (- n 1)) n))))
+
+(total-pushes = 5 maximum-depth = 3)
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+(factorial 5)
+
+(total-pushes = 13 maximum-depth = 8)
+;;; EC-Eval value:
+120
+
+#+END_SRC
+
+Works as expected.
+
+Or without using =get-false=, we could exploit following fact
+#+BEGIN_SRC scheme
+(false? (car '(#f)))
+
+;Value: #t
+#+END_SRC
+
+Then
+#+BEGIN_SRC scheme
+primitive-apply
+  (restore continue)
+  (assign flag (const #f))          ;initialize the flag
+  (assign val (op apply-primitive-procedure)
+              (reg proc)
+              (reg argl))
+  (branch (label temporary-external-entry))
+  (goto (reg continue))
+#+END_SRC
+
+Well, this alternative implementation is better in that it does not exploit the
+implementation detail; thus do not cut through the abstraction barrier.

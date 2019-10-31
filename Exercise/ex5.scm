@@ -3331,3 +3331,12 @@ after-lambda15
   (assign val (const ok))))
 
 ;; Debugging we didn't updated the compound branch!
+
+
+;; Exercise 5.48
+;;; TEST
+(compile-and-run
+ '(define (factorial n)
+    (if (= n 1)
+        1
+        (* (factorial (- n 1)) n))))
