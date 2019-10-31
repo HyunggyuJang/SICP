@@ -6875,3 +6875,9 @@ primitive-apply
 
 Well, this alternative implementation is better in that it does not exploit the
 implementation detail; thus do not cut through the abstraction barrier.
+
+I think the most reasonable solution would be changing the specifications of the
+machine as to use =next-pc= explicitly rather than =cdr= the current =pc=. If we
+chose that specification, then our original implementation of =compile-and-run=
+can do their job without breaking the specification by setting the =next-pc= to
+the newly compiled instruction.

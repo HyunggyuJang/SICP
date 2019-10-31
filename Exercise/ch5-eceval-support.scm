@@ -312,6 +312,7 @@
 ;;     (set-register-contents! eceval 'pc (cons 'dummy instructions))))
 
 (define (compile-and-run user-exp)
+  ;; provided that continue register contains return point
   (let* ((exp (pair*->pair user-exp))
          (instructions
           (assemble
