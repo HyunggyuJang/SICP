@@ -3340,3 +3340,16 @@ after-lambda15
     (if (= n 1)
         1
         (* (factorial (- n 1)) n))))
+
+;; Exercise 5.49
+read-compile-execute-print-loop
+  (perform (op initialize-stack))
+  (perform
+   (op prompt-for-input) (const ";;; EC-Eval input:"))
+  (assign exp (op read))
+  (assign env (op get-global-environment))
+  (assign unev (op compile) (reg exp) (const val) (const return))
+  (assign unev (op statements) (reg unev))
+  (assign val (op assemble) (reg unev))
+  (assign continue (label print-result))
+  (goto (reg val))

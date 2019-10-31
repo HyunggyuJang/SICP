@@ -6881,3 +6881,99 @@ machine as to use =next-pc= explicitly rather than =cdr= the current =pc=. If we
 chose that specification, then our original implementation of =compile-and-run=
 can do their job without breaking the specification by setting the =next-pc= to
 the newly compiled instruction.
+*** Exercise 5.49
+It is straightforward task; we don't need to design priori:
+#+BEGIN_SRC scheme
+read-compile-execute-print-loop
+  (perform (op initialize-stack))
+  (perform
+   (op prompt-for-input) (const ";;; EC-Eval input:"))
+  (assign exp (op read))
+  (assign env (op get-global-environment))
+  (assign unev (op compile) (reg exp) (const val) (const return))
+  (assign unev (op statements) (reg unev))
+  (assign val (op assemble) (reg unev))
+  (assign continue (label print-result))
+  (goto (reg val))
+
+print-result
+;;**following instruction optional -- if use it, need monitored stack
+  (perform (op print-stack-statistics))
+  (perform
+   (op announce-output) (const ";;; EC-Eval value:"))
+  (perform (op user-print) (reg val))
+  ;; (goto (label read-eval-print-loop))
+  (goto (label read-compile-execute-print-loop))
+#+END_SRC
+
+With
+#+BEGIN_SRC scheme
+,*** eceval-operations
+   `(compile ,(lambda (exp target linkage)
+                (compile exp target linkage the-empty-compile-time-env)))
+   `(statements ,statements)
+   `(assemble ,(lambda (inst) (assemble inst eceval)))
+#+END_SRC
+
+Let's test:
+#+BEGIN_SRC scheme
+(start-eceval)
+
+
+;;; EC-Eval input:
+(define (factorial n)
+    (if (= n 1)
+        1
+        (* (factorial (- n 1)) n)))
+
+(total-pushes = 0 maximum-depth = 0)
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+(factorial 5)
+
+(total-pushes = 8 maximum-depth = 8)
+;;; EC-Eval value:
+120
+
+;;; EC-Eval input:
+(factorial 20)
+
+(total-pushes = 38 maximum-depth = 38)
+;;; EC-Eval value:
+2432902008176640000
+
+;;; EC-Eval input:
+(define (fib n)
+        (if (< n 2)
+            n
+            (+ (fib (- n 1)) (fib (- n 2)))))
+
+(total-pushes = 0 maximum-depth = 0)
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+(fib 1)
+
+(total-pushes = 2 maximum-depth = 2)
+;;; EC-Eval value:
+1
+
+;;; EC-Eval input:
+(fib 2)
+
+(total-pushes = 9 maximum-depth = 4)
+;;; EC-Eval value:
+1
+
+;;; EC-Eval input:
+(fib 3)
+
+(total-pushes = 16 maximum-depth = 6)
+;;; EC-Eval value:
+2
+
+#+END_SRC
+*** Exercise 5.50

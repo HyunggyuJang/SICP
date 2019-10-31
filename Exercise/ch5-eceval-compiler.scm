@@ -139,6 +139,10 @@
    `(* ,*)
    ;; fix for the mixture of dynamic and static operation
    `(lookup-variable-value-in-frame ,lookup-variable-value-in-frame)
+   ;; `(compile ,(lambda (exp target linkage)
+   ;;              (compile exp target linkage the-empty-compile-time-env)))
+   ;; `(statements ,statements)
+   ;; `(assemble ,(lambda (inst) (assemble inst eceval)))
    ))
 
 (define eceval
@@ -154,6 +158,18 @@
   (assign compapp (label compound-apply))
 ;;*next instruction supports entry from compiler (from section 5.5.7)
   (branch (label external-entry))
+  ;; Exercise 5.49
+;; read-compile-execute-print-loop
+;;   (perform (op initialize-stack))
+;;   (perform
+;;    (op prompt-for-input) (const ";;; EC-Eval input:"))
+;;   (assign exp (op read))
+;;   (assign env (op get-global-environment))
+;;   (assign unev (op compile) (reg exp) (const val) (const return))
+;;   (assign unev (op statements) (reg unev))
+;;   (assign val (op assemble) (reg unev))
+;;   (assign continue (label print-result))
+;;   (goto (reg val))
 read-eval-print-loop
   (perform (op initialize-stack))
   (perform
@@ -169,6 +185,7 @@ print-result
    (op announce-output) (const ";;; EC-Eval value:"))
   (perform (op user-print) (reg val))
   (goto (label read-eval-print-loop))
+  ;; (goto (label read-compile-execute-print-loop))
 
 ;;*support for entry from compiler (from section 5.5.7)
 external-entry
