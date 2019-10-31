@@ -91,6 +91,12 @@
                 (frame-values frame)))))
   (env-loop env))
 
+(define (lookup-variable-value-in-frame var env frame-num)
+  (lookup-variable-value
+   var
+   (extend-compile-time-env (frame-ref env frame-num)
+                            the-empty-compile-time-env)))
+
 (define (set-variable-value! var val env)
   (define (env-loop env)
     (define (scan vars vals)

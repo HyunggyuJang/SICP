@@ -97,12 +97,12 @@
      linkage
      (if (eq? address 'not-found)
          (make-instruction-sequence
-          '() (list-union '(env) (list target))
-          `((assign env (op get-global-environment))
-            (assign ,target
-                    (op lookup-variable-value)
+          '(env) (list target)
+          `((assign ,target
+                    (op lookup-variable-value-in-frame)
                     (const ,exp)
-                    (reg env))))
+                    (reg env)
+                    (const ,(length env))))) ;relative frame number for global env
          (make-instruction-sequence
           '(env) (list target)
           `((assign ,target

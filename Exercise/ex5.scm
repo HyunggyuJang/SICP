@@ -341,9 +341,11 @@ abs-done
 ;;; test machine
 (define fib-machine
   (make-machine
-   ;; '(continue n val)
-   `((< ,<) (- ,-) (+ ,+))
-   '((assign continue (label fib-done))
+   '(continue n val)
+   `((< ,<) (- ,-) (+ ,+) (read ,read))
+   '((assign n (op read))
+     (perform (op initialize-stack))
+     (assign continue (label fib-done))
      fib-loop
      (test (op <) (reg n) (const 2))
      (branch (label immediate-answer))
@@ -372,7 +374,8 @@ abs-done
      immediate-answer
      (assign val (reg n))               ; base case: Fib(n)=n
      (goto (reg continue))
-     fib-done)))
+     fib-done
+     (perform (op print-stack-statistics)))))
 
 ;; First task
 (define type-dict
@@ -3101,4 +3104,190 @@ after-lambda15
   after-if12
   after-lambda10
   (perform (op define-variable!) (const factorial) (reg val) (reg env))
+  (assign val (const ok))))
+
+;; Exercise 5.46
+
+(compile-and-go
+ '(define (fib n)
+    (if (< n 2)
+        n
+        (+ (fib (- n 1)) (fib (- n 2))))))
+
+(pp (compile
+     '(define (fib n)
+        (if (< n 2)
+            n
+            (+ (fib (- n 1)) (fib (- n 2)))))
+     'val 'next the-empty-compile-time-env))
+
+((env)
+ (val)
+ ((assign val (op make-compiled-procedure) (label entry23) (reg env))
+  (goto (label after-lambda22))
+  entry23
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (n)) (reg argl) (reg env))
+  (save continue)
+  (save env)
+  (save env)
+  (assign env (op get-global-environment))
+  (assign proc (op lookup-variable-value) (const <) (reg env))
+  (restore env)
+  (assign val (const 2))
+  (assign argl (op list) (reg val))
+  (assign val (op lexical-address-lookup) (const (0 0)) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch37))
+  compiled-branch36
+  (assign continue (label after-call35))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch37
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call35
+  (restore env)
+  (restore continue)
+  (test (op false?) (reg val))
+  (branch (label false-branch25))
+  true-branch26
+  (assign val (op lexical-address-lookup) (const (0 0)) (reg env))
+  (goto (reg continue))
+  false-branch25
+  (save continue)
+  (save env)
+  (save env)
+  (assign env (op get-global-environment))
+  (assign proc (op lookup-variable-value) (const fib) (reg env))
+  (restore env)
+  (assign arg1 (op lexical-address-lookup) (const (0 0)) (reg env))
+  (assign arg2 (const 2))
+  (assign val (op -) (reg arg1) (reg arg2))
+  (assign argl (op list) (reg val))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch33))
+  compiled-branch32
+  (assign continue (label proc-return34))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  proc-return34
+  (assign arg2 (reg val))
+  (goto (label after-call31))
+  primitive-branch33
+  (assign arg2 (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call31
+  (restore env)
+  (save arg2)
+  (save env)
+  (assign env (op get-global-environment))
+  (assign proc (op lookup-variable-value) (const fib) (reg env))
+  (restore env)
+  (assign arg1 (op lexical-address-lookup) (const (0 0)) (reg env))
+  (assign arg2 (const 1))
+  (assign val (op -) (reg arg1) (reg arg2))
+  (assign argl (op list) (reg val))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch29))
+  compiled-branch28
+  (assign continue (label proc-return30))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  proc-return30
+  (assign arg1 (reg val))
+  (goto (label after-call27))
+  primitive-branch29
+  (assign arg1 (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call27
+  (restore arg2)
+  (assign val (op +) (reg arg1) (reg arg2))
+  (restore continue)
+  (goto (reg continue))
+  after-if24
+  after-lambda22
+  (perform (op define-variable!) (const fib) (reg val) (reg env))
+  (assign val (const ok))))
+
+(pp (compile
+     '(define (fib n)
+        (if (< n 2)
+            n
+            (+ (fib (- n 1)) (fib (- n 2)))))
+     'val 'next the-empty-compile-time-env))
+((env)
+ (val)
+ ((assign val (op make-compiled-procedure) (label entry18) (reg env))
+  (goto (label after-lambda17))
+  entry18
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (n)) (reg argl) (reg env))
+  (save continue)
+  (save env)
+  (assign proc (op lookup-variable-value-in-frame) (const <) (reg env) (const 1))
+  (assign val (const 2))
+  (assign argl (op list) (reg val))
+  (assign val (op lexical-address-lookup) (const (0 0)) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch32))
+  compiled-branch31
+  (assign continue (label after-call30))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch32
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call30
+  (restore env)
+  (restore continue)
+  (test (op false?) (reg val))
+  (branch (label false-branch20))
+  true-branch21
+  (assign val (op lexical-address-lookup) (const (0 0)) (reg env))
+  (goto (reg continue))
+  false-branch20
+  (save continue)
+  (save env)
+  (assign proc (op lookup-variable-value-in-frame) (const fib) (reg env) (const 1))
+  (assign arg1 (op lexical-address-lookup) (const (0 0)) (reg env))
+  (assign arg2 (const 2))
+  (assign val (op -) (reg arg1) (reg arg2))
+  (assign argl (op list) (reg val))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch28))
+  compiled-branch27
+  (assign continue (label proc-return29))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  proc-return29
+  (assign arg2 (reg val))
+  (goto (label after-call26))
+  primitive-branch28
+  (assign arg2 (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call26
+  (restore env)
+  (save arg2)
+  (assign proc (op lookup-variable-value-in-frame) (const fib) (reg env) (const 1))
+  (assign arg1 (op lexical-address-lookup) (const (0 0)) (reg env))
+  (assign arg2 (const 1))
+  (assign val (op -) (reg arg1) (reg arg2))
+  (assign argl (op list) (reg val))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch24))
+  compiled-branch23
+  (assign continue (label proc-return25))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  proc-return25
+  (assign arg1 (reg val))
+  (goto (label after-call22))
+  primitive-branch24
+  (assign arg1 (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call22
+  (restore arg2)
+  (assign val (op +) (reg arg1) (reg arg2))
+  (restore continue)
+  (goto (reg continue))
+  after-if19
+  after-lambda17
+  (perform (op define-variable!) (const fib) (reg val) (reg env))
   (assign val (const ok))))

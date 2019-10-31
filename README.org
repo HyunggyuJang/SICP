@@ -6127,3 +6127,420 @@ To do this, we need to change the definition of =factorial= using =named-let=
 expression, which does not change the algorithm of the original =factorial= at
 all. This would make close our machine's behavior that execute compiled code to
 the special-purpose machine.
+*** Exercise 5.46
+We will do the same thing to procedure computing the Fibonacci numbers. As noted
+in the text book, the analysis result for interpreted version obtained in
+[[Exercise 5.29][Exercise 5.29]].
+
+So here, we are going to analyze the special-purpose machine for Fibonacci and
+compiled version (one for the unoptimized and the other for the optimized).
+
+Before doing analysis, note that we know the complexity of steps and spaces
+about the Fibonacci algorithm in asymptotic manner; this complexity doesn't
+change by the implementation strategy. So we expect the complexity of space
+should be linear and that of step should be exponential -- same as the Fibonacci
+number.
+**** Analyze special purpose machine
+***** =Maximum-depth=
+As it is linear, we can estimate the formula with just 2 data:
+#+BEGIN_SRC scheme
+(start fib-machine)
+4
+
+(total-pushes = 16 maximum-depth = 6)
+;Value: done
+
+(start fib-machine)
+5
+
+(total-pushes = 28 maximum-depth = 8)
+;Value: done
+#+END_SRC
+
+From this fact, we know the =maximum-depth= be /2(n - 1)/.
+***** =Total-pushes=
+We can use the strategy of analysis of [[Exercise 5.29][exercise 5.29]]b since the complexity is
+same. So if we apply that formulation to following data:
+#+BEGIN_SRC scheme
+(start fib-machine)
+0
+
+(total-pushes = 0 maximum-depth = 0)
+;Value: done
+
+(start fib-machine)
+1
+
+(total-pushes = 0 maximum-depth = 0)
+;Value: done
+
+(start fib-machine)
+2
+
+(total-pushes = 4 maximum-depth = 2)
+;Value: done
+
+(start fib-machine)
+3
+
+(total-pushes = 8 maximum-depth = 4)
+;Value: done
+#+END_SRC
+
+We got =total-pushes= = /4 (Fib(n + 1) - 1)/
+**** Analyze machine operated on compiled code
+***** Via unoptimized compiler
+We will omit the description for below code since it is same process as above
+and simply can be deduced by preceding context.
+
+****** =Maximum-depth=
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+(fib 4)
+
+(total-pushes = 47 maximum-depth = 11)
+;;; EC-Eval value:
+3
+
+;;; EC-Eval input:
+(fib 5)
+
+(total-pushes = 77 maximum-depth = 14)
+;;; EC-Eval value:
+5
+
+#+END_SRC
+
+=Maximum-depth= = /3n - 1/
+****** =Total-pushes=
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+(fib 0)
+
+(total-pushes = 7 maximum-depth = 3)
+;;; EC-Eval value:
+0
+
+;;; EC-Eval input:
+(fib 1)
+
+(total-pushes = 7 maximum-depth = 3)
+;;; EC-Eval value:
+1
+
+;;; EC-Eval input:
+(fib 2)
+
+(total-pushes = 17 maximum-depth = 5)
+;;; EC-Eval value:
+1
+
+#+END_SRC
+
+=Total-pushes= = /10 Fib(n + 1) - 3/
+***** Via optimized compiler
+****** =Maximum-depth=
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+(fib 4)
+
+(total-pushes = 52 maximum-depth = 9)
+;;; EC-Eval value:
+3
+
+;;; EC-Eval input:
+(fib 5)
+
+(total-pushes = 85 maximum-depth = 11)
+;;; EC-Eval value:
+5
+
+#+END_SRC
+
+=Maximum-depth= = /2n + 1/
+****** =Total-pushes=
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+(fib 0)
+
+(total-pushes = 8 maximum-depth = 3)
+;;; EC-Eval value:
+0
+
+;;; EC-Eval input:
+(fib 1)
+
+(total-pushes = 8 maximum-depth = 3)
+;;; EC-Eval value:
+1
+
+;;; EC-Eval input:
+(fib 2)
+
+(total-pushes = 19 maximum-depth = 5)
+;;; EC-Eval value:
+1
+
+#+END_SRC
+
+=Total-pushes= = /11 Fib(n + 1) - 3/
+**** Summarizing statistics
+So the ratios of unoptimized compiler version to the interpreted version are 3/5
+and 5/28 respectively; and those of unoptimized compiler version to the
+special-purpose machine version are 3/2 and 5/2 respectively.
+
+With optimized one, the above ratios are 2/5 and 11/56 compared to interpreted
+one, and 1 and 11/4 compared to special-purpose machine.
+
+The reason the unoptimized version has less =total-pushes= than optimized one is
+same [[Exercise 5.45][preceding exercise]]; and the improvement strategy also be same as that.
+
+If we remove the assignment of =global-environment=, we got
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+(fib 0)
+
+(total-pushes = 7 maximum-depth = 3)
+;;; EC-Eval value:
+0
+
+;;; EC-Eval input:
+(fib 1)
+
+(total-pushes = 7 maximum-depth = 3)
+;;; EC-Eval value:
+1
+
+;;; EC-Eval input:
+(fib 2)
+
+(total-pushes = 14 maximum-depth = 4)
+;;; EC-Eval value:
+1
+
+#+END_SRC
+
+which implies =total-pushes= = /7 Fib(n + 1)/.
+
+With this exercise, we could detect erroneous behavior of our optimized
+compiler:
+#+BEGIN_SRC scheme
+(pp (compile
+     '(define (fib n)
+        (if (< n 2)
+            n
+            (+ (fib (- n 1)) (fib (- n 2)))))
+     'val 'next the-empty-compile-time-env))
+
+((env)
+ (val)
+ ((assign val (op make-compiled-procedure) (label entry23) (reg env))
+  (goto (label after-lambda22))
+  entry23
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (n)) (reg argl) (reg env))
+  (save continue)
+  (save env)                            ;***
+  (save env)                            ;consequent same operation
+  (assign env (op get-global-environment))
+  (assign proc (op lookup-variable-value) (const <) (reg env))
+  (restore env)
+  (assign val (const 2))
+  (assign argl (op list) (reg val))
+  (assign val (op lexical-address-lookup) (const (0 0)) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch37))
+  compiled-branch36
+  (assign continue (label after-call35))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch37
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call35
+  (restore env)
+  (restore continue)
+  (test (op false?) (reg val))
+  (branch (label false-branch25))
+  true-branch26
+  (assign val (op lexical-address-lookup) (const (0 0)) (reg env))
+  (goto (reg continue))
+  false-branch25
+  (save continue)
+  (save env)
+  (save env)
+  (assign env (op get-global-environment))
+  (assign proc (op lookup-variable-value) (const fib) (reg env))
+  (restore env)
+  (assign arg1 (op lexical-address-lookup) (const (0 0)) (reg env))
+  (assign arg2 (const 2))
+  (assign val (op -) (reg arg1) (reg arg2))
+  (assign argl (op list) (reg val))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch33))
+  compiled-branch32
+  (assign continue (label proc-return34))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  proc-return34
+  (assign arg2 (reg val))
+  (goto (label after-call31))
+  primitive-branch33
+  (assign arg2 (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call31
+  (restore env)
+  (save arg2)
+  (save env)
+  (assign env (op get-global-environment))
+  (assign proc (op lookup-variable-value) (const fib) (reg env))
+  (restore env)
+  (assign arg1 (op lexical-address-lookup) (const (0 0)) (reg env))
+  (assign arg2 (const 1))
+  (assign val (op -) (reg arg1) (reg arg2))
+  (assign argl (op list) (reg val))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch29))
+  compiled-branch28
+  (assign continue (label proc-return30))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  proc-return30
+  (assign arg1 (reg val))
+  (goto (label after-call27))
+  primitive-branch29
+  (assign arg1 (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call27
+  (restore arg2)
+  (assign val (op +) (reg arg1) (reg arg2))
+  (restore continue)
+  (goto (reg continue))
+  after-if24
+  after-lambda22
+  (perform (op define-variable!) (const fib) (reg val) (reg env))
+  (assign val (const ok))))
+#+END_SRC
+
+Please note the annotated instruction; it just duplicate preceding instruction.
+This is due to the fact that we destroyed the barrier between what we assumed as
+primitive procedures available as machine operations and not; more specifically
+we mixed the static operation and dynamic operation which leads to leak the guts
+-- =(assign env (op get-global-environment))= -- of what we assumed available as
+machine operation.
+
+So for now, let us fix this problem using ad-hoc procedure:
+#+BEGIN_SRC scheme
+(define (lookup-variable-value-in-frame var env frame-num)
+  (lookup-variable-value
+   var
+   (extend-compile-time-env (frame-ref env frame-num)
+                            the-empty-compile-time-env)))
+#+END_SRC
+
+Then:
+#+BEGIN_SRC scheme
+(define (compile-variable exp target linkage env)
+  (let ((address (find-variable exp env)))
+    (end-with-linkage
+     linkage
+     (if (eq? address 'not-found)
+         (make-instruction-sequence
+          '(env) (list target)
+          `((assign ,target
+                    (op lookup-variable-value-in-frame)
+                    (const ,exp)
+                    (reg env)
+                    (const ,(length env))))) ;relative frame number for global env
+         (make-instruction-sequence
+          '(env) (list target)
+          `((assign ,target
+                    (op lexical-address-lookup)
+                    (const ,address)
+                    (reg env))))))))
+#+END_SRC
+
+Now we resolved the duplicative code:
+#+BEGIN_SRC scheme
+(pp (compile
+     '(define (fib n)
+        (if (< n 2)
+            n
+            (+ (fib (- n 1)) (fib (- n 2)))))
+     'val 'next the-empty-compile-time-env))
+((env)
+ (val)
+ ((assign val (op make-compiled-procedure) (label entry18) (reg env))
+  (goto (label after-lambda17))
+  entry18
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment) (const (n)) (reg argl) (reg env))
+  (save continue)
+  (save env)
+  (assign proc (op lookup-variable-value-in-frame) (const <) (reg env) (const 1))
+  (assign val (const 2))
+  (assign argl (op list) (reg val))
+  (assign val (op lexical-address-lookup) (const (0 0)) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch32))
+  compiled-branch31
+  (assign continue (label after-call30))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  primitive-branch32
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call30
+  (restore env)
+  (restore continue)
+  (test (op false?) (reg val))
+  (branch (label false-branch20))
+  true-branch21
+  (assign val (op lexical-address-lookup) (const (0 0)) (reg env))
+  (goto (reg continue))
+  false-branch20
+  (save continue)
+  (save env)
+  (assign proc (op lookup-variable-value-in-frame) (const fib) (reg env) (const 1))
+  (assign arg1 (op lexical-address-lookup) (const (0 0)) (reg env))
+  (assign arg2 (const 2))
+  (assign val (op -) (reg arg1) (reg arg2))
+  (assign argl (op list) (reg val))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch28))
+  compiled-branch27
+  (assign continue (label proc-return29))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  proc-return29
+  (assign arg2 (reg val))
+  (goto (label after-call26))
+  primitive-branch28
+  (assign arg2 (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call26
+  (restore env)
+  (save arg2)
+  (assign proc (op lookup-variable-value-in-frame) (const fib) (reg env) (const 1))
+  (assign arg1 (op lexical-address-lookup) (const (0 0)) (reg env))
+  (assign arg2 (const 1))
+  (assign val (op -) (reg arg1) (reg arg2))
+  (assign argl (op list) (reg val))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch24))
+  compiled-branch23
+  (assign continue (label proc-return25))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+  proc-return25
+  (assign arg1 (reg val))
+  (goto (label after-call22))
+  primitive-branch24
+  (assign arg1 (op apply-primitive-procedure) (reg proc) (reg argl))
+  after-call22
+  (restore arg2)
+  (assign val (op +) (reg arg1) (reg arg2))
+  (restore continue)
+  (goto (reg continue))
+  after-if19
+  after-lambda17
+  (perform (op define-variable!) (const fib) (reg val) (reg env))
+  (assign val (const ok))))
+#+END_SRC

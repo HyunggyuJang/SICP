@@ -137,6 +137,8 @@
    `(+ ,+)
    `(- ,-)
    `(* ,*)
+   ;; fix for the mixture of dynamic and static operation
+   `(lookup-variable-value-in-frame ,lookup-variable-value-in-frame)
    ))
 
 (define eceval
