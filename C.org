@@ -148,10 +148,26 @@ step = 10;                    /* step size */
 
 celsius = lower;
 
-printf("%6s %6s\n", "Fahrenheit", "Celsius");
-while (fahr <= upper) {
-  celsius = (5.0/9.0) * (fahr - 32.0);
-  printf("%6.0f %6.1f\n", fahr, celsius);
-  fahr = fahr + step;
- }
+printf("%6s %6s\n", "Celsius", "Fahrenheit");
+while (celsius <= upper) {
+    fahr = 9.0/5.0 * celsius + 32.0;
+    printf("%6.0f %6.1f\n", celsius, fahr);
+    celsius = celsius + step;
+}
 #+END_SRC
+
+RESULTS:
+| Celsius | Fahrenheit |
+|       0 |       32.0 |
+|      10 |       50.0 |
+|      20 |       68.0 |
+|      30 |       86.0 |
+|      40 |      104.0 |
+|      50 |      122.0 |
+|      60 |      140.0 |
+|      70 |      158.0 |
+|      80 |      176.0 |
+|      90 |      194.0 |
+|     100 |      212.0 |
+|     110 |      230.0 |
+|     120 |      248.0 |
