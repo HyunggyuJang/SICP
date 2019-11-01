@@ -2,7 +2,7 @@
 * A Tutorial Introduction
 ** Getting Started
 The first C program (in this book, not of myself)
-#+BEGIN_SRC C :includes <stdio.h>
+#+BEGIN_SRC C :includes <stdio.h> :exports both
 printf("hello, world\n");
 #+END_SRC
 
@@ -11,7 +11,7 @@ printf("hello, world\n");
 
 *** Exercise 1-1
 If we omit the semicolon (=;=), we got an error:
-#+BEGIN_SRC C :includes <stdio.h>
+#+BEGIN_SRC C :includes <stdio.h> :exports both
 printf("hello, world\n")
 #+END_SRC
 
@@ -26,12 +26,12 @@ printf("hello, world\n")
 
 And as noted in the text book, if we replace /new line/ escape sequence to the
 real new line, we got
-#+BEGIN_SRC C :includes <stdio.h>
+#+BEGIN_SRC C :includes <stdio.h> :exports both
 printf("hello, world
 ")
 #+END_SRC
 
-#+BEGIN_SRC C
+#+BEGIN_SRC C :exports both
 /var/folders/2g/yh1q856s0vl6td_twhv6v5g40000gn/T/babel-u5KBSR/C-src-ILO6eX.c:9:8: warning: missing terminating '"' character [-Winvalid-pp-token]
 printf("hello, world
        ^
@@ -48,14 +48,14 @@ int main() {
 /bin/bash: /var/folders/2g/yh1q856s0vl6td_twhv6v5g40000gn/T/babel-u5KBSR/C-bin-J9iipE: Permission denied
 #+END_SRC
 *** Exercise 1-2
-#+BEGIN_SRC C :includes <stdio.h>
+#+BEGIN_SRC C :includes <stdio.h> :exports both
 printf("hello, world\c");
 #+END_SRC
 
 #+RESULTS:
 | hello | worldc |
 
-#+BEGIN_SRC C :includes <stdio.h>
+#+BEGIN_SRC C :includes <stdio.h> :exports both
 printf("hello, world\l");
 #+END_SRC
 
