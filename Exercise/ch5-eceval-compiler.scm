@@ -45,6 +45,8 @@
                         '<procedure-env>)))
         ((compiled-procedure? object)
          (display '<compiled-procedure>))
+        ((pair?* object)                ;for the user created pair object
+         (print-pair* object))
         (else (display object))))
 
 (define (compile-and-go expression)

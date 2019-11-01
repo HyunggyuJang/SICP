@@ -21,6 +21,12 @@
                 '(pair)
                 (cadr exp))))
 
+(define (pair->pair* lst)
+  (tree-map identity-procedure
+                (lambda (x y) `(pair ,x ,y))
+                '(pair)
+                lst))
+
 (define (tree-map leaf-op combine-op initial tree)
   (cond ((null? tree) initial)
         ((not (pair? tree)) (leaf-op tree))

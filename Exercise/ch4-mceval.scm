@@ -14,6 +14,14 @@
 ;;;from section 4.1.4 -- must precede def of metacircular apply
 (define apply-in-underlying-scheme apply)
 
+;; Exercise 5.50
+;;; Rewind all the higher order function
+(define (map proc lst)
+  (if (null? lst)
+      '()
+      (cons (proc (car lst))
+            (map proc (cdr lst)))))
+
 ;;;SECTION 4.1.1
 
 (define (eval exp env)
@@ -104,6 +112,16 @@
 (define (assignment-variable exp) (cadr exp))
 
 (define (assignment-value exp) (caddr exp))
+
+;; Exercise 5.50
+;; Unwind higher order primitives
+(define (cadr exp) (car (cdr exp)))
+(define (cddr exp) (cdr (cdr exp)))
+(define (caddr exp) (car (cddr exp)))
+(define (cdddr exp) (cdr (cddr exp)))
+(define (cadddr exp) (car (cdddr exp)))
+(define (caadr exp) (car (cadr exp)))
+(define (cadadr exp) (cadr (cadr exp)))
 
 
 (define (definition? exp)

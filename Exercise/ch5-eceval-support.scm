@@ -289,6 +289,21 @@
          (make-error-exp `("The object " ,p " is not a pair -- car"))))
    1))
 
+(define set-car!*
+  (check-error-with
+   (named-lambda (set-car! p v)
+     (if (pair?* p)
+         (set-car! (cdr p) v)
+         (make-error-exp `("The object " ,p " is not a pair -- set-car!"))))
+   2))
+
+(define set-cdr!*
+  (check-error-with
+   (named-lambda (set-cdr! p v)
+     (if (pair?* p)
+         (set-car! (cddr p) v)
+         (make-error-exp `("The object " ,p " is not a pair -- set-cdr!"))))
+   2))
 
 (define cdr*
   (check-error-with
@@ -322,27 +337,29 @@
     (set-register-contents! eceval 'flag true)
     instructions))
 
-(define primitive-procedures
-  (list (list 'car car*)
-        (list 'cdr cdr*)
-        (list 'cons cons*)
-        (list 'null? null?*)
-        (list 'pair? pair?*)
-        ;;above from book -- here are some more
-	    (list '+ +*)
-	    (list '- -*)
-	    (list '* **)
-	    (list '= =*)
-	    (list '/ /*)
-	    (list '> >*)
-	    (list '< <*)
-        ;; `(not ,not)
-        ;; `(list ,list)
-        ;; `(set-cdr! ,set-cdr!)
-        ;; `(pair? ,pair?)
-        ;; Exercise 5.48
-        `(compile-and-run ,compile-and-run)
-        ))
+(define length*
+  (check-error-with
+   (named-lambda (length lst*)
+     (let ((lst (pair*->pair lst*)))
+       (if (list? lst)
+           (length lst)
+           (make-error-exp `("The object " ,lst " is not a list -- length")))))
+   1))
+
+(define apply*
+  (check-error-with
+   (named-lambda (apply proc* args*)
+     (apply (primitive-implementation proc*) (map pair->pair* (pair*->pair args*))))
+   2))
+
+(define read*
+  (check-error-with
+   (named-lambda (read)
+     (pair->pair* (read)))
+   0))
+
+(define (list* . args)
+  (fold-right cons* '(pair) args))
 
 (define (primitive-procedure-names)
   (map car
@@ -380,18 +397,54 @@
   (define (iter p)
     (cond ((null?* p))
           ((pair?* p)
-           (display " ")
-           (display (car* p))
+           (user-print " ")
+           (user-print (car* p))
            (iter (cdr* p)))
           (else
            ;; not pair -- atomic expression
-           (display " . ")
-           (display p))))
-  (display "(")
-  (display (car* p))
+           (user-print " . ")
+           (user-print p))))
+  (user-print "(")
+  (user-print (car* p))
   (iter (cdr* p))
-  (display ")"))
+  (user-print ")"))
 
+(define primitive-procedures
+  (list (list 'car car*)
+        (list 'cdr cdr*)
+        (list 'cons cons*)
+        (list 'null? null?*)
+        (list 'pair? pair?*)
+        ;;above from book -- here are some more
+	    (list '+ +*)
+	    (list '- -*)
+	    (list '* **)
+	    (list '= =*)
+	    (list '/ /*)
+	    (list '> >*)
+	    (list '< <*)
+        ;; `(not ,not)
+        ;; `(list ,list)
+        ;; `(set-cdr! ,set-cdr!)
+        ;; `(pair? ,pair?)
+        ;; Exercise 5.48
+        `(compile-and-run ,compile-and-run)
+        ;; Exercise 5.50
+        `(apply ,apply*)
+        `(display ,user-print)
+        `(error ,error)
+        `(number? ,number?)
+        `(string? ,string?)
+        `(eq? ,eq?)
+        `(symbol? ,symbol?)
+        `(not ,not)
+        `(list ,list*)
+        `(set-car! ,set-car!*)
+        `(set-cdr! ,set-cdr!*)
+        `(length ,length*)
+        `(read ,read*)
+        `(newline ,newline)
+        ))
 
 ;;; Simulation of new machine operations needed by
 ;;;  eceval machine (not used by compiled code)

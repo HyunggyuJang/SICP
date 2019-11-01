@@ -6977,3 +6977,233 @@ ok
 
 #+END_SRC
 *** Exercise 5.50
+The whole idea is straightforward one, as noted in the statement, making all the
+details to work needs extra works. That is, we need to unwind all the higher
+order procedures -- e.g. =map= -- or the primitive procedures that should be
+provided underlying Scheme language -- e.g. =apply-in-underlying-scheme=.
+
+Here is the complement code:
+#+BEGIN_SRC scheme
+;;; IN MCEVAL
+;; Unwind higher order primitives
+(define (cadr exp) (car (cdr exp)))
+(define (cddr exp) (cdr (cdr exp)))
+(define (caddr exp) (car (cddr exp)))
+(define (cdddr exp) (cdr (cddr exp)))
+(define (cadddr exp) (car (cdddr exp)))
+(define (caadr exp) (car (cadr exp)))
+(define (cadadr exp) (cadr (cadr exp)))
+
+;;; Rewind all the higher order function
+(define (map proc lst)
+  (if (null? lst)
+      '()
+      (cons (proc (car lst))
+            (map (proc (cdr lst))))))
+
+;;; IN ECEVAL-SUPPORT
+
+(define set-car!*
+  (check-error-with
+   (named-lambda (set-car! p v)
+     (if (pair?* p)
+         (set-car! (cdr p) v)
+         (make-error-exp `("The object " ,p " is not a pair -- set-car!"))))
+   2))
+
+(define set-cdr!*
+  (check-error-with
+   (named-lambda (set-cdr! p v)
+     (if (pair?* p)
+         (set-car! (cddr p) v)
+         (make-error-exp `("The object " ,p " is not a pair -- set-cdr!"))))
+   2))
+
+(define length*
+  (check-error-with
+   (named-lambda (length lst*)
+     (let ((lst (pair*->pair lst*)))
+       (if (list? lst)
+           (length lst)
+           (make-error-exp `("The object " ,lst " is not a list -- length")))))
+   1))
+
+(define apply*
+  (check-error-with
+   (named-lambda (apply proc* args*)
+     (apply (primitive-implementation proc*) (pair*->pair args*)))
+   2))
+
+(define (list* . args)
+  (fold-right cons* '(pair) args))
+
+;; in primitive-procedures
+        `(apply ,apply*)
+        `(display ,user-print)
+        `(error ,error)
+        `(number? ,number?)
+        `(string? ,string?)
+        `(eq? ,eq?)
+        `(symbol? ,symbol?)
+        `(not ,not)
+        `(list ,list*)
+        `(set-car! ,set-car!*)
+        `(set-cdr! ,set-cdr!*)
+        `(length ,length*)
+        `(read ,read)
+        `(newline ,newline)
+
+;;; IN SYNTAX
+(define (pair->pair* lst)
+  (tree-map identity-procedure
+            (lambda (x y) `(pair ,x ,y))
+            '(pair)
+            lst))
+
+;;; IN ECEVAL-SUPPORT
+;; in user-print
+;; for displaying user defined pair object
+        ((pair?* object)
+         (print-pair* object))
+#+END_SRC
+
+Let's test!:
+#+BEGIN_SRC scheme
+(compile-and-go
+ '(begin
+    ;;;;METACIRCULAR EVALUATOR FROM CHAPTER 4 (SECTIONS 4.1.1-4.1.4) of
+...
+    'METACIRCULAR-EVALUATOR-LOADED
+    ))
+
+(total-pushes = 9 maximum-depth = 5)
+;;; EC-Eval value:
+metacircular-evaluator-loaded
+
+;;; EC-Eval input:
+(define the-global-environment (setup-environment))
+;The object "Too few arguments supplied", passed as the first argument to car, is not the correct type.
+;To continue, call RESTART with an option number:
+; (RESTART 2) => Specify an argument to use in its place.
+; (RESTART 1) => Return to read-eval-print level 1.
+#+END_SRC
+
+..Oops! Debugging time! Turns out we mistyped the =map= procedure. If we fix
+that as follows
+#+BEGIN_SRC scheme
+(define (map proc lst)
+  (if (null? lst)
+      '()
+      (cons (proc (car lst))
+            (map proc (cdr lst)))))
+#+END_SRC
+
+It works as expected:
+#+BEGIN_SRC scheme
+;;; EC-Eval input:
+(define the-global-environment (setup-environment))
+
+(total-pushes = 243 maximum-depth = 24)
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+(driver-loop)
+
+
+;;; M-Eval input:
+#+END_SRC
+
+Let's test the behavior:
+#+BEGIN_SRC scheme
+;;; M-Eval input:
+(car '(1 2))
+;Unknown expression type -- EVAL (car (quote (1 2)))
+;To continue, call RESTART with an option number:
+; (RESTART 1) => Return to read-eval-print level 1.
+#+END_SRC
+
+Oops! This is due to the our =read= er spitting out unwrapped =pair= object --
+not the user =pair= object:
+#+BEGIN_SRC scheme
+;; IN ECEVAL-SUPPORT
+(define read*
+  (check-error-with
+   (named-lambda (read)
+     (pair->pair* (read)))
+   0))
+
+;; in primitive-procedures
+        `(read ,read*)
+#+END_SRC
+
+Let's retry
+#+BEGIN_SRC scheme
+;;; M-Eval input:
+(define x (cons 2 3))
+
+;;; M-Eval value:
+ok
+
+;;; M-Eval input:
+x
+
+;;; M-Eval value:
+(2 . 3)
+
+#+END_SRC
+
+It seems like working as expected except
+#+BEGIN_SRC scheme
+;;; M-Eval input:
+(car (cons 2 3))
+
+;;; M-Eval value:
+(error (The object  (2 . 3)  is not a pair -- car))
+
+#+END_SRC
+
+... Need to debug! By reasoning, we should realize this is due to our
+inconsiderate =apply*= definition; we shouldn't unwrap the ADT of user pair --
+our primitive operations expect the argument to be wrapped.
+
+So, actually we should have defined =apply*= as
+#+BEGIN_SRC scheme
+(define apply*
+  (check-error-with
+   (named-lambda (apply proc* args*)
+     (apply (primitive-implementation proc*) (map pair->pair* (pair*->pair args*))))
+   2))
+#+END_SRC
+
+Now it works as expected:
+#+BEGIN_SRC scheme
+;;; M-Eval input:
+(cons 2 3)
+
+;;; M-Eval value:
+(2 . 3)
+
+;;; M-Eval input:
+(car (cons 2 3))
+
+;;; M-Eval value:
+2
+
+;;; M-Eval input:
+(null? '())
+
+;;; M-Eval value:
+#t
+
+#+END_SRC
+
+**** Conclusion
+We have dealt quite complex expressions since we protected the data structures
+we made to represent components composing our underlying environment (by making
+=pair= object). As this process erected several "Scheme" languages -- universal
+register machine, which also used to execute compiled code, that evaluate Scheme
+expression erected on underlying Scheme, and in that universal machine, we
+execute the code resulted from compiling the meta circular evaluator Scheme program.
+
+Whew! It was quite complicated process to make it work than I ever thought!
