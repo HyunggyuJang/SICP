@@ -1,0 +1,101 @@
+#+TITLE: The C programming language, 2nd edition
+* A Tutorial Introduction
+** Getting Started
+The first C program (in this book, not of myself)
+#+BEGIN_SRC C :includes <stdio.h>
+printf("hello, world\n");
+#+END_SRC
+
+#+RESULTS:
+| hello | world |
+
+*** Exercise 1-1
+If we omit the semicolon (=;=), we got an error:
+#+BEGIN_SRC C :includes <stdio.h>
+printf("hello, world\n")
+#+END_SRC
+
+#+BEGIN_SRC C
+/var/folders/2g/yh1q856s0vl6td_twhv6v5g40000gn/T/babel-u5KBSR/C-src-7HUqYr.c:9:25: error: expected ';' after expression
+printf("hello, world\n")
+                        ^
+                        ;
+1 error generated.
+/bin/bash: /var/folders/2g/yh1q856s0vl6td_twhv6v5g40000gn/T/babel-u5KBSR/C-bin-bHDLJX: Permission denied
+#+END_SRC
+
+And as noted in the text book, if we replace /new line/ escape sequence to the
+real new line, we got
+#+BEGIN_SRC C :includes <stdio.h>
+printf("hello, world
+")
+#+END_SRC
+
+#+BEGIN_SRC C
+/var/folders/2g/yh1q856s0vl6td_twhv6v5g40000gn/T/babel-u5KBSR/C-src-ILO6eX.c:9:8: warning: missing terminating '"' character [-Winvalid-pp-token]
+printf("hello, world
+       ^
+/var/folders/2g/yh1q856s0vl6td_twhv6v5g40000gn/T/babel-u5KBSR/C-src-ILO6eX.c:9:8: error: expected expression
+/var/folders/2g/yh1q856s0vl6td_twhv6v5g40000gn/T/babel-u5KBSR/C-src-ILO6eX.c:10:1: warning: missing terminating '"' character [-Winvalid-pp-token]
+")
+^
+/var/folders/2g/yh1q856s0vl6td_twhv6v5g40000gn/T/babel-u5KBSR/C-src-ILO6eX.c:14:1: error: expected '}'
+^
+/var/folders/2g/yh1q856s0vl6td_twhv6v5g40000gn/T/babel-u5KBSR/C-src-ILO6eX.c:8:12: note: to match this '{'
+int main() {
+           ^
+2 warnings and 2 errors generated.
+/bin/bash: /var/folders/2g/yh1q856s0vl6td_twhv6v5g40000gn/T/babel-u5KBSR/C-bin-J9iipE: Permission denied
+#+END_SRC
+*** Exercise 1-2
+#+BEGIN_SRC C :includes <stdio.h>
+printf("hello, world\c");
+#+END_SRC
+
+#+RESULTS:
+| hello | worldc |
+
+#+BEGIN_SRC C :includes <stdio.h>
+printf("hello, world\l");
+#+END_SRC
+
+#+RESULTS:
+| hello | worldl |
+
+So when we use escape sequence with one that is not listed, we got the vanilla
+character itself.
+** Variables and Arithmetic Expressions
+The C program producing temperature conversion table:
+#+BEGIN_SRC C :includes <stdio.h>
+int fahr, celsius;
+int lower, upper, step;
+
+lower = 0;                    /* lower limit of temperature scale */
+upper = 300;                  /* upper limit */
+step = 20;                    /* step size */
+
+fahr = lower;
+while (fahr <= upper) {
+  celsius = 5 * (fahr - 32) / 9;
+  printf("%d\t%d\n", fahr, celsius);
+  fahr = fahr + step;
+ }
+#+END_SRC
+
+#+RESULTS:
+|   0 | -17 |
+|  20 |  -6 |
+|  40 |   4 |
+|  60 |  15 |
+|  80 |  26 |
+| 100 |  37 |
+| 120 |  48 |
+| 140 |  60 |
+| 160 |  71 |
+| 180 |  82 |
+| 200 |  93 |
+| 220 | 104 |
+| 240 | 115 |
+| 260 | 126 |
+| 280 | 137 |
+| 300 | 148 |

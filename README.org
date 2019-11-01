@@ -7237,4 +7237,4 @@ and other [[https://softwareengineering.stackexchange.com/questions/335271/what-
 
 As I've not done any rigorous C programming before, I'd better to go off and
 learn C to implement this and the last exercise; for this learning, I've chosen
-the classic book, The C programming language, 2nd edition.
+the classic book, [[https://www.amazon.com/Programming-Language-2nd-Brian-Kernighan/dp/0131103628][The C programming language, 2nd edition]].
