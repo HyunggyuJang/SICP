@@ -7226,3 +7226,15 @@ expression erected on underlying Scheme, and in that universal machine, we
 execute the code resulted from compiling the meta circular evaluator Scheme program.
 
 Whew! It was quite complicated process to make it work than I ever thought!
+*** Exercise 5.51
+This exercise and the last exercise (the one after this) would be longer journey
+than any one we ever have encountered. We should translate the explicit-control
+evaluator of [[The Explicit-Control Evaluator][preceding section]] into low-level language -- the typical one would
+be C programming language.
+
+They warned us that we should provide appropriate storage-allocation routines
+and other [[https://softwareengineering.stackexchange.com/questions/335271/what-is-run-time-support-required-by-a-language][run-time support]] -- error handling, dynamic type handling, and so on.
+
+As I've not done any rigorous C programming before, I'd better to go off and
+learn C to implement this and the last exercise; for this learning, I've chosen
+the classic book, The C programming language, 2nd edition.
