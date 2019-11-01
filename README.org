@@ -7198,6 +7198,25 @@ Now it works as expected:
 
 #+END_SRC
 
+Or as what we needed here was convert the top =list*= into =list=, we could do
+this as follows:
+#+BEGIN_SRC scheme
+(define apply*
+  (check-error-with
+   (named-lambda (apply proc* args*)
+     (apply (primitive-implementation proc*)
+            (fold-right* cons '() args*)))
+   2))
+
+(define (fold-right* proc* init* lst*)
+  (if (null?* lst*)
+      init*
+      (proc* (car* lst*)
+             (fold-right* proc* init* (cdr* lst*)))))
+#+END_SRC
+
+As the counter part of =list*=.
+
 **** Conclusion
 We have dealt quite complex expressions since we protected the data structures
 we made to represent components composing our underlying environment (by making

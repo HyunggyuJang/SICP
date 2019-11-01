@@ -349,8 +349,15 @@
 (define apply*
   (check-error-with
    (named-lambda (apply proc* args*)
-     (apply (primitive-implementation proc*) (map pair->pair* (pair*->pair args*))))
+     (apply (primitive-implementation proc*)
+            (fold-right* cons '() args*)))
    2))
+
+(define (fold-right* proc* init* lst*)
+  (if (null?* lst*)
+      init*
+      (proc* (car* lst*)
+             (fold-right* proc* init* (cdr* lst*)))))
 
 (define read*
   (check-error-with
