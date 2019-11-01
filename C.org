@@ -156,7 +156,8 @@ while (celsius <= upper) {
 }
 #+END_SRC
 
-RESULTS:
+#+caption: Result code
+#+RESULTS:
 | Celsius | Fahrenheit |
 |       0 |       32.0 |
 |      10 |       50.0 |
