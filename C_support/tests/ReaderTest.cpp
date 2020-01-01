@@ -4,6 +4,7 @@ extern "C" {
 #include "../include/Reader_internal.h"
 #include "../mocks/GetCharSpy.h"
 #include "../mocks/FormatOutSpy.h"
+#include <string.h>
 }
 
 #include <CppUTest/TestHarness.h>
@@ -18,6 +19,7 @@ TEST_GROUP(Reader)
       CHECK(FormatOutSpy_Create(100));
       CHECK(stdoutBuf = FormatOutSpy_GetOutput(stdout));
       CHECK(stderrBuf = FormatOutSpy_GetOutput(stderr));
+      initialize_obarray();
     }
 
     void teardown()
@@ -62,9 +64,10 @@ TEST(Reader, GetTokenWord)
 
 TEST(Reader, GetTokenParen)
 {
-  GetCharSpy_Create("(1)");
+  GetCharSpy_Create("(1 a)");
   checkToken('(', "(");
   checkToken(EXACT, "1");
+  checkToken(WORD, "a");
   checkToken(')', ")");
 }
 
@@ -146,6 +149,19 @@ TEST(Reader, ReadStringArbitrarySize)
                (char *) &heap[(unsigned long) obRead.data]);
 }
 
+TEST(Reader, ReadSymbol)
+{
+  GetCharSpy_Create("test test");
+
+  obRead = read();
+  CHECK(isSymbol(obRead));
+
+  Object obRead2 = read();
+  CHECK(isSymbol(obRead2));
+
+  CHECK(eq(obRead, obRead2));
+}
+
 // Memory allocation test
 
 TEST(Reader, ConsCarCdrContraction)
@@ -208,4 +224,51 @@ TEST(Reader, ReadPairLikeDouble)
   DOUBLES_EQUAL(.3, car(cdr(cdr(obRead))).data, 0.001);
 }
 
-// TODO: Obarry -- string interning
+// object test
+TEST(Reader, ObjectSize)
+{
+  LONGS_EQUAL(sizeof(Object), 16);
+}
+
+TEST(Reader, MakeObjectFromCStringInternal)
+{
+  char testString[] = "TEST";
+  Object str = {.type = OB_STRING, .len = strlen(testString)};
+  str.data = (double) ~0U;
+  LONGS_EQUAL(4, str.len);
+  LONGS_EQUAL(~0U, (unsigned long) str.data);
+}
+
+TEST(Reader, SetCarAndSetCdr)
+{
+  GetCharSpy_Create("(one two)");
+  obRead = read();
+  STRCMP_EQUAL("ok",
+               getString(set_cdr(cdr(cdr(obRead)),
+                       make_string_obj("three"))));
+  STRCMP_EQUAL("three",
+               getString(cdr(cdr(cdr(obRead)))));
+}
+
+TEST(Reader, EqTest)
+{
+  GetCharSpy_Create("(1 test? test? 1)");
+  obRead = read();
+  CHECK(eq(car(obRead), car(cdr(cdr(cdr(obRead))))));
+  CHECK(eq(car(cdr(obRead)), (car(cdr(cdr(obRead))))));
+}
+
+// environment test
+TEST(Reader, EnvironmentRetrieve)
+{
+  GetCharSpy_Create("(a b c) (1 2 3)");
+  Object vars = read();
+  Object vals = read();
+  Object env = extend_frame(vars, vals, the_empty_env);
+  LONGS_EQUAL(1,
+              (long) lookup_variable_value(car(vars), env).data);
+  LONGS_EQUAL(2,
+              (long) lookup_variable_value(car(cdr(vars)), env).data);
+  LONGS_EQUAL(3,
+              (long) lookup_variable_value(car(cdr(cdr(vars))), env).data);
+}

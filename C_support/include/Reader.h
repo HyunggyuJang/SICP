@@ -17,7 +17,11 @@ typedef struct Object Object;
 Object cons(Object carCell, Object cdrCell);
 Object car(Object consCell);
 Object cdr(Object consCell);
+Object set_car(Object consCell, Object newCar);
+Object set_cdr(Object consCell, Object newCdr);
+bool isSymbol(Object cell);
 bool isPair(Object cell);
+bool eq(Object o1, Object o2);
 
 Object read(void);
 
