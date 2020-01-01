@@ -7226,7 +7226,7 @@ expression erected on underlying Scheme, and in that universal machine, we
 execute the code resulted from compiling the meta circular evaluator Scheme program.
 
 Whew! It was quite complicated process to make it work than I ever thought!
-*** Exercise 5.51
+*** TODO Exercise 5.51
 This exercise and the last exercise (the one after this) would be longer journey
 than any one we ever have encountered. We should translate the explicit-control
 evaluator of [[The Explicit-Control Evaluator][preceding section]] into low-level language -- the typical one would
@@ -7238,3 +7238,51 @@ and other [[https://softwareengineering.stackexchange.com/questions/335271/what-
 As I've not done any rigorous C programming before, I'd better to go off and
 learn C to implement this and the last exercise; for this learning, I've chosen
 the classic book, [[https://www.amazon.com/Programming-Language-2nd-Brian-Kernighan/dp/0131103628][The C programming language, 2nd edition]].
+
+Meanwhile, I've run through the wild C development environment. I've visited 3
+books as my main mentor of learning C:
+1. [[https://www.amazon.com/Programming-Language-2nd-Brian-Kernighan/dp/0131103628][The C programming language, 2nd edition]]
+   As I've written above, this was my first C self study reference. This is
+   classic book, and has lots of tricks for programming, not just about the C.
+   The exercises are quite hard; but it depends on the one's perspective on
+   interpretation of being requested. If you want to produce /reasonable/
+   solution, you're going to experience the weirdness of C in comparison with
+   other higher level languages, which are full of run time support.
+
+   So, from here, I've felt that I should have good tool to debug; I've searched
+   unit test harness in C, I found [[https://pragprog.com/book/jgade/test-driven-development-for-embedded-c][TDD for embedded C]].
+
+2. [[https://pragprog.com/book/jgade/test-driven-development-for-embedded-c][TDD for embedded C]]
+   This is another great book has lots of C code in it, which makes you feel
+   comportable in that it looks like object-oriented programming in C. It
+   teaches a lot of techniques to make the code testable, how to develop the
+   program from the requirement interpretation.
+
+   But this method is more intricate than the wishful thinking we've learned
+   from the SICP; it enforces the disciplines for us to follow without any
+   comprehensive explanations at the first stage. This gives another experience
+   from which we can reconsider the abstract method of how to program: We do
+   usually not understand well the structure we should implement at the first
+   state where we interpreting the requirements. In wishful thinking, we
+   experiments with the requirement in abstract model -- in manual way; whereas
+   TDD let us express what the behavior we wishes in a concrete way -- via test
+   suites. Within this safety net, we are good to be creative as long as it
+   passes tests. And then we switches our own phase to be top down defensive
+   rather than bottom up creative mode. We divides the big monolithic code chunk
+   into smaller pieces with close relations (like object!).
+
+   However this book nearly do touch the mechanisms of linking and preprocessing
+   and so on, with which C operates. To solve this mysterious concepts, I've
+   touched yet another book, which is written in a modern way, [[https://www.oreilly.com/library/view/learn-c-the/9780133124385/][Learn C The Hard Way]].
+
+3. [[https://www.oreilly.com/library/view/learn-c-the/9780133124385/][Learn C The Hard Way]]
+   With this book, we can get the gist of C programming language, and also get
+   the mindset for anyone who going to program in C; the defensive programming
+   and so called undefined behaviors in C.
+
+   Actually, without using any test harness, we can code them by ourselves; it
+   carries us quite far with a couple of macros. In turns which represents the
+   power of C macros implicitly.
+
+
+With these tour, I finally started to code the project. [[file:C_support/tests/ReaderTest.cpp::extern "C" {][Here]] is the test code.
