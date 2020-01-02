@@ -1,11 +1,16 @@
 #ifndef __READER_INTERNAL_H_
 #define __READER_INTERNAL_H_
 
+#define TOLONG
 
 typedef struct Object {
     unsigned char type;
     unsigned long len : 56;
+#ifdef TOLONG
+  unsigned long data;
+#else
     double data;
+#endif
 } Object;
 
 #define LEN_MASK 0x00ffffffffffffff
@@ -23,13 +28,19 @@ enum OBJECT_TYPES
   OB_EXACT,
   OB_INEXACT,
   OB_STRING,
-  OB_SYMBOL
+  OB_SYMBOL,
+  OB_PRIMITVE
+};
+
+enum JUMP_LIST
+{
+READ_EVAL_PRINT_LOOP = 0,
+PRINT_RESULT,
 };
 
 extern Object *heap;
 
 /* obarray */
-void initialize_obarray(void);
 Object intern(Object str);
 
 /* environment */

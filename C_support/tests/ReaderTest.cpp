@@ -125,7 +125,11 @@ TEST(Reader, ReadInexact)
   GetCharSpy_Create("1234.578");
   obRead = read();
   BYTES_EQUAL(OB_INEXACT, obRead.type);
-  DOUBLES_EQUAL(1234.578,  obRead.data, 0.0001);
+#ifdef TOLONG
+  DOUBLES_EQUAL(1234.578, *(double *)&obRead.data, 0.0001);
+#else
+  DOUBLES_EQUAL(1234.578, obRead.data, 0.0001);
+#endif
 }
 
 TEST(Reader, ReadStringSmallSize)
@@ -133,7 +137,7 @@ TEST(Reader, ReadStringSmallSize)
   GetCharSpy_Create("\"This must fit\"");
   obRead = read();
   BYTES_EQUAL(OB_STRING, obRead.type);
-  STRCMP_EQUAL("This must fit", (char *) &heap[(unsigned long) obRead.data]);
+  STRCMP_EQUAL("This must fit", getString(obRead));
 }
 
 TEST(Reader, ReadStringArbitrarySize)
@@ -146,7 +150,7 @@ TEST(Reader, ReadStringArbitrarySize)
   BYTES_EQUAL(OB_STRING, obRead.type);
   STRCMP_EQUAL("This relatively loooooooooooonnnng"
                " line also should fit in heap. ",
-               (char *) &heap[(unsigned long) obRead.data]);
+               getString(obRead));
 }
 
 TEST(Reader, ReadSymbol)
@@ -170,7 +174,12 @@ TEST(Reader, ConsCarCdrContraction)
   Object consCell = cons(read(), read());
   CHECK(isPair(consCell));
   LONGS_EQUAL(1234, (long) car(consCell).data);
+#ifdef TOLONG
+  Object cdrCell = cdr(consCell);
+  DOUBLES_EQUAL(234.24, *(double *)&cdrCell.data, 0.0001);
+#else
   DOUBLES_EQUAL(234.24, cdr(consCell).data, 0.0001);
+#endif
 }
 
 TEST(Reader, ReadListNil)
@@ -187,7 +196,7 @@ TEST(Reader, ReadListWithArbitrary)
   CHECK(isPair(obRead));
   for (int i = 1; i < 5; i++, obRead = cdr(obRead))
     LONGS_EQUAL(i, (long) car(obRead).data);
-  STRCMP_EQUAL("Hi, there", (char *) &heap[(unsigned long) car(obRead).data]);
+  STRCMP_EQUAL("Hi, there", getString(car(obRead)));
 }
 
 TEST(Reader, ReadTree)
@@ -221,7 +230,29 @@ TEST(Reader, ReadPairLikeDouble)
   CHECK(isPair(obRead));
   LONGS_EQUAL(1, (long) car(obRead).data);
   LONGS_EQUAL(2, (long) car(cdr(obRead)).data);
+#ifdef TOLONG
+  Object caddrCell = car(cdr(cdr(obRead)));
+  DOUBLES_EQUAL(.3, *(double*)&caddrCell.data, 0.001);
+#else
   DOUBLES_EQUAL(.3, car(cdr(cdr(obRead))).data, 0.001);
+#endif
+}
+
+TEST(Reader, ReadQuoteExpansion)
+{
+  GetCharSpy_Create("'a");
+  obRead = read();
+  CHECK(isPair(obRead));
+  STRCMP_EQUAL("quote", getString(car(obRead)));
+  STRCMP_EQUAL("a", getString(car(cdr(obRead))));
+  CHECK(isNull(cdr(cdr(obRead))));
+
+  GetCharSpy_Create("'(1 2)");
+  obRead = read();
+  CHECK(isPair(obRead));
+  STRCMP_EQUAL("quote", getString(car(obRead)));
+  LONGS_EQUAL(1, (long) car(car(cdr(obRead))).data);
+  LONGS_EQUAL(2, (long) car(cdr(car(cdr(obRead)))).data);
 }
 
 // object test
@@ -230,11 +261,30 @@ TEST(Reader, ObjectSize)
   LONGS_EQUAL(sizeof(Object), 16);
 }
 
+TEST(Reader, DoubleToLong)
+{
+  double from = 5.231;
+  long to = *(long *) &from;
+  from = 2.341;
+  DOUBLES_EQUAL(5.231, *(double*) &to, 0.0001);
+}
+
+TEST(Reader, SignedLongToUnsignedLong)
+{
+  long from = -1L;
+  unsigned long to = from;
+  LONGS_EQUAL(from, (long) to);
+}
+
 TEST(Reader, MakeObjectFromCStringInternal)
 {
   char testString[] = "TEST";
   Object str = {.type = OB_STRING, .len = strlen(testString)};
+#ifdef TOLONG
+  str.data =  ~0U;
+#else
   str.data = (double) ~0U;
+#endif
   LONGS_EQUAL(4, str.len);
   LONGS_EQUAL(~0U, (unsigned long) str.data);
 }
@@ -258,6 +308,17 @@ TEST(Reader, EqTest)
   CHECK(eq(car(cdr(obRead)), (car(cdr(cdr(obRead))))));
 }
 
+TEST(Reader, PrimitiveProcedures)
+{
+  GetCharSpy_Create("(1 .3 5)");
+  obRead = plus(read());
+#ifdef TOLONG
+  DOUBLES_EQUAL(6.3, *(double *)&obRead.data, 0.0001);
+#else
+  DOUBLES_EQUAL(6.3, obRead.data, 0.0001);
+#endif
+}
+
 // environment test
 TEST(Reader, EnvironmentRetrieve)
 {
@@ -271,4 +332,15 @@ TEST(Reader, EnvironmentRetrieve)
               (long) lookup_variable_value(car(cdr(vars)), env).data);
   LONGS_EQUAL(3,
               (long) lookup_variable_value(car(cdr(cdr(vars))), env).data);
+}
+
+// interpreter test
+TEST(Reader, InterpretSelfEval)
+{
+  GetCharSpy_Create("5.34 5 () \"String Test\"");
+  interpret();
+  STRCMP_CONTAINS("5.34", stdoutBuf);
+  STRCMP_CONTAINS("5", stdoutBuf);
+  STRCMP_CONTAINS("()", stdoutBuf);
+  STRCMP_CONTAINS("\"String Test\"", stdoutBuf);
 }
