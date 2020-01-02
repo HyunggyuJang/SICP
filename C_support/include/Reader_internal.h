@@ -42,6 +42,8 @@ extern Object the_empty_env;
 Object make_frame(Object variables, Object values);
 Object extend_frame(Object vars, Object vals, Object base_env);
 Object lookup_variable_value(Object var, Object env);
+Object text_of_quotation(Object exp);
+bool quoted_p(Object exp);
 
 extern char token[];
 enum TokenType

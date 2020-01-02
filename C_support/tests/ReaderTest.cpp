@@ -73,10 +73,14 @@ TEST(Reader, GetTokenParen)
 
 TEST(Reader, GetTokenPair)
 {
-  GetCharSpy_Create("(1 . 2)");
+  GetCharSpy_Create("(1 . 2)(1 2)");
   checkToken('(', "(");
   checkToken(EXACT, "1");
   checkToken('.', ".");
+  checkToken(EXACT, "2");
+  checkToken(')', ")");
+  checkToken('(', "(");
+  checkToken(EXACT, "1");
   checkToken(EXACT, "2");
   checkToken(')', ")");
 }
@@ -323,4 +327,15 @@ TEST(Reader, InterpretSelfEval)
   STRCMP_CONTAINS("5", stdoutBuf);
   STRCMP_CONTAINS("()", stdoutBuf);
   STRCMP_CONTAINS("\"String Test\"", stdoutBuf);
+}
+
+TEST(Reader, InterpretQuoted)
+{
+  GetCharSpy_Create("'test '(1 2 test) '(1 . 2)"
+                    "'((1 2 . 3) (a . b))");
+  interpret();
+  STRCMP_CONTAINS("test", stdoutBuf);
+  STRCMP_CONTAINS("(1 2 test)", stdoutBuf);
+  STRCMP_CONTAINS("(1 . 2)", stdoutBuf);
+  STRCMP_CONTAINS("((1 2 . 3) (a . b))", stdoutBuf);
 }

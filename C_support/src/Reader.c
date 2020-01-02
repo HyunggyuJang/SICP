@@ -403,7 +403,7 @@ void user_print(Object val)
         case OB_PAIR:
             formatOut(stdout, "(");
             user_print(car(val));
-            for (val = cdr(val); isPair(val); val = cdr(val)) {
+            for (val = cdr(val); val.type == OB_PAIR; val = cdr(val)) {
                 formatOut(stdout, " ");
                 user_print(car(val));
             }
@@ -412,6 +412,7 @@ void user_print(Object val)
             else {
                 formatOut(stdout, " . ");
                 user_print(val);
+                formatOut(stdout, ")");
             }
             break;
         default:
@@ -419,6 +420,16 @@ void user_print(Object val)
     }
 error: // fallthrough
     return;
+}
+
+bool quoted_p(Object exp)
+{
+    return eq(quote, car(exp));
+}
+
+Object text_of_quotation(Object exp)
+{
+    return car(cdr(exp));
 }
 
 void interpret(void)
@@ -446,6 +457,11 @@ eval:
         case OB_NIL:
         case OB_STRING:
             val = exp;
+            longjmp(cont_buf, cont);
+        case OB_PAIR:
+            check(quoted_p(exp),
+                  "Currently we only handle quoted special form.");
+            val = text_of_quotation(exp);
             longjmp(cont_buf, cont);
         default:
             sentinel("Unknown expression, type num %d", exp.type);
