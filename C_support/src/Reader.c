@@ -9,22 +9,14 @@
 
 /* Memory allocation */
 Object *heap = NULL;
-#ifdef TOLONG
 Object *Freep = NULL;
-#else
-unsigned long Free = 0;
-#endif
 unsigned long word_size = 0;
 
 int heap_Create(unsigned long byte_size)
 {
     word_size = (sizeof (Object) - 1 + byte_size) / sizeof (Object);
     heap = malloc(word_size * sizeof (Object));
-#ifdef TOLONG
     Freep = heap;
-#else
-    Free = 0;
-#endif
     check_mem(heap);
     return 1;
 
@@ -54,53 +46,31 @@ Object cons(Object carCell, Object cdrCell)
 {
     Object consCell;
     consCell.type = OB_PAIR;
-    #ifdef TOLONG
-    consCell.data = Freep;
+    consCell.data = (unsigned long) Freep;
     *Freep++ = carCell;
     *Freep++ = cdrCell;
-    #else
-    consCell.data = (double) Free;
-    heap[Free++] = carCell;
-    heap[Free++] = cdrCell;
-    #endif
     return consCell;
 }
 
 Object car(Object consCell)
 {
-#ifdef TOLONG
     return *((Object *) consCell.data);
-#else
-    return heap[(unsigned long) consCell.data];
-#endif
 }
 
 Object cdr(Object consCell)
 {
-#ifdef TOLONG
     return *((Object *) consCell.data + 1);
-#else
-    return heap[(unsigned long) consCell.data + 1];
-#endif
 }
 
 Object set_car(Object consCell, Object newCar)
 {
-#ifdef TOLONG
     *((Object *) consCell.data) = newCar;
-#else
-    heap[(unsigned long) consCell.data] = newCar;
-#endif
     return ok;
 }
 
 Object set_cdr(Object consCell, Object newCdr)
 {
-#ifdef TOLONG
     *((Object *) consCell.data + 1) = newCdr;
-#else
-    heap[(unsigned long) consCell.data + 1] = newCdr;
-#endif
     return ok;
 }
 
@@ -111,11 +81,7 @@ bool isString(Object cell)
 
 char *getString(Object cell)
 {
-#ifdef TOLONG
     return (char *) cell.data;
-#else
-    return (char *) &heap[(unsigned long) cell.data];
-#endif
 }
 
 bool isNumber(Object cell)
@@ -290,19 +256,11 @@ Object make_string_obj(const char *cstring)
     size_t sizeInWords =
         (sizeof (Object) + str.len) / sizeof (Object);
 
-#ifdef TOLONG
     check(Freep - heap + sizeInWords < word_size,
           "Need garbage collect!");
     str.data = (unsigned long)Freep;
     memcpy(Freep, cstring, str.len + 1);
     Freep += sizeInWords;
-#else
-    check(Free + sizeInWords < word_size,
-          "Need garbage collect!");
-    str.data = (double) Free;
-    memcpy(&heap[Free], cstring, str.len + 1);
-    Free += sizeInWords;
-#endif
     return str;
 error:
     return err;
@@ -314,11 +272,7 @@ Object plus(Object args)
     switch (args.type) {
         case OB_NIL:
             args.type = OB_EXACT;
-#ifdef TOLONG
             args.data = 0L;
-#else
-            args.data = (double) 0L;
-#endif
             return args;
         case OB_EXACT:
         case OB_INEXACT:
@@ -335,7 +289,6 @@ Object plus(Object args)
                 addend.type == OB_INEXACT ?
                 OB_INEXACT :
                 OB_EXACT;
-#ifdef TOLONG
             if (args.type == OB_EXACT)
                 args.data =
                      augend.data +  addend.data;
@@ -349,15 +302,6 @@ Object plus(Object args)
                        *(double*)&addend.data);
                 args.data = *(long *) &temp;
             }
-#else
-            args.data =
-                (augend.type == OB_EXACT ?
-                 (long) augend.data :
-                 augend.data)
-                + (addend.type == OB_EXACT ?
-                 (long) addend.data :
-                   addend.data);
-#endif
             return args;
         }
         default:
@@ -383,25 +327,17 @@ Object read(void)
 
         case EXACT:
             returnValue.type = OB_EXACT;
-#ifdef TOLONG
             returnValue.data = atol(token);
-#else
-            returnValue.data = (double) atol(token);
-#endif
             rc = EOL;
             return returnValue;
 
         case INEXACT:
             returnValue.type = OB_INEXACT;
-#ifdef TOLONG
             {
                 // to work around
                 double temp = atof(token);
                 returnValue.data = *(long *) &temp;
             }
-#else
-            returnValue.data =  atof(token);
-#endif
             rc = EOL;
             return returnValue;
 
@@ -450,18 +386,10 @@ void user_print(Object val)
 {
     switch (val.type) {
         case OB_EXACT:
-#ifdef TOLONG
             formatOut(stdout, "%ld", (long) val.data);
-#else
-            formatOut(stdout, "%ld", (long) val.data);
-#endif
             break;
         case OB_INEXACT:
-#ifdef TOLONG
             formatOut(stdout, "%g", *(double *) &val.data);
-#else
-            formatOut(stdout, "%g", val.data);
-#endif
             break;
         case OB_SYMBOL:
             formatOut(stdout, "%s", getString(val));

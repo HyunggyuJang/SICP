@@ -1,16 +1,10 @@
 #ifndef __READER_INTERNAL_H_
 #define __READER_INTERNAL_H_
 
-#define TOLONG
-
 typedef struct Object {
-    unsigned char type;
-    unsigned long len : 56;
-#ifdef TOLONG
+  unsigned char type;
+  unsigned long len : 56;
   unsigned long data;
-#else
-    double data;
-#endif
 } Object;
 
 #define LEN_MASK 0x00ffffffffffffff

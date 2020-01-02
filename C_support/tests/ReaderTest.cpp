@@ -125,11 +125,7 @@ TEST(Reader, ReadInexact)
   GetCharSpy_Create("1234.578");
   obRead = read();
   BYTES_EQUAL(OB_INEXACT, obRead.type);
-#ifdef TOLONG
   DOUBLES_EQUAL(1234.578, *(double *)&obRead.data, 0.0001);
-#else
-  DOUBLES_EQUAL(1234.578, obRead.data, 0.0001);
-#endif
 }
 
 TEST(Reader, ReadStringSmallSize)
@@ -174,12 +170,8 @@ TEST(Reader, ConsCarCdrContraction)
   Object consCell = cons(read(), read());
   CHECK(isPair(consCell));
   LONGS_EQUAL(1234, (long) car(consCell).data);
-#ifdef TOLONG
   Object cdrCell = cdr(consCell);
   DOUBLES_EQUAL(234.24, *(double *)&cdrCell.data, 0.0001);
-#else
-  DOUBLES_EQUAL(234.24, cdr(consCell).data, 0.0001);
-#endif
 }
 
 TEST(Reader, ReadListNil)
@@ -230,12 +222,8 @@ TEST(Reader, ReadPairLikeDouble)
   CHECK(isPair(obRead));
   LONGS_EQUAL(1, (long) car(obRead).data);
   LONGS_EQUAL(2, (long) car(cdr(obRead)).data);
-#ifdef TOLONG
   Object caddrCell = car(cdr(cdr(obRead)));
   DOUBLES_EQUAL(.3, *(double*)&caddrCell.data, 0.001);
-#else
-  DOUBLES_EQUAL(.3, car(cdr(cdr(obRead))).data, 0.001);
-#endif
 }
 
 TEST(Reader, ReadQuoteExpansion)
@@ -280,11 +268,7 @@ TEST(Reader, MakeObjectFromCStringInternal)
 {
   char testString[] = "TEST";
   Object str = {.type = OB_STRING, .len = strlen(testString)};
-#ifdef TOLONG
   str.data =  ~0U;
-#else
-  str.data = (double) ~0U;
-#endif
   LONGS_EQUAL(4, str.len);
   LONGS_EQUAL(~0U, (unsigned long) str.data);
 }
@@ -312,11 +296,7 @@ TEST(Reader, PrimitiveProcedures)
 {
   GetCharSpy_Create("(1 .3 5)");
   obRead = plus(read());
-#ifdef TOLONG
   DOUBLES_EQUAL(6.3, *(double *)&obRead.data, 0.0001);
-#else
-  DOUBLES_EQUAL(6.3, obRead.data, 0.0001);
-#endif
 }
 
 // environment test
