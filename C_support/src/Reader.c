@@ -53,7 +53,7 @@ Object cons(Object carCell, Object cdrCell)
 
 Object Prim_cons(Object args)
 {
-    return cons(car(args), cdr(args));
+    return cons(car(args), car(cdr(args)));
 }
 
 Object car(Object consCell)
@@ -450,6 +450,8 @@ void user_print(Object val)
         case OB_PRIMITVE:
             formatOut(stdout, "<primitive procedure>");
             break;
+        case OB_COMPOUND:
+            formatOut(stdout, "<compound procedure>");
         case OB_PAIR:
             formatOut(stdout, "(");
             user_print(car(val));
@@ -511,18 +513,21 @@ void initialize_stack(void)
     sp = stack;
 }
 
-Object primitive_procedures = {.type = OB_NIL};
+Object primitive_procedure_names = {.type = OB_NIL};
+Object primitive_procedure_objects = {.type = OB_NIL};
 
 void addto_primitive_procedures(char *schemeName, primproc_t proc)
 {
-    primitive_procedures = cons(cons(intern(make_string_obj(schemeName)),
-                                     make_primitive_procedure(proc)),
-                                primitive_procedures);
+    primitive_procedure_names = cons(intern(make_string_obj(schemeName)),
+                                     primitive_procedure_names);
+    primitive_procedure_objects = cons(make_primitive_procedure(proc),
+                                       primitive_procedure_objects);
 }
 
 void setup_primitive_procedures()
 {
-    primitive_procedures = nil;
+    primitive_procedure_objects =
+        primitive_procedure_names = nil;
     addto_primitive_procedures("car", car);
     addto_primitive_procedures("cdr", cdr);
     addto_primitive_procedures("cons", Prim_cons);
@@ -531,37 +536,18 @@ void setup_primitive_procedures()
     addto_primitive_procedures("+", plus);
 }
 
-Object map(primproc_t proc, Object list)
-{
-    Object returnList = nil;
-    for (; !isNull(list); list = cdr(list)) {
-        returnList = cons(proc(car(list)), returnList);
-    }
-    return returnList;
-}
-
-Object primitive_procedure_names()
-{
-    return map(car, primitive_procedures);
-}
-
-Object primitive_procedure_objects()
-{
-    return map(cdr, primitive_procedures);
-}
-
 void setup_environment()
 {
     setup_primitive_procedures();
     global_env =
-        extend_frame(primitive_procedure_names(),
-                     primitive_procedure_objects(),
+        extend_frame(primitive_procedure_names,
+                     primitive_procedure_objects,
                      the_empty_env);
     define_variable(true_s, sharp_t, global_env);
     define_variable(false_s, sharp_f, global_env);
 }
 
-Object expr, val, unev, env;
+Object expr, val, unev, env, argl, proc;
 Object cont = {.type = OB_LABEL, .data = (unsigned long) NULL};
 
 void *label(Object lab_obj){
@@ -589,15 +575,53 @@ void repl(void)
         formatOut(stdout, "\n");
     }
 }
+Object cadr(Object exp)
+{
+    return car(cdr(exp));
+}
+Object cddr(Object exp)
+{
+    return cdr(cdr(exp));
+}
+Object caddr(Object exp)
+{
+    return car(cddr(exp));
+}
+Object cdddr(Object exp)
+{
+    return cdr(cddr(exp));
+}
+Object cadddr(Object exp)
+{
+    return car(cdddr(exp));
+}
+Object caadr(Object exp)
+{
+    return car(cadr(exp));
+}
+Object cdadr(Object exp)
+{
+    return cdr(cadr(exp));
+}
+Object cadadr(Object exp)
+{
+    return cadr(cadr(exp));
+}
+
+Object make_lambda(Object params, Object body)
+{
+    return cons(lambda, cons(params, body));
+}
 
 Object definition_variable(Object exp)
 {
-    return car(cdr(exp));
+    return isSymbol(cadr(exp)) ? cadr(exp) : caadr(exp);
 }
 
 Object definition_value(Object exp)
 {
-    return car(cdr(cdr(exp)));
+    return isSymbol(cadr(exp)) ? caddr(exp)
+        : make_lambda(cdadr(exp), cddr(exp));
 }
 
 Object if_predicate(Object exp)
@@ -615,9 +639,76 @@ Object if_alternative(Object exp)
     return car(cdr(cdr(cdr(exp))));
 }
 
+Object assignment_variable(Object exp)
+{
+    return cadr(exp);
+}
+
+Object assignment_value(Object exp)
+{
+    return caddr(exp);
+}
+
 bool true_p(Object exp)
 {
     return !(exp.type == OB_BOOLEAN) || (bool) exp.data;
+}
+
+Object make_procedure(Object params, Object body, Object env)
+{
+    Object proc = {.type = OB_COMPOUND,
+                   .data = (unsigned long) Freep};
+    *Freep++ = params;
+    *Freep++ = body;
+    *Freep++ = env;
+    return proc;
+}
+
+Object procedure_params(Object proc)
+{
+    return *(Object *)proc.data;
+}
+
+Object procedure_body(Object proc)
+{
+    return *((Object *)proc.data + 1);
+}
+
+Object procedure_env(Object proc)
+{
+    return *((Object *)proc.data + 2);
+}
+
+Object lambda_params(Object exp)
+{
+    return cadr(exp);
+}
+
+Object lambda_body(Object exp)
+{
+    return cddr(exp);
+}
+
+Object operator(Object exp)
+{
+    return car(exp);
+}
+
+Object operands(Object exp)
+{
+    return cdr(exp);
+}
+
+Object adjoin_arg(Object arg, Object list)
+{
+    if (isNull(list))
+        return cons(arg, list);
+    return cons(car(list), adjoin_arg(arg, cdr(list)));
+}
+
+Object begin_actions(Object exp)
+{
+    return cdr(exp);
 }
 
 void interpret(void)
@@ -641,16 +732,102 @@ eval:
                 val = text_of_quotation(expr);
                 goto *label(cont);
             }
-            if (eq(type, define)) {
+            if (eq(type, define))
                 goto ev_definition;
-            }
-            if (eq(type, if_s)) {
+
+            if (eq(type, if_s))
                 goto ev_if;
-            }
+
+            if (eq(type, set_bang))
+                goto ev_assignment;
+
+            if (eq(type, lambda))
+                goto ev_lambda;
+
+            if (eq(type, begin))
+                goto ev_begin;
+
+            goto ev_application;
         }
         default:
             sentinel("Unknown expression, type num %d", expr.type);
     }
+ev_begin:
+    unev = begin_actions(expr);
+    save(cont);
+    goto ev_sequence;
+ev_sequence:
+    expr = car(unev);
+    if (isNull(cdr(unev)))
+        goto ev_sequence_last_exp;
+    save(unev);
+    save(env);
+    cont = make_label(&&ev_sequence_continue);
+    goto eval;
+ev_sequence_continue:
+    env = restore();
+    unev = restore();
+    unev = cdr(unev);
+    goto ev_sequence;
+ev_sequence_last_exp:
+    cont = restore();
+    goto eval;
+ev_application:
+    save(cont);
+    save(env);
+    save(operands(expr));
+    expr = operator(expr);
+    cont = make_label(&&ev_appl_did_operator);
+    goto eval;
+ev_appl_did_operator:
+    unev = restore();
+    env = restore();
+    argl = nil;
+    proc = val;
+    if (isNull(unev))
+        goto apply_dispatch;
+    save(proc);
+ev_appl_operand_loop:
+    save(argl);
+    expr = car(unev);
+    if (isNull(cdr(unev)))
+        goto ev_appl_last_arg;
+    save(env);
+    save(unev);
+    cont = make_label(&&ev_appl_accumulate_arg);
+    goto eval;
+ev_appl_accumulate_arg:
+    unev = restore();
+    env = restore();
+    argl = restore();
+    argl = adjoin_arg(val, argl);
+    unev = cdr(unev);
+    goto ev_appl_operand_loop;
+ev_appl_last_arg:
+    cont = make_label(&&ev_appl_accum_last_arg);
+    goto eval;
+ev_appl_accum_last_arg:
+    argl = restore();
+    argl = adjoin_arg(val, argl);
+    proc = restore();
+    goto apply_dispatch;
+ev_lambda:
+    val = make_procedure(lambda_params(expr),
+                         lambda_body(expr), env);
+    goto *label(cont);
+ev_assignment:
+    save(assignment_variable(expr));
+    expr = assignment_value(expr);
+    save(env);
+    save(cont);
+    cont = make_label(&&ev_assignment_1);
+    goto eval;
+ev_assignment_1:
+    cont = restore();
+    env = restore();
+    unev = restore();
+    val = set_variable_value(unev, val, env);
+    goto *label(cont);
 ev_if:
     save(expr);
     save(env);
@@ -671,8 +848,7 @@ ev_if_consequent:
     expr = if_consequent(expr);
     goto eval;
 ev_definition:
-    unev = definition_variable(expr);
-    save(unev);
+    save(definition_variable(expr));
     expr = definition_value(expr);
     save(env);
     save(cont);
@@ -684,6 +860,19 @@ ev_definition_1:
     unev = restore();
     val = define_variable(unev, val, env);
     goto *label(cont);
+apply_dispatch:
+    switch(proc.type) {
+        case OB_PRIMITVE:
+            val = apply_primitive_procedure(proc, argl);
+            cont = restore();
+            goto *label(cont);
+        case OB_COMPOUND:
+            unev = procedure_params(proc);
+            env = procedure_env(proc);
+            env = extend_frame(unev, argl, env);
+            unev = procedure_body(proc);
+            goto ev_sequence;
+    }
 done:
     return;
 error:

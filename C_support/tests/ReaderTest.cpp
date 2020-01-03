@@ -394,3 +394,49 @@ TEST(Reader, InterpretIf)
   repl();
   STRCMP_CONTAINS(";Value: \"Hello\"", stdoutBuf);
 }
+
+TEST(Reader, InterpretSet)
+{
+  GetCharSpy_Create("(define x 5) x (set! x 7) x");
+  repl();
+  STRCMP_CONTAINS(";Value: 5", stdoutBuf);
+  STRCMP_CONTAINS(";Value: 7", stdoutBuf);
+}
+
+TEST(Reader, ApplyPrimitive)
+{
+  GetCharSpy_Create("+ (5 7 5.3)");
+  obRead = lookup_variable_value(read(), global_env);
+  BYTES_EQUAL(OB_PRIMITVE, obRead.type);
+  Object calculated = apply_primitive_procedure(obRead, read());
+  DOUBLES_EQUAL(17.3, *(double *)&calculated.data, 0.00001);
+}
+
+TEST(Reader, InterpretPrimitiveApplication)
+{
+  GetCharSpy_Create("(+ 1 2) (cons 1 2)");
+  repl();
+  STRCMP_CONTAINS(";Value: 3", stdoutBuf);
+  STRCMP_CONTAINS(";Value: (1 . 2)", stdoutBuf);
+}
+
+TEST(Reader, InterpretCompoundApplication)
+{
+  GetCharSpy_Create("((lambda (y) (+ y y y)) 7)");
+  repl();
+  STRCMP_CONTAINS(";Value: 21", stdoutBuf);
+}
+
+TEST(Reader, InterpretProcedureDefinition)
+{
+  GetCharSpy_Create("(define (x y) (+ y y y)) (x 7)");
+  repl();
+  STRCMP_CONTAINS(";Value: 21", stdoutBuf);
+}
+
+TEST(Reader, InterpretBegin)
+{
+  GetCharSpy_Create("(begin (define x 6) (set! x 8) x)");
+  repl();
+  STRCMP_CONTAINS(";Value: 8", stdoutBuf);
+}

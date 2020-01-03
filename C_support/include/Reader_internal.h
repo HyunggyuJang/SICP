@@ -26,6 +26,7 @@ enum OBJECT_TYPES
   OB_STRING,
   OB_SYMBOL,
   OB_PRIMITVE,
+  OB_COMPOUND,
   OB_LABEL,
   OB_BOOLEAN
 };
@@ -52,6 +53,8 @@ bool quoted_p(Object exp);
 
 int save(Object reg);
 Object restore(void);
+
+Object apply_primitive_procedure(Object proc, Object argl);
 
 extern char token[];
 enum TokenType
