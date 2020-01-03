@@ -51,6 +51,16 @@ Object lookup_variable_value(Object var, Object env);
 Object text_of_quotation(Object exp);
 bool quoted_p(Object exp);
 
+Object cadadr(Object exp);
+Object cadr(Object exp);
+Object cddr(Object exp);
+Object caddr(Object exp);
+Object cdddr(Object exp);
+Object cadddr(Object exp);
+Object caadr(Object exp);
+Object cdadr(Object exp);
+Object cadadr(Object exp);
+
 int save(Object reg);
 Object restore(void);
 

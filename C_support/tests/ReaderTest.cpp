@@ -440,3 +440,34 @@ TEST(Reader, InterpretBegin)
   repl();
   STRCMP_CONTAINS(";Value: 8", stdoutBuf);
 }
+
+TEST(Reader, SupportDotNotationInProcedure)
+{
+  GetCharSpy_Create("(define (list . x) x)"
+                    "(list 1 2 3 4 5)"
+                    "(list (+ 2 3 4))"
+  );
+  repl();
+  STRCMP_CONTAINS(";Value: ok", stdoutBuf);
+  STRCMP_CONTAINS(";Value: (1 2 3 4 5)", stdoutBuf);
+  STRCMP_CONTAINS(";Value: (9)", stdoutBuf);
+}
+
+TEST(Reader, SupportMorePrimitives)
+{
+  GetCharSpy_Create("(if (< 5 1.28) true false) (* 5 .28 2)");
+  repl();
+  STRCMP_CONTAINS(";Value: #f", stdoutBuf);
+  STRCMP_CONTAINS(";Value: 2.8", stdoutBuf);
+}
+
+TEST(Reader, TestFibonacci_NeedGarbageCollection)
+{
+  GetCharSpy_Create("(define (fib n)"
+                    "(if (< n 2) n"
+                    "(+ (fib (- n 1)) (fib (- n 2)))))"
+                    "(fib 10)");
+  repl();
+  STRCMP_CONTAINS("Need to collect garbage", stderrBuf);
+  // STRCMP_CONTAINS(";Value: 55", stdoutBuf);
+}

@@ -43,12 +43,15 @@ bool isPair(Object cell)
 
 Object cons(Object carCell, Object cdrCell)
 {
+    check(Freep - heap + 2 < word_size, "Need to collect garbage. -- CONS");
     Object consCell;
     consCell.type = OB_PAIR;
     consCell.data = (unsigned long) Freep;
     *Freep++ = carCell;
     *Freep++ = cdrCell;
     return consCell;
+error:
+    return err;
 }
 
 Object Prim_cons(Object args)
@@ -200,13 +203,13 @@ Object frame_values(Object frame)
     return cdr(frame);
 }
 
-static unsigned int length(Object list)
+static long length(Object list)
 {
-    int len = 0;
+    long len = 0;
     for (len = 0; isPair(list) && !isNull(list);
          len++, list = cdr(list))
         ;
-    return len;
+    return isNull(list) ? len : -(len + 1); // for non-list detection
 }
 
 Object add_binding_to_frame(Object var, Object val, Object frame)
@@ -217,8 +220,11 @@ Object add_binding_to_frame(Object var, Object val, Object frame)
 
 Object extend_frame(Object vars, Object vals, Object base_env)
 {
-    check(length(vars) == length(vals),
-          "number of variables and values should match.");
+    long var_len = length(vars);
+    long val_len = length(vals);
+    check(var_len == val_len || var_len < 0 && -var_len <= val_len,
+          "number of variables and values should match; vars' %ld, vals' %ld",
+          var_len, val_len);
     return cons(make_frame(vars, vals), base_env);
 
 error:
@@ -235,17 +241,19 @@ static Object enclosing_frame(Object env)
     return cdr(env);
 }
 
-
 Object lookup_variable_value(Object var, Object env)
 {
     Object frame, vars, vals;
     for (; !eq(env, the_empty_env); env = enclosing_frame(env)) {
         frame = first_frame(env);
         for (vars = frame_variables(frame), vals = frame_values(frame);
-             !isNull(vars);
+             isPair(vars) && !isNull(vars);
              vars = cdr(vars), vals = cdr(vals))
             if (eq(var, car(vars)))
                 return car(vals);
+        /* To support dot notation in procedure argument */
+        if (!isNull(vars) && eq(var, vars))
+            return vals;
     }
 
     log_err("Unbound variable %s", getString(var));
@@ -289,7 +297,7 @@ Object make_string_obj(const char *cstring)
         (sizeof (Object) + str.len) / sizeof (Object);
 
     check(Freep - heap + sizeInWords < word_size,
-          "Need garbage collect!");
+          "Need to collect garbage!");
     str.data = (unsigned long)Freep;
     memcpy(Freep, cstring, str.len + 1);
     Freep += sizeInWords;
@@ -340,6 +348,113 @@ Object plus(Object args)
             sentinel("+ need number arguments.");
     }
 
+error:
+    return err;
+}
+
+Object multiply(Object args)
+{
+    switch (args.type) {
+        case OB_NIL:
+            args.type = OB_EXACT;
+            args.data = 1L;
+            return args;
+        case OB_EXACT:
+        case OB_INEXACT:
+            return args;
+        case OB_PAIR:
+        {
+            Object augend = car(args);
+            check(isNumber(augend), "* need number arguments.");
+            Object addend = multiply(cdr(args));
+            if (eq(addend, err))
+                goto error;
+            args.type =
+                augend.type == OB_INEXACT ||
+                addend.type == OB_INEXACT ?
+                OB_INEXACT :
+                OB_EXACT;
+            if (args.type == OB_EXACT)
+                args.data =
+                     augend.data * addend.data;
+            else {
+                double temp =
+                    (augend.type == OB_EXACT ?
+                     (long) augend.data :
+                     *(double*)&augend.data)
+                    * (addend.type == OB_EXACT ?
+                       (long) addend.data :
+                       *(double*)&addend.data);
+                args.data = *(long *) &temp;
+            }
+            return args;
+        }
+        default:
+            sentinel("* need number arguments.");
+    }
+
+error:
+    return err;
+}
+
+Object minus(Object args)
+{
+    check(length(args) == 2, "- is binary.");
+    Object left = car(args);
+    check(left.type == OB_EXACT || left.type == OB_INEXACT, "-: left argument is not a number.");
+    Object right = cadr(args);
+    check(right.type == OB_EXACT || right.type == OB_INEXACT, "-: right argument is not a number.");
+    return (Object) {
+        .type = left.type == OB_EXACT && right.type == OB_EXACT ? OB_EXACT : OB_INEXACT,
+            .data = (unsigned long)
+            ((left.type == OB_INEXACT ? *(double *)& left.data : (long) left.data)
+             - (right.type == OB_INEXACT ? *(double *)& right.data : (long) right.data))
+            };
+error:
+    return err;
+}
+
+Object lessThan(Object args)
+{
+    check(length(args) == 2, "< is binary.");
+    Object left = car(args);
+    check(left.type == OB_EXACT || left.type == OB_INEXACT, "<: left argument is not a number.");
+    Object right = cadr(args);
+    check(right.type == OB_EXACT || right.type == OB_INEXACT, "<: right argument is not a number.");
+    return (Object) { .type = OB_BOOLEAN,
+            .data = (unsigned long)
+            ((left.type == OB_INEXACT ? *(double *)& left.data : (long) left.data)
+             < (right.type == OB_INEXACT ? *(double *)& right.data : (long) right.data))};
+error:
+    return err;
+}
+
+Object greaterThan(Object args)
+{
+    check(length(args) == 2, "> is binary.");
+    Object left = car(args);
+    check(left.type == OB_EXACT || left.type == OB_INEXACT, ">: left argument is not a number.");
+    Object right = cadr(args);
+    check(right.type == OB_EXACT || right.type == OB_INEXACT, ">: right argument is not a number.");
+    return (Object) { .type = OB_BOOLEAN,
+            .data = (unsigned long)
+            ((left.type == OB_INEXACT ? *(double *)& left.data : (long) left.data)
+             > (right.type == OB_INEXACT ? *(double *)& right.data : (long) right.data))};
+error:
+    return err;
+}
+
+Object equalTo(Object args)
+{
+    check(length(args) == 2, "= is binary.");
+    Object left = car(args);
+    check(left.type == OB_EXACT || left.type == OB_INEXACT, "=: left argument is not a number.");
+    Object right = cadr(args);
+    check(right.type == OB_EXACT || right.type == OB_INEXACT, "=: right argument is not a number.");
+    return (Object) { .type = OB_BOOLEAN,
+            .data = (unsigned long)
+            ((left.type == OB_INEXACT ? *(double *)& left.data : (long) left.data)
+             == (right.type == OB_INEXACT ? *(double *)& right.data : (long) right.data))};
 error:
     return err;
 }
@@ -534,6 +649,11 @@ void setup_primitive_procedures()
     addto_primitive_procedures("set-car!", Prim_set_car);
     addto_primitive_procedures("set-cdr!", Prim_set_cdr);
     addto_primitive_procedures("+", plus);
+    addto_primitive_procedures("-", minus);
+    addto_primitive_procedures("*", multiply);
+    addto_primitive_procedures("<", lessThan);
+    addto_primitive_procedures(">", greaterThan);
+    addto_primitive_procedures("=", equalTo);
 }
 
 void setup_environment()
@@ -570,6 +690,10 @@ void repl(void)
         if (eq(expr, err))
             return;
         interpret();
+        if (eq(val, err)) {
+            formatOut(stderr, "REPL exited abnormally.");
+            return;
+        }
         formatOut(stdout, ";Value: ");
         user_print(val);
         formatOut(stdout, "\n");
@@ -656,12 +780,15 @@ bool true_p(Object exp)
 
 Object make_procedure(Object params, Object body, Object env)
 {
+    check(Freep - heap + 3 < word_size, "Need to collect garbage. -- MAKE_PROCEDURE");
     Object proc = {.type = OB_COMPOUND,
                    .data = (unsigned long) Freep};
     *Freep++ = params;
     *Freep++ = body;
     *Freep++ = env;
     return proc;
+error:
+    return err;
 }
 
 Object procedure_params(Object proc)
@@ -870,12 +997,19 @@ apply_dispatch:
             unev = procedure_params(proc);
             env = procedure_env(proc);
             env = extend_frame(unev, argl, env);
+            check(!eq(env, err), "Failed to extend frame in compound application.");
             unev = procedure_body(proc);
             goto ev_sequence;
+        default:
+            formatOut(stderr, ";The object ");
+            user_print(proc);
+            formatOut(stderr, " is not applicable.");
+            goto error;
     }
 done:
     return;
 error:
+    val = err;
     return;
 }
 
