@@ -22,6 +22,7 @@ INCLUDE_DIRS = include\
 	$(CPPUTEST_HOME)/include
 
 CPPUTEST_WARNINGFLAGS=-Wall
+
 # for deploy
 # CPPUTEST_USE_MEM_LEAK_DETECTION=N
 
@@ -30,3 +31,6 @@ include $(CPPUTEST_HOME)/build/MakefileWorker.mk
 bin: CFLAGS=-Wall lib/lib$(COMPONENT_NAME).a -Iinclude
 bin: CPPFLAGS= # suppress
 bin: $(BINS)
+
+binClean: clean
+	rm -f $(BINS)

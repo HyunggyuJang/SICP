@@ -20,6 +20,8 @@ TEST_GROUP(Reader)
       CHECK(stdoutBuf = FormatOutSpy_GetOutput(stdout));
       CHECK(stderrBuf = FormatOutSpy_GetOutput(stderr));
       initialize_obarray();
+      setup_environment();
+      initialize_stack();
     }
 
     void teardown()
@@ -318,11 +320,48 @@ TEST(Reader, EnvironmentRetrieve)
               (long) lookup_variable_value(car(cdr(cdr(vars))), env).data);
 }
 
-// interpreter test
+TEST(Reader, SetupGlobal)
+{
+  GetCharSpy_Create("+ car cdr set-car! set-cdr! cons true false");
+  Object var = read();
+  BYTES_EQUAL(OB_PRIMITVE, lookup_variable_value(var, global_env).type);
+  var = read();
+  BYTES_EQUAL(OB_PRIMITVE, lookup_variable_value(var, global_env).type);
+  var = read();
+  BYTES_EQUAL(OB_PRIMITVE, lookup_variable_value(var, global_env).type);
+  var = read();
+  BYTES_EQUAL(OB_PRIMITVE, lookup_variable_value(var, global_env).type);
+  var = read();
+  BYTES_EQUAL(OB_PRIMITVE, lookup_variable_value(var, global_env).type);
+  var = read();
+  BYTES_EQUAL(OB_PRIMITVE, lookup_variable_value(var, global_env).type);
+  var = read();
+  BYTES_EQUAL(OB_BOOLEAN, lookup_variable_value(var, global_env).type);
+  CHECK(lookup_variable_value(var, global_env).data);
+  var = read();
+  BYTES_EQUAL(OB_BOOLEAN, lookup_variable_value(var, global_env).type);
+  CHECK(!lookup_variable_value(var, global_env).data);
+}
+
+// stack test
+TEST(Reader, StackSaveAndRestore)
+{
+  GetCharSpy_Create("test (1 2)");
+  BYTES_EQUAL(OB_ERR, restore().type);
+  STRCMP_CONTAINS("No element in stack.", stderrBuf);
+  save(read());
+  save(read());
+  LONGS_EQUAL(1, (long) car(restore()).data);
+  STRCMP_EQUAL("test", getString(restore()));
+  BYTES_EQUAL(OB_ERR, restore().type);
+  STRCMP_CONTAINS("No element in stack.", stderrBuf);
+}
+
+//  interpreter test
 TEST(Reader, InterpretSelfEval)
 {
   GetCharSpy_Create("5.34 5 () \"String Test\"");
-  interpret();
+  repl();
   STRCMP_CONTAINS("5.34", stdoutBuf);
   STRCMP_CONTAINS("5", stdoutBuf);
   STRCMP_CONTAINS("()", stdoutBuf);
@@ -333,9 +372,25 @@ TEST(Reader, InterpretQuoted)
 {
   GetCharSpy_Create("'test '(1 2 test) '(1 . 2)"
                     "'((1 2 . 3) (a . b))");
-  interpret();
+  repl();
   STRCMP_CONTAINS("test", stdoutBuf);
   STRCMP_CONTAINS("(1 2 test)", stdoutBuf);
   STRCMP_CONTAINS("(1 . 2)", stdoutBuf);
   STRCMP_CONTAINS("((1 2 . 3) (a . b))", stdoutBuf);
+}
+
+TEST(Reader, InterpretDefineAndRetrieve)
+{
+  GetCharSpy_Create("(define x 5) x");
+  repl();
+  STRCMP_CONTAINS(";Value: ok", stdoutBuf);
+  STRCMP_CONTAINS(";Value: 5", stdoutBuf);
+}
+
+TEST(Reader, InterpretIf)
+{
+  GetCharSpy_Create("(define x false)"
+                    "(if x \"Hi\" \"Hello\")");
+  repl();
+  STRCMP_CONTAINS(";Value: \"Hello\"", stdoutBuf);
 }

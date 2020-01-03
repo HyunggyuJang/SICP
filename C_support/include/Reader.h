@@ -13,6 +13,8 @@ int heap_Create(unsigned long byte_size);
 void heap_Destory(void);
 
 void initialize_obarray(void);
+void initialize_stack(void);
+void setup_environment(void);
 
 typedef struct Object Object;
 
@@ -29,6 +31,7 @@ bool eq(Object o1, Object o2);
 bool isSelfEvaluating(Object cell);
 Object plus(Object args);
 
+void repl(void);
 void interpret(void);
 Object read(void);
 

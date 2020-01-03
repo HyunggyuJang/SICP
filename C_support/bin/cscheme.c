@@ -5,7 +5,9 @@ int main()
 {
     check(heap_Create(10000), "Memory error.");
     initialize_obarray();
-    interpret();
+    setup_environment();
+    initialize_stack();
+    repl();
     heap_Destory();
     return 0;
 error:

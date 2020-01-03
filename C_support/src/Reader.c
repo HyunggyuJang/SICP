@@ -5,7 +5,6 @@
 #include <ctype.h>
 #include <stdlib.h>
 #include <dbg_testable.h>
-#include <setjmp.h>
 
 /* Memory allocation */
 Object *heap = NULL;
@@ -52,6 +51,11 @@ Object cons(Object carCell, Object cdrCell)
     return consCell;
 }
 
+Object Prim_cons(Object args)
+{
+    return cons(car(args), cdr(args));
+}
+
 Object car(Object consCell)
 {
     return *((Object *) consCell.data);
@@ -68,10 +72,20 @@ Object set_car(Object consCell, Object newCar)
     return ok;
 }
 
+Object Prim_set_car(Object args)
+{
+    return set_car(car(args), cdr(args));
+}
+
 Object set_cdr(Object consCell, Object newCdr)
 {
     *((Object *) consCell.data + 1) = newCdr;
     return ok;
+}
+
+Object Prim_set_cdr(Object args)
+{
+    return set_cdr(car(args), cdr(args));
 }
 
 bool isString(Object cell)
@@ -106,11 +120,22 @@ bool eq(Object o1, Object o2)
 
 // end of memory allocation
 
-// obarray
+// constants
 Object nil = {.type = OB_NIL};
 Object err = {.type = OB_ERR};
-Object ok = {.type = OB_NIL};
-Object quote = {.type = OB_NIL};
+Object sharp_t = {.type = OB_BOOLEAN, .data = (unsigned long) true};
+Object sharp_f = {.type = OB_BOOLEAN, .data = (unsigned long) false};
+
+// symbols
+Object ok;
+Object quote;
+Object define;
+Object if_s;
+Object lambda;
+Object begin;
+Object set_bang;
+Object true_s;
+Object false_s;
 
 #define DEFAULT_OBARRY_SIZE 101
 #define OBARRAY_SIZE (sizeof obarray / sizeof obarray[0])
@@ -122,6 +147,13 @@ void initialize_obarray(void)
         obarray[i] = nil;
     ok = intern(make_string_obj("ok"));
     quote = intern(make_string_obj("quote"));
+    define = intern(make_string_obj("define"));
+    if_s = intern(make_string_obj("if"));
+    lambda = intern(make_string_obj("lambda"));
+    begin = intern(make_string_obj("begin"));
+    set_bang = intern(make_string_obj("set!"));
+    true_s = intern(make_string_obj("true"));
+    false_s = intern(make_string_obj("false"));
 }
 
 static unsigned hash(char *s)
@@ -312,6 +344,18 @@ error:
     return err;
 }
 
+Object make_primitive_procedure(primproc_t proc)
+{
+    Object primitive_proc = {.type = OB_PRIMITVE,
+                             .data = (unsigned long) proc};
+    return primitive_proc;
+}
+
+Object apply_primitive_procedure(Object proc, Object argl)
+{
+    return ((primproc_t) proc.data)(argl);
+}
+
 Object read(void)
 {
     static int rc = EOL;
@@ -400,6 +444,12 @@ void user_print(Object val)
         case OB_NIL:
             formatOut(stdout, "()");
             break;
+        case OB_BOOLEAN:
+            formatOut(stdout, (bool) val.data ? "#t" : "#f");
+            break;
+        case OB_PRIMITVE:
+            formatOut(stdout, "<primitive procedure>");
+            break;
         case OB_PAIR:
             formatOut(stdout, "(");
             user_print(car(val));
@@ -427,46 +477,216 @@ bool quoted_p(Object exp)
     return eq(quote, car(exp));
 }
 
+bool define_p(Object exp)
+{
+    return eq(define, car(exp));
+}
+
 Object text_of_quotation(Object exp)
 {
     return car(cdr(exp));
 }
 
+Object stack[100];
+Object *sp = stack;
+
+int save(Object reg)
+{
+    check(sp < stack + 100, "Stack overflow.");
+    *sp++ = reg;
+error:
+    return 0;
+}
+
+Object restore(void)
+{
+    check(sp > stack, "No element in stack.");
+    return *--sp;
+error:
+    return err;
+}
+
+void initialize_stack(void)
+{
+    sp = stack;
+}
+
+Object primitive_procedures = {.type = OB_NIL};
+
+void addto_primitive_procedures(char *schemeName, primproc_t proc)
+{
+    primitive_procedures = cons(cons(intern(make_string_obj(schemeName)),
+                                     make_primitive_procedure(proc)),
+                                primitive_procedures);
+}
+
+void setup_primitive_procedures()
+{
+    primitive_procedures = nil;
+    addto_primitive_procedures("car", car);
+    addto_primitive_procedures("cdr", cdr);
+    addto_primitive_procedures("cons", Prim_cons);
+    addto_primitive_procedures("set-car!", Prim_set_car);
+    addto_primitive_procedures("set-cdr!", Prim_set_cdr);
+    addto_primitive_procedures("+", plus);
+}
+
+Object map(primproc_t proc, Object list)
+{
+    Object returnList = nil;
+    for (; !isNull(list); list = cdr(list)) {
+        returnList = cons(proc(car(list)), returnList);
+    }
+    return returnList;
+}
+
+Object primitive_procedure_names()
+{
+    return map(car, primitive_procedures);
+}
+
+Object primitive_procedure_objects()
+{
+    return map(cdr, primitive_procedures);
+}
+
+void setup_environment()
+{
+    setup_primitive_procedures();
+    global_env =
+        extend_frame(primitive_procedure_names(),
+                     primitive_procedure_objects(),
+                     the_empty_env);
+    define_variable(true_s, sharp_t, global_env);
+    define_variable(false_s, sharp_f, global_env);
+}
+
+Object expr, val, unev, env;
+Object cont = {.type = OB_LABEL, .data = (unsigned long) NULL};
+
+void *label(Object lab_obj){
+    check(lab_obj.type == OB_LABEL, "label accept only label object.");
+    return (void *) lab_obj.data;
+error:
+    return NULL;
+}
+
+Object make_label(void *label) {
+    return (Object) {.type = OB_LABEL, .data = (unsigned long)label};
+}
+
+void repl(void)
+{
+    while (true) {
+        formatOut(stdout, "> ");
+        expr = read();
+        env = global_env;
+        if (eq(expr, err))
+            return;
+        interpret();
+        formatOut(stdout, ";Value: ");
+        user_print(val);
+        formatOut(stdout, "\n");
+    }
+}
+
+Object definition_variable(Object exp)
+{
+    return car(cdr(exp));
+}
+
+Object definition_value(Object exp)
+{
+    return car(cdr(cdr(exp)));
+}
+
+Object if_predicate(Object exp)
+{
+    return car(cdr(exp));
+}
+
+Object if_consequent(Object exp)
+{
+    return car(cdr(cdr(exp)));
+}
+
+Object if_alternative(Object exp)
+{
+    return car(cdr(cdr(cdr(exp))));
+}
+
+bool true_p(Object exp)
+{
+    return !(exp.type == OB_BOOLEAN) || (bool) exp.data;
+}
+
 void interpret(void)
 {
-    Object exp, val;
-    jmp_buf cont_buf;
-    int cont = 0;
-    switch(setjmp(cont_buf)) {
-        case PRINT_RESULT:
-            formatOut(stdout, ";Value: ");
-            user_print(val);
-            formatOut(stdout, "\n");
-        case READ_EVAL_PRINT_LOOP:
-            formatOut(stdout, "> ");
-            exp = read();
-            if (eq(exp, err))
-                return;
-            cont = PRINT_RESULT;
-            goto eval;
-    }
+    cont = make_label(&&done);
 eval:
-    switch(exp.type) {
-        case OB_EXACT:
+    switch(expr.type) {
+        case OB_EXACT: // self evaluation
         case OB_INEXACT:
         case OB_NIL:
         case OB_STRING:
-            val = exp;
-            longjmp(cont_buf, cont);
+            val = expr;
+            goto *label(cont);
+        case OB_SYMBOL:
+            val = lookup_variable_value(expr, env);
+            goto *label(cont);
         case OB_PAIR:
-            check(quoted_p(exp),
-                  "Currently we only handle quoted special form.");
-            val = text_of_quotation(exp);
-            longjmp(cont_buf, cont);
+        {
+            Object type = car(expr);
+            if (eq(type, quote)) {
+                val = text_of_quotation(expr);
+                goto *label(cont);
+            }
+            if (eq(type, define)) {
+                goto ev_definition;
+            }
+            if (eq(type, if_s)) {
+                goto ev_if;
+            }
+        }
         default:
-            sentinel("Unknown expression, type num %d", exp.type);
+            sentinel("Unknown expression, type num %d", expr.type);
     }
-error: //fallthrough
+ev_if:
+    save(expr);
+    save(env);
+    save(cont);
+    cont = make_label(&&ev_if_decide);
+    expr = if_predicate(expr);
+    goto eval;
+ev_if_decide:
+    cont = restore();
+    env = restore();
+    expr = restore();
+    if (true_p(val))
+        goto ev_if_consequent;
+ev_if_alternative:
+    expr = if_alternative(expr);
+    goto eval;
+ev_if_consequent:
+    expr = if_consequent(expr);
+    goto eval;
+ev_definition:
+    unev = definition_variable(expr);
+    save(unev);
+    expr = definition_value(expr);
+    save(env);
+    save(cont);
+    cont = make_label(&&ev_definition_1);
+    goto eval;
+ev_definition_1:
+    cont = restore();
+    env = restore();
+    unev = restore();
+    val = define_variable(unev, val, env);
+    goto *label(cont);
+done:
+    return;
+error:
     return;
 }
 
@@ -537,8 +757,8 @@ int getToken()
         }
 
         if (c == '.') {
+        accumulateInexact:
             do {
-            accumulateInexact:
                 token[i++] = (char) c;
             } while (isdigit(c = getChar()));
 

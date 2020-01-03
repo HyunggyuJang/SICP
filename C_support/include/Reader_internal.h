@@ -15,6 +15,8 @@ extern Object nil;
 extern Object err;
 extern Object ok;
 
+typedef Object (*primproc_t)(Object args);
+
 enum OBJECT_TYPES
 { OB_ERR,
   OB_NIL,
@@ -23,7 +25,9 @@ enum OBJECT_TYPES
   OB_INEXACT,
   OB_STRING,
   OB_SYMBOL,
-  OB_PRIMITVE
+  OB_PRIMITVE,
+  OB_LABEL,
+  OB_BOOLEAN
 };
 
 enum JUMP_LIST
@@ -39,11 +43,15 @@ Object intern(Object str);
 
 /* environment */
 extern Object the_empty_env;
+extern Object global_env;
 Object make_frame(Object variables, Object values);
 Object extend_frame(Object vars, Object vals, Object base_env);
 Object lookup_variable_value(Object var, Object env);
 Object text_of_quotation(Object exp);
 bool quoted_p(Object exp);
+
+int save(Object reg);
+Object restore(void);
 
 extern char token[];
 enum TokenType
