@@ -674,14 +674,14 @@ void setup_environment()
 Object expr, val, unev, env, argl, proc;
 Object cont = {.type = OB_LABEL, .data = (unsigned long) NULL};
 
-void *label(Object lab_obj){
+JUMP_LIST label(Object lab_obj){
     check(lab_obj.type == OB_LABEL, "label accept only label object.");
-    return (void *) lab_obj.data;
+    return lab_obj.data;
 error:
-    return NULL;
+    return -1;
 }
 
-Object make_label(void *label) {
+Object make_label(JUMP_LIST label) {
     return (Object) {.type = OB_LABEL, .data = (unsigned long)label};
 }
 
@@ -857,7 +857,58 @@ ev_definition_1
  */
 void interpret(void)
 {
-    cont = make_label(&&done);
+    cont = make_label(done);
+    goto eval;
+jump:
+    switch(label(cont)) {
+        case done:
+            return;
+        case ev_sequence_continue:
+            env = restore();
+            unev = restore();
+            unev = cdr(unev);
+            goto ev_sequence;
+        case ev_appl_did_operator:
+            unev = restore();
+            env = restore();
+            argl = nil;
+            proc = val;
+            if (isNull(unev))
+                goto apply_dispatch;
+            save(proc);
+            goto ev_appl_operand_loop;
+        case ev_appl_accumulate_arg:
+            unev = restore();
+            env = restore();
+            argl = restore();
+            argl = adjoin_arg(val, argl);
+            unev = cdr(unev);
+            goto ev_appl_operand_loop;
+        case ev_appl_accum_last_arg:
+            argl = restore();
+            argl = adjoin_arg(val, argl);
+            proc = restore();
+            goto apply_dispatch;
+        case ev_assignment_1:
+            cont = restore();
+            env = restore();
+            unev = restore();
+            val = set_variable_value(unev, val, env);
+            goto jump;
+        case ev_if_decide:
+            cont = restore();
+            env = restore();
+            expr = restore();
+            if (true_p(val))
+                goto ev_if_consequent;
+            goto ev_if_alternative;
+        case ev_definition_1:
+            cont = restore();
+            env = restore();
+            unev = restore();
+            val = define_variable(unev, val, env);
+            goto jump;
+    }
 eval:
     switch(expr.type) {
         case OB_EXACT: // self evaluation
@@ -865,16 +916,16 @@ eval:
         case OB_NIL:
         case OB_STRING:
             val = expr;
-            goto *label(cont);
+            goto jump;
         case OB_SYMBOL:
             val = lookup_variable_value(expr, env);
-            goto *label(cont);
+            goto jump;
         case OB_PAIR:
         {
             Object type = car(expr);
             if (eq(type, quote)) {
                 val = text_of_quotation(expr);
-                goto *label(cont);
+                goto jump;
             }
             if (eq(type, define))
                 goto ev_definition;
@@ -906,13 +957,8 @@ ev_sequence:
         goto ev_sequence_last_exp;
     save(unev);
     save(env);
-    cont = make_label(&&ev_sequence_continue);
+    cont = make_label(ev_sequence_continue);
     goto eval;
-ev_sequence_continue:
-    env = restore();
-    unev = restore();
-    unev = cdr(unev);
-    goto ev_sequence;
 ev_sequence_last_exp:
     cont = restore();
     goto eval;
@@ -921,16 +967,8 @@ ev_application:
     save(env);
     save(operands(expr));
     expr = operator(expr);
-    cont = make_label(&&ev_appl_did_operator);
+    cont = make_label(ev_appl_did_operator);
     goto eval;
-ev_appl_did_operator:
-    unev = restore();
-    env = restore();
-    argl = nil;
-    proc = val;
-    if (isNull(unev))
-        goto apply_dispatch;
-    save(proc);
 ev_appl_operand_loop:
     save(argl);
     expr = car(unev);
@@ -938,53 +976,29 @@ ev_appl_operand_loop:
         goto ev_appl_last_arg;
     save(env);
     save(unev);
-    cont = make_label(&&ev_appl_accumulate_arg);
+    cont = make_label(ev_appl_accumulate_arg);
     goto eval;
-ev_appl_accumulate_arg:
-    unev = restore();
-    env = restore();
-    argl = restore();
-    argl = adjoin_arg(val, argl);
-    unev = cdr(unev);
-    goto ev_appl_operand_loop;
 ev_appl_last_arg:
-    cont = make_label(&&ev_appl_accum_last_arg);
+    cont = make_label(ev_appl_accum_last_arg);
     goto eval;
-ev_appl_accum_last_arg:
-    argl = restore();
-    argl = adjoin_arg(val, argl);
-    proc = restore();
-    goto apply_dispatch;
 ev_lambda:
     val = make_procedure(lambda_params(expr),
                          lambda_body(expr), env);
-    goto *label(cont);
+    goto jump;
 ev_assignment:
     save(assignment_variable(expr));
     expr = assignment_value(expr);
     save(env);
     save(cont);
-    cont = make_label(&&ev_assignment_1);
+    cont = make_label(ev_assignment_1);
     goto eval;
-ev_assignment_1:
-    cont = restore();
-    env = restore();
-    unev = restore();
-    val = set_variable_value(unev, val, env);
-    goto *label(cont);
 ev_if:
     save(expr);
     save(env);
     save(cont);
-    cont = make_label(&&ev_if_decide);
+    cont = make_label(ev_if_decide);
     expr = if_predicate(expr);
     goto eval;
-ev_if_decide:
-    cont = restore();
-    env = restore();
-    expr = restore();
-    if (true_p(val))
-        goto ev_if_consequent;
 ev_if_alternative:
     expr = if_alternative(expr);
     goto eval;
@@ -996,20 +1010,14 @@ ev_definition:
     expr = definition_value(expr);
     save(env);
     save(cont);
-    cont = make_label(&&ev_definition_1);
+    cont = make_label(ev_definition_1);
     goto eval;
-ev_definition_1:
-    cont = restore();
-    env = restore();
-    unev = restore();
-    val = define_variable(unev, val, env);
-    goto *label(cont);
 apply_dispatch:
     switch(proc.type) {
         case OB_PRIMITVE:
             val = apply_primitive_procedure(proc, argl);
             cont = restore();
-            goto *label(cont);
+            goto jump;
         case OB_COMPOUND:
             unev = procedure_params(proc);
             env = procedure_env(proc);
@@ -1023,8 +1031,6 @@ apply_dispatch:
             formatOut(stderr, " is not applicable.");
             goto error;
     }
-done:
-    return;
 error:
     val = err;
     return;

@@ -492,12 +492,3 @@ TEST(Reader, TestFibonacci_NeedGarbageCollection)
   STRCMP_CONTAINS("Need to collect garbage", stderrBuf);
   // STRCMP_CONTAINS(";Value: 89", stdoutBuf);
 }
-
-    cont = make_label(&&done);
-    cont = make_label(&&ev_sequence_continue);
-    cont = make_label(&&ev_appl_did_operator);
-    cont = make_label(&&ev_appl_accumulate_arg);
-    cont = make_label(&&ev_appl_accum_last_arg);
-    cont = make_label(&&ev_assignment_1);
-    cont = make_label(&&ev_if_decide);
-    cont = make_label(&&ev_definition_1);

@@ -31,11 +31,17 @@ enum OBJECT_TYPES
   OB_BOOLEAN
 };
 
-enum JUMP_LIST
+typedef enum JUMP_LIST
 {
-READ_EVAL_PRINT_LOOP = 0,
-PRINT_RESULT,
-};
+done,
+ev_sequence_continue,
+ev_appl_did_operator,
+ev_appl_accumulate_arg,
+ev_appl_accum_last_arg,
+ev_assignment_1,
+ev_if_decide,
+ev_definition_1,
+} JUMP_LIST;
 
 extern Object *heap;
 
