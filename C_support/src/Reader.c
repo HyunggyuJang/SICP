@@ -606,26 +606,30 @@ Object text_of_quotation(Object exp)
 
 Object stack[100];
 Object *sp = stack;
+int max_depth = 0;
+int current_depth = 0;
 
 int save(Object reg)
 {
-    check(sp < stack + 100, "Stack overflow.");
-    *sp++ = reg;
+    check(current_depth < 100, "Stack overflow.");
+    stack[current_depth++] = reg;
+    if (current_depth > max_depth)
+        max_depth = current_depth;
 error:
     return 0;
 }
 
 Object restore(void)
 {
-    check(sp > stack, "No element in stack.");
-    return *--sp;
+    check(current_depth > 0, "No element in stack.");
+    return stack[--current_depth];
 error:
     return err;
 }
 
 void initialize_stack(void)
 {
-    sp = stack;
+    current_depth = max_depth = 0;
 }
 
 Object primitive_procedure_names = {.type = OB_NIL};
@@ -838,6 +842,19 @@ Object begin_actions(Object exp)
     return cdr(exp);
 }
 
+/*
+ * The labels needs dynamic jump
+done
+ev_sequence_continue
+ev_appl_did_operator
+ev_appl_accumulate_arg
+ev_appl_accum_last_arg
+ev_assignment_1
+ev_if_decide
+ev_definition_1
+ * Which means, other than above, we can code the label with vanila goto label in C;
+ * without using GCC extension.
+ */
 void interpret(void)
 {
     cont = make_label(&&done);

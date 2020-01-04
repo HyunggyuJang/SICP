@@ -63,6 +63,7 @@ Object cadadr(Object exp);
 
 int save(Object reg);
 Object restore(void);
+extern int max_depth;
 
 Object apply_primitive_procedure(Object proc, Object argl);
 

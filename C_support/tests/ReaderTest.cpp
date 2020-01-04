@@ -15,7 +15,7 @@ TEST_GROUP(Reader)
   Object obRead;
     void setup()
     {
-      CHECK(heap_Create(10000));
+      CHECK(heap_Create(30000));
       CHECK(FormatOutSpy_Create(100));
       CHECK(stdoutBuf = FormatOutSpy_GetOutput(stdout));
       CHECK(stderrBuf = FormatOutSpy_GetOutput(stderr));
@@ -461,13 +461,43 @@ TEST(Reader, SupportMorePrimitives)
   STRCMP_CONTAINS(";Value: 2.8", stdoutBuf);
 }
 
+TEST(Reader, TestIterativeProcedure)
+{
+  GetCharSpy_Create("(define (factorial n)"
+                    "(define (iter count result)"
+                    "(if (= count 1)"
+                    "result"
+                    "(iter (- count 1) (* result count))))"
+                    "(iter n 1))");
+  repl();
+  GetCharSpy_Create("(factorial 5)");
+  repl();
+  STRCMP_CONTAINS(";Value: 120", stdoutBuf);
+  int current_max_depth = max_depth;
+
+  GetCharSpy_Create("(factorial 10)");
+  repl();
+  STRCMP_CONTAINS(";Value: 3628800", stdoutBuf);
+  LONGS_EQUAL(current_max_depth, max_depth);
+
+}
+
 TEST(Reader, TestFibonacci_NeedGarbageCollection)
 {
   GetCharSpy_Create("(define (fib n)"
                     "(if (< n 2) n"
                     "(+ (fib (- n 1)) (fib (- n 2)))))"
-                    "(fib 10)");
+                    "(fib 11)");
   repl();
   STRCMP_CONTAINS("Need to collect garbage", stderrBuf);
-  // STRCMP_CONTAINS(";Value: 55", stdoutBuf);
+  // STRCMP_CONTAINS(";Value: 89", stdoutBuf);
 }
+
+    cont = make_label(&&done);
+    cont = make_label(&&ev_sequence_continue);
+    cont = make_label(&&ev_appl_did_operator);
+    cont = make_label(&&ev_appl_accumulate_arg);
+    cont = make_label(&&ev_appl_accum_last_arg);
+    cont = make_label(&&ev_assignment_1);
+    cont = make_label(&&ev_if_decide);
+    cont = make_label(&&ev_definition_1);
