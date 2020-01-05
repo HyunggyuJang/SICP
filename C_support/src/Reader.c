@@ -5,6 +5,7 @@
 #include <ctype.h>
 #include <stdlib.h>
 #include <dbg_testable.h>
+#include <stdarg.h>
 
 /* Memory allocation */
 Object *heap = NULL;
@@ -43,7 +44,13 @@ bool isPair(Object cell)
 
 Object cons(Object carCell, Object cdrCell)
 {
-    check(Freep - heap + 2 < word_size, "Need to collect garbage. -- CONS");
+    #ifdef GC_WORK
+    if (!(Freep - heap + 2 < word_size)) {
+        debug("Call garbage collector. -- CONS");
+        check(gc(), "Failed to clean up garbage.");
+    }
+    check(Freep - heap + 2 < word_size, "Heap overflow. -- CONS");
+    #endif
     Object consCell;
     consCell.type = OB_PAIR;
     consCell.data = (unsigned long) Freep;
@@ -61,12 +68,18 @@ Object Prim_cons(Object args)
 
 Object car(Object consCell)
 {
+    check(!eq(consCell, err), "Invalid consCell -- CAR.");
     return *((Object *) consCell.data);
+error:
+    return err;
 }
 
 Object cdr(Object consCell)
 {
+    check(!eq(consCell, err), "Invalid consCell -- CDR.");
     return *((Object *) consCell.data + 1);
+error:
+    return err;
 }
 
 Object set_car(Object consCell, Object newCar)
@@ -77,7 +90,7 @@ Object set_car(Object consCell, Object newCar)
 
 Object Prim_set_car(Object args)
 {
-    return set_car(car(args), cdr(args));
+    return set_car(car(args), cadr(args));
 }
 
 Object set_cdr(Object consCell, Object newCdr)
@@ -88,7 +101,7 @@ Object set_cdr(Object consCell, Object newCdr)
 
 Object Prim_set_cdr(Object args)
 {
-    return set_cdr(car(args), cdr(args));
+    return set_cdr(car(args), cadr(args));
 }
 
 bool isString(Object cell)
@@ -98,7 +111,7 @@ bool isString(Object cell)
 
 char *getString(Object cell)
 {
-    return (char *) cell.data;
+    return (char *) &((Object *)cell.data)->data;
 }
 
 bool isNumber(Object cell)
@@ -140,23 +153,41 @@ Object set_bang;
 Object true_s;
 Object false_s;
 
+typedef struct Obnode {
+    Object symbol;
+    struct Obnode *next;
+} Obnode;
+
+Obnode obHeader = {{.type = OB_NIL}, NULL};
+
 #define DEFAULT_OBARRY_SIZE 101
 #define OBARRAY_SIZE (sizeof obarray / sizeof obarray[0])
-static Object obarray[DEFAULT_OBARRY_SIZE];
+
+static Obnode obarray[DEFAULT_OBARRY_SIZE];
 
 void initialize_obarray(void)
 {
     for (int i = 0; i < OBARRAY_SIZE; i++)
-        obarray[i] = nil;
-    ok = intern(make_string_obj("ok"));
-    quote = intern(make_string_obj("quote"));
-    define = intern(make_string_obj("define"));
-    if_s = intern(make_string_obj("if"));
-    lambda = intern(make_string_obj("lambda"));
-    begin = intern(make_string_obj("begin"));
-    set_bang = intern(make_string_obj("set!"));
-    true_s = intern(make_string_obj("true"));
-    false_s = intern(make_string_obj("false"));
+        obarray[i] = obHeader;
+}
+
+void set_default_symbols(void)
+{
+    ok = intern("ok");
+    quote = intern("quote");
+    define = intern("define");
+    if_s = intern("if");
+    lambda = intern("lambda");
+    begin = intern("begin");
+    set_bang = intern("set!");
+    true_s = intern("true");
+    false_s = intern("false");
+}
+
+void setup_obarray(void)
+{
+    initialize_obarray();
+    set_default_symbols();
 }
 
 static unsigned hash(char *s)
@@ -168,19 +199,67 @@ static unsigned hash(char *s)
     return hashval % OBARRAY_SIZE;
 }
 
-Object intern(Object str)
+void destroy_obnode(Obnode *node)
 {
-    char *retrievedStr = getString(str);
-    unsigned hashval = hash(retrievedStr);
-    Object bucket = { 0 };
-    for (bucket = obarray[hashval]; !isNull(bucket); bucket = cdr(bucket)) {
-        if (strcmp(getString(car(bucket)), retrievedStr) == 0)
-            return car(bucket);
-    }
+    Obnode *bucket = NULL;
+    Obnode *prev = NULL;
+    if (!node->next) // header
+        return;
+    for (prev = node->next, bucket = prev->next; bucket; prev = bucket, bucket = prev->next)
+        free(prev);
+    free(prev);
+}
 
-    str.type = OB_SYMBOL;
-    obarray[hashval] = cons(str, obarray[hashval]);
-    return str;
+void destroy_obarray(void)
+{
+    for (int i = 0; i < OBARRAY_SIZE; i++)
+        destroy_obnode(&obarray[i]);
+}
+
+Object intern(char *str)
+{
+    unsigned hashval = hash(str);
+    Obnode *bucket = NULL;
+    Obnode *prev = NULL;
+    int cmpResult = 0;
+    for (prev = &obarray[hashval], bucket = prev->next; bucket; prev = bucket, bucket = prev->next) {
+        cmpResult = strcmp(str, getString(bucket->symbol));
+        if (cmpResult == 0)
+            return bucket->symbol;
+        if (cmpResult < 0) {
+            prev->next = malloc(sizeof (Obnode));
+            prev->next->symbol = make_string_obj(str);
+            prev->next->symbol.type = OB_SYMBOL;
+            prev->next->next = bucket;
+            return prev->next->symbol;
+        }
+    }
+    prev->next = malloc(sizeof (Obnode));
+    prev->next->symbol = make_string_obj(str);
+    prev->next->symbol.type = OB_SYMBOL;
+    prev->next->next = bucket;
+    return prev->next->symbol;
+}
+void registerSymbolObject(Object symObj) {
+    char *str = getString(symObj);
+    unsigned hashval = hash(str);
+    Obnode *bucket = NULL;
+    Obnode *prev = NULL;
+    int cmpResult = 0;
+    for (prev = &obarray[hashval], bucket = prev->next; bucket; prev = bucket, bucket = prev->next) {
+        cmpResult = strcmp(str, getString(bucket->symbol));
+        if (cmpResult == 0)
+            return;
+        if (cmpResult < 0) {
+            prev->next = malloc(sizeof (Obnode));
+            prev->next->symbol = symObj;
+            prev->next->next = bucket;
+            return;
+        }
+    }
+    prev->next = malloc(sizeof (Obnode));
+    prev->next->symbol = symObj;
+    prev->next->next = bucket;
 }
 // end of obarray
 
@@ -293,13 +372,20 @@ Object make_string_obj(const char *cstring)
     check(cstrlen <= LEN_MASK, "given string is too long.");
 
     Object str = {.type = OB_STRING, .len = cstrlen};
-    size_t sizeInWords =
-        (sizeof (Object) + str.len) / sizeof (Object);
-
+    size_t sizeInWords = // account null character + type specifier for gc + sizeInWords
+        (sizeof (Object) + str.len + sizeof (unsigned long)) / sizeof (Object);
+#ifdef GC_WORK
+    if (!(Freep - heap + sizeInWords < word_size)) {
+        debug("Call the garbage collector -- MAKE_STRING_OBJ.");
+        check(gc(), "Failed to cleanup garbage.");
+    }
     check(Freep - heap + sizeInWords < word_size,
-          "Need to collect garbage!");
+          "Heap overflow -- MAKE_STRING_OBJ.");
+#endif
+    Freep->type = OB_STRING_DATA;
+    Freep->len = (unsigned long) sizeInWords;
     str.data = (unsigned long)Freep;
-    memcpy(Freep, cstring, str.len + 1);
+    memcpy((char *)&Freep->data, cstring, str.len + 1);
     Freep += sizeInWords;
     return str;
 error:
@@ -444,6 +530,14 @@ error:
     return err;
 }
 
+Object Prim_eq_p(Object args)
+{
+    check(length(args) == 2, "eq? is binary.");
+    return (Object) {.type = OB_BOOLEAN, .data = (unsigned long) eq(car(args), cadr(args))};
+error:
+    return err;
+}
+
 Object equalTo(Object args)
 {
     check(length(args) == 2, "= is binary.");
@@ -482,7 +576,7 @@ Object read(void)
     switch(rc) {
         case WORD:
             rc = EOL;
-            return intern(make_string_obj(token));
+            return intern(token);
 
         case EXACT:
             returnValue.type = OB_EXACT;
@@ -604,19 +698,20 @@ Object text_of_quotation(Object exp)
     return car(cdr(exp));
 }
 
-Object stack[100];
+Object stack[300];
 Object *sp = stack;
 int max_depth = 0;
 int current_depth = 0;
 
 int save(Object reg)
 {
-    check(current_depth < 100, "Stack overflow.");
+    check(current_depth < 300, "Stack overflow.");
     stack[current_depth++] = reg;
     if (current_depth > max_depth)
         max_depth = current_depth;
+    return 1;
 error:
-    return 0;
+    exit(1);
 }
 
 Object restore(void)
@@ -637,7 +732,7 @@ Object primitive_procedure_objects = {.type = OB_NIL};
 
 void addto_primitive_procedures(char *schemeName, primproc_t proc)
 {
-    primitive_procedure_names = cons(intern(make_string_obj(schemeName)),
+    primitive_procedure_names = cons(intern(schemeName),
                                      primitive_procedure_names);
     primitive_procedure_objects = cons(make_primitive_procedure(proc),
                                        primitive_procedure_objects);
@@ -652,6 +747,7 @@ void setup_primitive_procedures()
     addto_primitive_procedures("cons", Prim_cons);
     addto_primitive_procedures("set-car!", Prim_set_car);
     addto_primitive_procedures("set-cdr!", Prim_set_cdr);
+    addto_primitive_procedures("eq?", Prim_eq_p);
     addto_primitive_procedures("+", plus);
     addto_primitive_procedures("-", minus);
     addto_primitive_procedures("*", multiply);
@@ -784,7 +880,13 @@ bool true_p(Object exp)
 
 Object make_procedure(Object params, Object body, Object env)
 {
-    check(Freep - heap + 3 < word_size, "Need to collect garbage. -- MAKE_PROCEDURE");
+    #ifdef GC_WORK
+    if (!(Freep - heap + 3 < word_size)) {
+        debug("Call garbage collector -- MAKE_PROCEDURE");
+        check(gc(), "Failed to clean up garbage.");
+    check(Freep - heap + 3 < word_size, "Heap overflow. -- MAKE_PROCEDURE");
+    }
+    #endif
     Object proc = {.type = OB_COMPOUND,
                    .data = (unsigned long) Freep};
     *Freep++ = params;
@@ -832,9 +934,22 @@ Object operands(Object exp)
 
 Object adjoin_arg(Object arg, Object list)
 {
+#if 1
+    return cons(arg, list);
+#else
+    /* To expensive! */
     if (isNull(list))
         return cons(arg, list);
     return cons(car(list), adjoin_arg(arg, cdr(list)));
+#endif
+}
+
+Object reverse(Object list)
+{
+    Object reversed = nil;
+    for (;isPair(list) && !isNull(list); list = cdr(list))
+        reversed = cons(car(list), reversed);
+    return reversed;
 }
 
 Object begin_actions(Object exp)
@@ -844,7 +959,8 @@ Object begin_actions(Object exp)
 
 /*
  * The labels needs dynamic jump
-done
+don
+e
 ev_sequence_continue
 ev_appl_did_operator
 ev_appl_accumulate_arg
@@ -852,64 +968,18 @@ ev_appl_accum_last_arg
 ev_assignment_1
 ev_if_decide
 ev_definition_1
- * Which means, other than above, we can code the label with vanila goto label in C;
+ * Which means, other than above, we can code the label with vanilla goto label in C;
  * without using GCC extension.
  */
 void interpret(void)
 {
     cont = make_label(done);
-    goto eval;
-jump:
-    switch(label(cont)) {
-        case done:
-            return;
-        case ev_sequence_continue:
-            env = restore();
-            unev = restore();
-            unev = cdr(unev);
-            goto ev_sequence;
-        case ev_appl_did_operator:
-            unev = restore();
-            env = restore();
-            argl = nil;
-            proc = val;
-            if (isNull(unev))
-                goto apply_dispatch;
-            save(proc);
-            goto ev_appl_operand_loop;
-        case ev_appl_accumulate_arg:
-            unev = restore();
-            env = restore();
-            argl = restore();
-            argl = adjoin_arg(val, argl);
-            unev = cdr(unev);
-            goto ev_appl_operand_loop;
-        case ev_appl_accum_last_arg:
-            argl = restore();
-            argl = adjoin_arg(val, argl);
-            proc = restore();
-            goto apply_dispatch;
-        case ev_assignment_1:
-            cont = restore();
-            env = restore();
-            unev = restore();
-            val = set_variable_value(unev, val, env);
-            goto jump;
-        case ev_if_decide:
-            cont = restore();
-            env = restore();
-            expr = restore();
-            if (true_p(val))
-                goto ev_if_consequent;
-            goto ev_if_alternative;
-        case ev_definition_1:
-            cont = restore();
-            env = restore();
-            unev = restore();
-            val = define_variable(unev, val, env);
-            goto jump;
-    }
 eval:
+    #ifdef GC_ALTERNATIVE
+    if (word_size - (Freep - heap) < word_size / 10)
+        gc();
+    check(!(word_size - (Freep - heap) < word_size / 10), "Heap got full.");
+    #endif
     switch(expr.type) {
         case OB_EXACT: // self evaluation
         case OB_INEXACT:
@@ -984,6 +1054,7 @@ ev_appl_last_arg:
 ev_lambda:
     val = make_procedure(lambda_params(expr),
                          lambda_body(expr), env);
+    check(!eq(val, err), "Error occured in processing ev_lambda.");
     goto jump;
 ev_assignment:
     save(assignment_variable(expr));
@@ -999,12 +1070,6 @@ ev_if:
     cont = make_label(ev_if_decide);
     expr = if_predicate(expr);
     goto eval;
-ev_if_alternative:
-    expr = if_alternative(expr);
-    goto eval;
-ev_if_consequent:
-    expr = if_consequent(expr);
-    goto eval;
 ev_definition:
     save(definition_variable(expr));
     expr = definition_value(expr);
@@ -1016,6 +1081,7 @@ apply_dispatch:
     switch(proc.type) {
         case OB_PRIMITVE:
             val = apply_primitive_procedure(proc, argl);
+            check(!eq(val, err), "Error occured during ev_appl_primitive.");
             cont = restore();
             goto jump;
         case OB_COMPOUND:
@@ -1031,10 +1097,172 @@ apply_dispatch:
             formatOut(stderr, " is not applicable.");
             goto error;
     }
+jump:
+    switch(label(cont)) {
+        case done:
+            return;
+        case ev_sequence_continue:
+            env = restore();
+            unev = restore();
+            unev = cdr(unev);
+            goto ev_sequence;
+        case ev_appl_did_operator:
+            unev = restore();
+            env = restore();
+            argl = nil;
+            proc = val;
+            check(!eq(val, err), "Error in ev_appl_did_operator.");
+            if (isNull(unev))
+                goto apply_dispatch;
+            save(proc);
+            goto ev_appl_operand_loop;
+        case ev_appl_accumulate_arg:
+            unev = restore();
+            env = restore();
+            argl = restore();
+            argl = adjoin_arg(val, argl);
+            check(!eq(argl, err), "Error in ev_appl_accumulate_arg.");
+            unev = cdr(unev);
+            goto ev_appl_operand_loop;
+        case ev_appl_accum_last_arg:
+            argl = restore();
+            argl = adjoin_arg(val, argl);
+            check(!eq(argl, err), "Error in ev_appl_last_arg.");
+            argl = reverse(argl);
+            proc = restore();
+            goto apply_dispatch;
+        case ev_assignment_1:
+            cont = restore();
+            env = restore();
+            unev = restore();
+            val = set_variable_value(unev, val, env);
+            check(!eq(val, err), "Error in ev_assignment_1.");
+            goto jump;
+        case ev_if_decide:
+            cont = restore();
+            env = restore();
+            expr = restore();
+            if (true_p(val))
+                goto ev_if_consequent;
+        ev_if_alternative:
+            expr = if_alternative(expr);
+            goto eval;
+        ev_if_consequent:
+            expr = if_consequent(expr);
+            goto eval;
+        case ev_definition_1:
+            cont = restore();
+            env = restore();
+            unev = restore();
+            val = define_variable(unev, val, env);
+            goto jump;
+    }
 error:
     val = err;
     return;
 }
+
+#if defined(GC_ALTERNATIVE) || defined(GC_WORK)
+/* Garbagge collection subroutine */
+Object *regs[] = {&expr, &val, &unev, &global_env, &env, &argl, &proc};
+
+/* relocate-old-result-in-new */
+Object relocate_old_result_in_new(Object old)
+{
+    Object new;
+    switch(old.type) {
+        case OB_PAIR:
+        case OB_STRING:
+        case OB_SYMBOL:
+        case OB_COMPOUND:
+            if (car(old).type == OB_BROKEN_HEART) {
+                new = car(old);
+                new.type = old.type;
+                return new;
+            }
+            break;
+        default:
+            return old;
+    }
+    switch(old.type) {
+        case OB_PAIR:
+            new.type = old.type;
+            new.data = (unsigned long) Freep;
+            *Freep++ = car(old);
+            *Freep++ = cdr(old);
+            set_car(old, (Object) {.type = OB_BROKEN_HEART, .data = new.data});
+            return new;
+        case OB_SYMBOL:
+        case OB_STRING: // fallthrough
+            new.type = old.type;
+            new.len = old.len;
+            new.data = (unsigned long) Freep;
+            Freep->type = OB_STRING_DATA;
+            Freep->len = ((Object *)old.data)->len;
+            memcpy((char *)&Freep->data, getString(old), new.len + 1);
+            Freep += Freep->len;
+            set_car(old,
+                    (Object) {.type = OB_BROKEN_HEART,
+                        .len = new.len,
+                        .data = new.data});
+            if (new.type == OB_SYMBOL)
+                registerSymbolObject(new);
+            return new;
+        case OB_COMPOUND:
+            new.type = old.type;
+            new.data = (unsigned long) Freep;
+            *Freep++ = procedure_params(old);
+            *Freep++ = procedure_body(old);
+            *Freep++ = procedure_env(old);
+            set_car(old, (Object) {.type = OB_BROKEN_HEART, .data = new.data});
+            return new;
+        default:
+            sentinel("Cannot be called.");
+    }
+error:
+    return err;
+}
+
+int gc(void)
+{
+    Object *tospace = malloc(sizeof (Object) * word_size);
+    check_mem(tospace);
+
+    Object new, old;
+    Object *scan = Freep = tospace;
+    int i = 0;
+    destroy_obarray();
+    initialize_obarray();
+
+    for (i = 0; i < sizeof regs / sizeof regs[0]; i++)
+        *regs[i] = relocate_old_result_in_new(*regs[i]);
+
+    for (i = 0; i < current_depth; i++)
+        stack[i] = relocate_old_result_in_new(stack[i]);
+
+    /* gc-loop */
+    while (scan < Freep) {
+        old = *scan;
+        if (old.type == OB_STRING_DATA) { // skip string datum
+            scan += scan->len;
+            continue;
+        }
+        *scan++ = relocate_old_result_in_new(old);
+    }
+
+    free(heap);
+    heap = tospace;
+
+    set_default_symbols();
+
+    return 1;
+error:
+    if (tospace)
+        free(tospace);
+    return 0;
+}
+#endif
+
 
 /* token manager */
 char token[100];

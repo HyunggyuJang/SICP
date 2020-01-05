@@ -16,16 +16,17 @@ TEST_GROUP(Reader)
     void setup()
     {
       CHECK(heap_Create(30000));
-      CHECK(FormatOutSpy_Create(100));
+      CHECK(FormatOutSpy_Create(300));
       CHECK(stdoutBuf = FormatOutSpy_GetOutput(stdout));
       CHECK(stderrBuf = FormatOutSpy_GetOutput(stderr));
-      initialize_obarray();
+      setup_obarray();
       setup_environment();
       initialize_stack();
     }
 
     void teardown()
     {
+      destroy_obarray();
       FormatOutSpy_Destroy();
       heap_Destory();
     }
@@ -482,13 +483,59 @@ TEST(Reader, TestIterativeProcedure)
 
 }
 
+TEST(Reader, Relocate_Old_Result_in_New)
+{
+  GetCharSpy_Create("123 2.234 ()");
+  obRead = read();
+  CHECK(eq(obRead,relocate_old_result_in_new(obRead)));
+  obRead = read();
+  CHECK(eq(obRead,relocate_old_result_in_new(obRead)));
+  obRead = read();
+  CHECK(eq(obRead,relocate_old_result_in_new(obRead)));
+
+  GetCharSpy_Create("(1 . 2) \"String\" s");
+
+  obRead = read();
+
+  Object newRead = relocate_old_result_in_new(obRead);
+  BYTES_EQUAL(OB_BROKEN_HEART, car(obRead).type);
+  CHECK(eq(car(newRead), car(car(obRead))));
+  CHECK(eq(cdr(newRead), cdr(car(obRead))));
+
+  Object newnewRead = relocate_old_result_in_new(obRead);
+  CHECK(eq(newnewRead, newRead));
+  CHECK(eq(newnewRead, relocate_old_result_in_new(obRead)));
+
+  obRead = read();
+  STRCMP_EQUAL("String", getString(obRead));
+
+  newRead = relocate_old_result_in_new(obRead);
+  BYTES_EQUAL(OB_BROKEN_HEART, car(obRead).type);
+
+  STRCMP_EQUAL(getString(newRead), getString(car(obRead)));
+
+  newnewRead = relocate_old_result_in_new(obRead);
+  CHECK(eq(newnewRead, newRead));
+
+  obRead = read();
+  STRCMP_EQUAL("s", getString(obRead));
+
+  newRead = relocate_old_result_in_new(obRead);
+  BYTES_EQUAL(OB_BROKEN_HEART, car(obRead).type);
+
+  STRCMP_EQUAL("s", getString(newRead));
+  STRCMP_EQUAL(getString(newRead), getString(car(obRead)));
+
+  newnewRead = relocate_old_result_in_new(obRead);
+  CHECK(eq(newnewRead, newRead));
+}
+
 TEST(Reader, TestFibonacci_NeedGarbageCollection)
 {
   GetCharSpy_Create("(define (fib n)"
                     "(if (< n 2) n"
                     "(+ (fib (- n 1)) (fib (- n 2)))))"
-                    "(fib 11)");
+                    "(fib 19)");
   repl();
-  STRCMP_CONTAINS("Need to collect garbage", stderrBuf);
-  // STRCMP_CONTAINS(";Value: 89", stdoutBuf);
+  STRCMP_CONTAINS(";Value: 4181", stdoutBuf);
 }

@@ -9,10 +9,12 @@
 
 #include <stdbool.h>
 
+
 int heap_Create(unsigned long byte_size);
 void heap_Destory(void);
 
-void initialize_obarray(void);
+void setup_obarray(void);
+void destroy_obarray(void);
 void initialize_stack(void);
 void setup_environment(void);
 

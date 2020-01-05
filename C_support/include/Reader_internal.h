@@ -1,6 +1,9 @@
 #ifndef __READER_INTERNAL_H_
 #define __READER_INTERNAL_H_
 
+/* #define GC_WORK */
+#define GC_ALTERNATIVE
+
 typedef struct Object {
   unsigned char type;
   unsigned long len : 56;
@@ -19,6 +22,8 @@ typedef Object (*primproc_t)(Object args);
 
 enum OBJECT_TYPES
 { OB_ERR,
+  OB_BROKEN_HEART,
+  OB_STRING_DATA,
   OB_NIL,
   OB_PAIR,
   OB_EXACT,
@@ -40,13 +45,13 @@ ev_appl_accumulate_arg,
 ev_appl_accum_last_arg,
 ev_assignment_1,
 ev_if_decide,
-ev_definition_1,
+ev_definition_1
 } JUMP_LIST;
 
 extern Object *heap;
 
 /* obarray */
-Object intern(Object str);
+Object intern(char *str);
 
 /* environment */
 extern Object the_empty_env;
@@ -72,6 +77,10 @@ Object restore(void);
 extern int max_depth;
 
 Object apply_primitive_procedure(Object proc, Object argl);
+
+/* Garbage collection */
+Object relocate_old_result_in_new(Object old);
+int gc(void);
 
 extern char token[];
 enum TokenType
