@@ -19,7 +19,7 @@ where the parameters of cons got bound by C's pass by value implicit control sys
    That is, we need to convert C language into explicit control language -- machine language
    -- as we did in SICP.
  */
-#define GC_ALTERNATIVE
+#define GC_WORK
 
 typedef struct Object {
   unsigned char type;
@@ -100,9 +100,14 @@ Object apply_primitive_procedure(Object proc, Object argl);
 Object relocate_old_result_in_new(Object old);
 #if defined (GC_ALTERNATIVE) || defined (GC_WORK)
 int gc(void);
+extern Object *Freep;
+extern Object *tospace;
+Object registerSymbolObject(Object symObj);
 #endif
 
 #ifdef GC_WORK
+int push(Object *object);
+Object *pop(void);
 #endif
 
 extern char token[];

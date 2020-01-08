@@ -483,60 +483,62 @@ TEST(Reader, TestIterativeProcedure)
 
 }
 
-// TEST(Reader, Relocate_Old_Result_in_New)
-// {
-//   GetCharSpy_Create("123 2.234 ()");
-//   obRead = read();
-//   CHECK(eq(obRead,relocate_old_result_in_new(obRead)));
-//   obRead = read();
-//   CHECK(eq(obRead,relocate_old_result_in_new(obRead)));
-//   obRead = read();
-//   CHECK(eq(obRead,relocate_old_result_in_new(obRead)));
+TEST(Reader, Relocate_Old_Result_in_New)
+{
+  tospace = heap; // To test, make the tospace equal to heap
 
-//   GetCharSpy_Create("(1 . 2) \"String\" s");
+  GetCharSpy_Create("123 2.234 ()");
+  obRead = read();
+  CHECK(eq(obRead,relocate_old_result_in_new(obRead)));
+  obRead = read();
+  CHECK(eq(obRead,relocate_old_result_in_new(obRead)));
+  obRead = read();
+  CHECK(eq(obRead,relocate_old_result_in_new(obRead)));
 
-//   obRead = read();
+  GetCharSpy_Create("(1 . 2) \"String\" s");
 
-//   Object newRead = relocate_old_result_in_new(obRead);
-//   BYTES_EQUAL(OB_BROKEN_HEART, car(obRead).type);
-//   CHECK(eq(car(newRead), car(car(obRead))));
-//   CHECK(eq(cdr(newRead), cdr(car(obRead))));
+  obRead = read();
 
-//   Object newnewRead = relocate_old_result_in_new(obRead);
-//   CHECK(eq(newnewRead, newRead));
-//   CHECK(eq(newnewRead, relocate_old_result_in_new(obRead)));
+  Object newRead = relocate_old_result_in_new(obRead);
+  BYTES_EQUAL(OB_BROKEN_HEART, car(obRead).type);
+  CHECK(eq(car(newRead), car(car(obRead))));
+  CHECK(eq(cdr(newRead), cdr(car(obRead))));
 
-//   obRead = read();
-//   STRCMP_EQUAL("String", getString(obRead));
+  Object newnewRead = relocate_old_result_in_new(obRead);
+  CHECK(eq(newnewRead, newRead));
+  CHECK(eq(newnewRead, relocate_old_result_in_new(obRead)));
 
-//   newRead = relocate_old_result_in_new(obRead);
-//   BYTES_EQUAL(OB_BROKEN_HEART, car(obRead).type);
+  obRead = read();
+  STRCMP_EQUAL("String", getString(obRead));
 
-//   STRCMP_EQUAL(getString(newRead), getString(car(obRead)));
+  newRead = relocate_old_result_in_new(obRead);
+  BYTES_EQUAL(OB_BROKEN_HEART, car(obRead).type);
 
-//   newnewRead = relocate_old_result_in_new(obRead);
-//   CHECK(eq(newnewRead, newRead));
+  STRCMP_EQUAL(getString(newRead), getString(car(obRead)));
 
-//   obRead = read();
-//   STRCMP_EQUAL("s", getString(obRead));
+  newnewRead = relocate_old_result_in_new(obRead);
+  CHECK(eq(newnewRead, newRead));
 
-//   newRead = relocate_old_result_in_new(obRead);
-//   BYTES_EQUAL(OB_BROKEN_HEART, car(obRead).type);
+  obRead = read();
+  STRCMP_EQUAL("s", getString(obRead));
 
-//   STRCMP_EQUAL("s", getString(newRead));
-//   STRCMP_EQUAL(getString(newRead), getString(car(obRead)));
+  newRead = relocate_old_result_in_new(obRead);
+  BYTES_EQUAL(OB_BROKEN_HEART, car(obRead).type);
 
-//   newnewRead = relocate_old_result_in_new(obRead);
-//   CHECK(eq(newnewRead, newRead));
-// }
+  STRCMP_EQUAL("s", getString(newRead));
+  STRCMP_EQUAL(getString(newRead), getString(car(obRead)));
+
+  newnewRead = relocate_old_result_in_new(obRead);
+  CHECK(eq(newnewRead, newRead));
+}
 
 TEST(Reader, TestFibonacci_NeedGarbageCollection)
 {
   GetCharSpy_Create("(define (fib n)"
                     "(if (< n 2) n"
                     "(+ (fib (- n 1)) (fib (- n 2)))))"
-                    "(fib 19)");
+                    "(fib 28)");
   repl();
   // STRCMP_EQUAL("", stderrBuf);
-  STRCMP_CONTAINS(";Value: 4181", stdoutBuf);
+  STRCMP_CONTAINS(";Value: 317811", stdoutBuf);
 }

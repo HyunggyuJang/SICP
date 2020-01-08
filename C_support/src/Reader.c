@@ -44,6 +44,8 @@ bool isPair(Object cell)
 Object cons(Object carCell, Object cdrCell)
 {
     #ifdef GC_WORK
+    push(&cdrCell);
+    push(&carCell);
     if (!(Freep - heap + 2 < word_size)) {
         debug("Call garbage collector. -- CONS");
         check(gc(), "Failed to clean up garbage."); // in addition to these, we need to update the contents of stack
@@ -55,6 +57,10 @@ Object cons(Object carCell, Object cdrCell)
     consCell.data = (unsigned long) Freep;
     *Freep++ = carCell;
     *Freep++ = cdrCell;
+    #ifdef GC_WORK
+    pop();
+    pop();
+    #endif
     return consCell;
 error:
     return err;
@@ -215,6 +221,28 @@ void destroy_obarray(void)
         destroy_obnode(&obarray[i]);
 }
 
+#ifdef GC_WORK
+Object make_string_obj_gc(const char *cstring)
+{
+    unsigned long cstrlen = strlen(cstring);
+    check(cstrlen <= LEN_MASK, "given string is too long.");
+
+    Object str = {.type = OB_STRING, .len = cstrlen};
+    size_t sizeInWords = // account null character + type specifier for gc + sizeInWords
+        (sizeof (Object) + str.len + sizeof (unsigned long)) / sizeof (Object);
+    check_debug(Freep - heap + sizeInWords < word_size,
+          "Need to call gc() -- MAKE_STRING_OBJ_GC");
+    Freep->type = OB_STRING_DATA;
+    Freep->len = (unsigned long) sizeInWords;
+    str.data = (unsigned long)Freep;
+    memcpy((char *)&Freep->data, cstring, str.len + 1);
+    Freep += sizeInWords;
+    return str;
+error:
+    return err;
+}
+#endif
+
 Object intern(char *str)
 {
     unsigned hashval = hash(str);
@@ -227,17 +255,38 @@ Object intern(char *str)
             return bucket->symbol;
         if (cmpResult < 0) {
             prev->next = malloc(sizeof (Obnode));
+            #ifdef GC_WORK
+            prev->next->symbol = make_string_obj_gc(str);
+            check_debug(!eq(prev->next->symbol, err), "Go to call gc. -- INTERN");
+            #else
             prev->next->symbol = make_string_obj(str);
+            #endif
             prev->next->symbol.type = OB_SYMBOL;
             prev->next->next = bucket;
             return prev->next->symbol;
         }
     }
     prev->next = malloc(sizeof (Obnode));
+#ifdef GC_WORK
+    prev->next->symbol = make_string_obj_gc(str);
+    check_debug(!eq(prev->next->symbol, err), "Go to call gc. -- INTERN");
+#else
     prev->next->symbol = make_string_obj(str);
+#endif
     prev->next->symbol.type = OB_SYMBOL;
     prev->next->next = bucket;
     return prev->next->symbol;
+#ifdef GC_WORK
+error:
+    gc();
+    Object stringObj = make_string_obj_gc(str);
+    if (eq(stringObj, err)) {
+        log_err("Heap is full -- INTERN");
+        return err;
+    }
+    stringObj.type = OB_SYMBOL;
+    return registerSymbolObject(stringObj);
+#endif
 }
 // end of obarray
 
@@ -271,6 +320,17 @@ static long length(Object list)
 
 Object add_binding_to_frame(Object var, Object val, Object frame)
 {
+    #ifdef GC_WORK
+    push(&frame);
+    push(&var);
+    push(&val);
+    set_car(frame, cons(var, car(frame)));
+    Object ret = set_cdr(frame, cons(val, cdr(frame)));
+    pop();
+    pop();
+    pop();
+    return ret;
+    #endif
     set_car(frame, cons(var, car(frame)));
     return set_cdr(frame, cons(val, cdr(frame)));
 }
@@ -282,6 +342,12 @@ Object extend_frame(Object vars, Object vals, Object base_env)
     check(var_len == val_len || var_len < 0 && -var_len <= val_len,
           "number of variables and values should match; vars' %ld, vals' %ld",
           var_len, val_len);
+    #ifdef GC_WORK
+    push(&base_env);
+    Object ret = cons(make_frame(vars, vals), base_env);
+    pop();
+    return ret;
+    #endif
     return cons(make_frame(vars, vals), base_env);
 
 error:
@@ -581,6 +647,10 @@ Object read(void)
             returnValue = read();
             check(!eq(returnValue, err),
                   "Expected expression but error.");
+            #ifdef GC_WORK
+            returnValue = cons(returnValue, nil);
+            return cons(quote, returnValue);
+            #endif
             return cons(quote, cons(returnValue, nil));
 
         case '(':
@@ -700,6 +770,26 @@ error:
     return err;
 }
 
+Object *toUpdateStack[100];
+Object **_sp = toUpdateStack;
+
+int push(Object *object)
+{
+    check(_sp < toUpdateStack + 100, "toUpdateStack overflow.");
+    *_sp++ = object;
+    return 1;
+error:
+    exit(1);
+}
+
+Object *pop(void)
+{
+    check(_sp > toUpdateStack, "toUpdateStack has no element in it -- POP");
+    return *--_sp;
+error:
+    return NULL;
+}
+
 void initialize_stack(void)
 {
     current_depth = max_depth = 0;
@@ -710,10 +800,16 @@ Object primitive_procedure_objects = {.type = OB_NIL};
 
 void addto_primitive_procedures(char *schemeName, primproc_t proc)
 {
-    primitive_procedure_names = cons(intern(schemeName),
-                                     primitive_procedure_names);
-    primitive_procedure_objects = cons(make_primitive_procedure(proc),
-                                       primitive_procedure_objects);
+#ifdef GC_WORK
+    push(&primitive_procedure_names);
+    push(&primitive_procedure_objects);
+#endif
+    primitive_procedure_names = cons(intern(schemeName), primitive_procedure_names);
+    primitive_procedure_objects = cons(make_primitive_procedure(proc), primitive_procedure_objects);
+#ifdef GC_WORK
+    pop();
+    pop();
+#endif
 }
 
 void setup_primitive_procedures()
@@ -812,6 +908,10 @@ Object cadadr(Object exp)
 
 Object make_lambda(Object params, Object body)
 {
+#ifdef GC_WORK
+    Object ret = cons(params, body);
+    return cons(lambda, ret);
+#endif
     return cons(lambda, cons(params, body));
 }
 
@@ -859,6 +959,9 @@ bool true_p(Object exp)
 Object make_procedure(Object params, Object body, Object env)
 {
     #ifdef GC_WORK
+    push(&params);
+    push(&body);
+    push(&env);
     if (!(Freep - heap + 3 < word_size)) {
         debug("Call garbage collector -- MAKE_PROCEDURE");
         check(gc(), "Failed to clean up garbage."); // in addition to these, we need to update the contents of stack
@@ -870,6 +973,11 @@ Object make_procedure(Object params, Object body, Object env)
     *Freep++ = params;
     *Freep++ = body;
     *Freep++ = env;
+#ifdef GC_WORK
+    pop();
+    pop();
+    pop();
+#endif
     return proc;
 error:
     return err;
@@ -918,8 +1026,14 @@ Object adjoin_arg(Object arg, Object list)
 Object reverse(Object list)
 {
     Object reversed = nil;
+#ifdef GC_WORK
+    push(&list);
+#endif
     for (;isPair(list) && !isNull(list); list = cdr(list))
         reversed = cons(car(list), reversed);
+#ifdef GC_WORK
+    pop();
+#endif
     return reversed;
 }
 
@@ -1140,9 +1254,9 @@ Object *tospace = NULL;
 
 Object *regs[] = {&expr, &val, &unev, &global_env, &env, &argl, &proc};
 
-void registerSymbolObject(Object symObj) {
+Object registerSymbolObject(Object symObj) {
     char *str = (char *) &((Object *) symObj.data - heap + tospace)->data;
-    debug("%s", str);
+    /* debug("%s", str); */
     unsigned hashval = hash(str);
     Obnode *bucket = NULL;
     Obnode *prev = NULL;
@@ -1150,17 +1264,18 @@ void registerSymbolObject(Object symObj) {
     for (prev = &obarray[hashval], bucket = prev->next; bucket; prev = bucket, bucket = prev->next) {
         cmpResult = strcmp(str, getString(bucket->symbol));
         if (cmpResult == 0)
-            return;
+            return bucket->symbol;
         if (cmpResult < 0) {
             prev->next = malloc(sizeof (Obnode));
             prev->next->symbol = symObj;
             prev->next->next = bucket;
-            return;
+            return symObj;
         }
     }
     prev->next = malloc(sizeof (Obnode));
     prev->next->symbol = symObj;
     prev->next->next = bucket;
+    return symObj;
 }
 /* relocate-old-result-in-new */
 Object relocate_old_result_in_new(Object old)
@@ -1230,6 +1345,11 @@ int gc(void)
     destroy_obarray();
     initialize_obarray();
 
+#ifdef GC_WORK
+    for (Object **opp = toUpdateStack; opp < _sp; opp++)
+        **opp = relocate_old_result_in_new(**opp);
+#endif
+
     for (i = 0; i < sizeof regs / sizeof regs[0]; i++)
         *regs[i] = relocate_old_result_in_new(*regs[i]);
 
@@ -1250,6 +1370,7 @@ int gc(void)
     Freep = Freep - tospace + heap;
 
     free(tospace);
+    tospace = heap; // for reuse registerObject
 
     set_default_symbols();
 
