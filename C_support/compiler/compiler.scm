@@ -3,7 +3,7 @@
 (define (compile-linkage linkage)
   (cond ((eq? linkage 'return)
          (make-instruction-sequence '(continue) '()
-          '()))
+          '((cont = ))))
         ((eq? linkage 'next)
          (empty-instruction-sequence))
         (else

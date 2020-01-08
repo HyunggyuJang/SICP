@@ -709,7 +709,7 @@ void user_print(Object val)
             break;
         case OB_COMPOUND:
             formatOut(stdout, "<compound procedure>");
-        case OB_PAIR:
+        case OB_PAIR: // fall through -- display params & body
             formatOut(stdout, "(");
             user_print(car(val));
             for (val = cdr(val); val.type == OB_PAIR; val = cdr(val)) {

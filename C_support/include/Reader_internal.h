@@ -18,6 +18,8 @@ cons(quote, cons(returnValue, nil));
 where the parameters of cons got bound by C's pass by value implicit control system.
    That is, we need to convert C language into explicit control language -- machine language
    -- as we did in SICP.
+
+Solved via unwrapping the complex usage of cons mimicking assembly command.
  */
 #define GC_WORK
 

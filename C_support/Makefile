@@ -23,14 +23,15 @@ INCLUDE_DIRS = include\
 
 CPPUTEST_WARNINGFLAGS=-Wall
 
-# for deploy
-# CPPUTEST_USE_MEM_LEAK_DETECTION=N
 
 include $(CPPUTEST_HOME)/build/MakefileWorker.mk
 
-bin: CFLAGS=-Wall lib/lib$(COMPONENT_NAME).a -Iinclude
-bin: CPPFLAGS= # suppress
-bin: $(BINS)
+# for deploy
+deploy: | clean deployLib $(BINS)
 
-binClean: clean
-	rm -f $(BINS)
+$(BINS): CFLAGS=-Wall -Iinclude
+$(BINS): $(TARGET_LIB)
+	$(CC) $(CFLAGS) -o $@ $^ $(@:%=%.c)
+
+deployLib: CPPFLAGS += -DCPPUTEST_MEM_LEAK_DETECTION_DISABLED
+deployLib: $(TARGET_LIB)
