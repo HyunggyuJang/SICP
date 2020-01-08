@@ -12,6 +12,7 @@
 ;;;;Then you can compile Scheme programs as shown in section 5.5.5
 
 ;;**implementation-dependent loading of syntax procedures
+(cd "/Users/hyunngyu-jang/MEGAsync/MIT Challenge/6.001/Exercise")
 (load "ch5-syntax.scm")			;section 4.1.2 syntax procedures
 
 

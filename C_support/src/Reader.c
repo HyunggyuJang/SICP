@@ -5,7 +5,6 @@
 #include <ctype.h>
 #include <stdlib.h>
 #include <dbg_testable.h>
-#include <stdarg.h>
 
 /* Memory allocation */
 Object *heap = NULL;
@@ -47,7 +46,7 @@ Object cons(Object carCell, Object cdrCell)
     #ifdef GC_WORK
     if (!(Freep - heap + 2 < word_size)) {
         debug("Call garbage collector. -- CONS");
-        check(gc(), "Failed to clean up garbage.");
+        check(gc(), "Failed to clean up garbage."); // in addition to these, we need to update the contents of stack
     }
     check(Freep - heap + 2 < word_size, "Heap overflow. -- CONS");
     #endif
@@ -240,27 +239,6 @@ Object intern(char *str)
     prev->next->next = bucket;
     return prev->next->symbol;
 }
-void registerSymbolObject(Object symObj) {
-    char *str = getString(symObj);
-    unsigned hashval = hash(str);
-    Obnode *bucket = NULL;
-    Obnode *prev = NULL;
-    int cmpResult = 0;
-    for (prev = &obarray[hashval], bucket = prev->next; bucket; prev = bucket, bucket = prev->next) {
-        cmpResult = strcmp(str, getString(bucket->symbol));
-        if (cmpResult == 0)
-            return;
-        if (cmpResult < 0) {
-            prev->next = malloc(sizeof (Obnode));
-            prev->next->symbol = symObj;
-            prev->next->next = bucket;
-            return;
-        }
-    }
-    prev->next = malloc(sizeof (Obnode));
-    prev->next->symbol = symObj;
-    prev->next->next = bucket;
-}
 // end of obarray
 
 // environment
@@ -377,7 +355,7 @@ Object make_string_obj(const char *cstring)
 #ifdef GC_WORK
     if (!(Freep - heap + sizeInWords < word_size)) {
         debug("Call the garbage collector -- MAKE_STRING_OBJ.");
-        check(gc(), "Failed to cleanup garbage.");
+        check(gc(), "Failed to cleanup garbage."); // in addition to these, we need to update the contents of stack
     }
     check(Freep - heap + sizeInWords < word_size,
           "Heap overflow -- MAKE_STRING_OBJ.");
@@ -883,7 +861,7 @@ Object make_procedure(Object params, Object body, Object env)
     #ifdef GC_WORK
     if (!(Freep - heap + 3 < word_size)) {
         debug("Call garbage collector -- MAKE_PROCEDURE");
-        check(gc(), "Failed to clean up garbage.");
+        check(gc(), "Failed to clean up garbage."); // in addition to these, we need to update the contents of stack
     check(Freep - heap + 3 < word_size, "Heap overflow. -- MAKE_PROCEDURE");
     }
     #endif
@@ -934,14 +912,7 @@ Object operands(Object exp)
 
 Object adjoin_arg(Object arg, Object list)
 {
-#if 1
     return cons(arg, list);
-#else
-    /* To expensive! */
-    if (isNull(list))
-        return cons(arg, list);
-    return cons(car(list), adjoin_arg(arg, cdr(list)));
-#endif
 }
 
 Object reverse(Object list)
@@ -1164,8 +1135,33 @@ error:
 
 #if defined(GC_ALTERNATIVE) || defined(GC_WORK)
 /* Garbagge collection subroutine */
+
+Object *tospace = NULL;
+
 Object *regs[] = {&expr, &val, &unev, &global_env, &env, &argl, &proc};
 
+void registerSymbolObject(Object symObj) {
+    char *str = (char *) &((Object *) symObj.data - heap + tospace)->data;
+    debug("%s", str);
+    unsigned hashval = hash(str);
+    Obnode *bucket = NULL;
+    Obnode *prev = NULL;
+    int cmpResult = 0;
+    for (prev = &obarray[hashval], bucket = prev->next; bucket; prev = bucket, bucket = prev->next) {
+        cmpResult = strcmp(str, getString(bucket->symbol));
+        if (cmpResult == 0)
+            return;
+        if (cmpResult < 0) {
+            prev->next = malloc(sizeof (Obnode));
+            prev->next->symbol = symObj;
+            prev->next->next = bucket;
+            return;
+        }
+    }
+    prev->next = malloc(sizeof (Obnode));
+    prev->next->symbol = symObj;
+    prev->next->next = bucket;
+}
 /* relocate-old-result-in-new */
 Object relocate_old_result_in_new(Object old)
 {
@@ -1187,7 +1183,7 @@ Object relocate_old_result_in_new(Object old)
     switch(old.type) {
         case OB_PAIR:
             new.type = old.type;
-            new.data = (unsigned long) Freep;
+            new.data = (unsigned long) (Freep - tospace + heap);
             *Freep++ = car(old);
             *Freep++ = cdr(old);
             set_car(old, (Object) {.type = OB_BROKEN_HEART, .data = new.data});
@@ -1196,7 +1192,7 @@ Object relocate_old_result_in_new(Object old)
         case OB_STRING: // fallthrough
             new.type = old.type;
             new.len = old.len;
-            new.data = (unsigned long) Freep;
+            new.data = (unsigned long) (Freep - tospace + heap);
             Freep->type = OB_STRING_DATA;
             Freep->len = ((Object *)old.data)->len;
             memcpy((char *)&Freep->data, getString(old), new.len + 1);
@@ -1210,7 +1206,7 @@ Object relocate_old_result_in_new(Object old)
             return new;
         case OB_COMPOUND:
             new.type = old.type;
-            new.data = (unsigned long) Freep;
+            new.data = (unsigned long) (Freep - tospace + heap);
             *Freep++ = procedure_params(old);
             *Freep++ = procedure_body(old);
             *Freep++ = procedure_env(old);
@@ -1225,7 +1221,7 @@ error:
 
 int gc(void)
 {
-    Object *tospace = malloc(sizeof (Object) * word_size);
+    tospace = malloc(sizeof(Object) * word_size);
     check_mem(tospace);
 
     Object new, old;
@@ -1249,9 +1245,11 @@ int gc(void)
         }
         *scan++ = relocate_old_result_in_new(old);
     }
+    memcpy(heap, tospace, sizeof(Object) * (Freep - tospace));
 
-    free(heap);
-    heap = tospace;
+    Freep = Freep - tospace + heap;
+
+    free(tospace);
 
     set_default_symbols();
 

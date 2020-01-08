@@ -2,6 +2,23 @@
 #define __READER_INTERNAL_H_
 
 /* #define GC_WORK */
+/* To make work GC_WORK, we need to underlying C's implicit control system to cope with
+   following situations
+Object Prim_cons(Object args)
+{
+    return cons(car(args), car(cdr(args)));
+}
+Object add_binding_to_frame(Object var, Object val, Object frame)
+{
+    set_car(frame, cons(var, car(frame)));
+    return set_cdr(frame, cons(val, cdr(frame)));
+}
+...
+cons(quote, cons(returnValue, nil));
+where the parameters of cons got bound by C's pass by value implicit control system.
+   That is, we need to convert C language into explicit control language -- machine language
+   -- as we did in SICP.
+ */
 #define GC_ALTERNATIVE
 
 typedef struct Object {
@@ -9,6 +26,7 @@ typedef struct Object {
   unsigned long len : 56;
   unsigned long data;
 } Object;
+
 
 #define LEN_MASK 0x00ffffffffffffff
 Object make_string_obj(const char *cstring);
@@ -80,7 +98,12 @@ Object apply_primitive_procedure(Object proc, Object argl);
 
 /* Garbage collection */
 Object relocate_old_result_in_new(Object old);
+#if defined (GC_ALTERNATIVE) || defined (GC_WORK)
 int gc(void);
+#endif
+
+#ifdef GC_WORK
+#endif
 
 extern char token[];
 enum TokenType
