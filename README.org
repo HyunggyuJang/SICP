@@ -7226,7 +7226,8 @@ expression erected on underlying Scheme, and in that universal machine, we
 execute the code resulted from compiling the meta circular evaluator Scheme program.
 
 Whew! It was quite complicated process to make it work than I ever thought!
-*** TODO Exercise 5.51
+*** DONE Exercise 5.51
+CLOSED: [2020-01-09 Thu 21:15]
 This exercise and the last exercise (the one after this) would be longer journey
 than any one we ever have encountered. We should translate the explicit-control
 evaluator of [[The Explicit-Control Evaluator][preceding section]] into low-level language -- the typical one would
@@ -7286,3 +7287,13 @@ books as my main mentor of learning C:
 
 
 With these tour, I finally started to code the project. [[file:C_support/tests/ReaderTest.cpp::extern "C" {][Here]] is the test code.
+I've finally done with this way long exercise with properties:
++ No memory leakage -- all Scheme object is managed by garbage collector
+  (=obarray= is managed separately.)
++ Garbage collection do his job at the right moment -- it do start his job otherwise
+  heap can not afford to allocate requested datum.
+*** DONE Exercise 5.52
+CLOSED: [2020-01-09 Thu 21:15]
+
+Done this long journey with [[file:C_support/compiler/compiler.scm::(load "../../Exercise/ch5-syntax")][compiler]]. I've extracted relevant parts from
+previous exercise into [[file:C_support/compiler/src/libSICP.c::#include "sicp.h"][library]].

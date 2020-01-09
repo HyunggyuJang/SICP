@@ -16,7 +16,7 @@ $(TARGET): build $(OBJECTS)
 build:
 	@mkdir -p build
 
-compile: CFLAGS += $(TARGET)
+compile: CFLAGS += $(TARGET) -DNDEBUG
 compile: $(COMPILED)
 
 clean:
