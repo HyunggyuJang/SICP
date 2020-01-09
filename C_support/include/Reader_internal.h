@@ -20,6 +20,7 @@ where the parameters of cons got bound by C's pass by value implicit control sys
    -- as we did in SICP.
 
 Solved via unwrapping the complex usage of cons mimicking assembly command.
+And using the analogous strategy of preserving in compiler section.
  */
 #define GC_WORK
 

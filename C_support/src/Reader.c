@@ -1026,14 +1026,15 @@ Object adjoin_arg(Object arg, Object list)
 Object reverse(Object list)
 {
     Object reversed = nil;
+    for (;isPair(list) && !isNull(list); list = cdr(list)) {
 #ifdef GC_WORK
-    push(&list);
+        push(&list);
 #endif
-    for (;isPair(list) && !isNull(list); list = cdr(list))
         reversed = cons(car(list), reversed);
 #ifdef GC_WORK
-    pop();
+        pop();
 #endif
+    }
     return reversed;
 }
 
