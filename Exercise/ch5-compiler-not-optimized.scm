@@ -368,7 +368,7 @@
   (make-instruction-sequence
    (registers-needed seq)
    (registers-modified seq)
-   (append (statements seq) (statements body-seq))))
+   (append (statements seq) (statements body-seq)))) ;
 
 (define (parallel-instruction-sequences seq1 seq2)
   (make-instruction-sequence

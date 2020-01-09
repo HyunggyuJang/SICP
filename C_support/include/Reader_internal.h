@@ -78,7 +78,7 @@ Object intern(char *str);
 extern Object the_empty_env;
 extern Object global_env;
 Object make_frame(Object variables, Object values);
-Object extend_frame(Object vars, Object vals, Object base_env);
+Object extend_environment(Object vars, Object vals, Object base_env);
 Object lookup_variable_value(Object var, Object env);
 Object text_of_quotation(Object exp);
 bool quoted_p(Object exp);

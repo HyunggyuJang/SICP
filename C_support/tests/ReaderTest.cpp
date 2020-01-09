@@ -312,7 +312,7 @@ TEST(Reader, EnvironmentRetrieve)
   GetCharSpy_Create("(a b c) (1 2 3)");
   Object vars = read();
   Object vals = read();
-  Object env = extend_frame(vars, vals, the_empty_env);
+  Object env = extend_environment(vars, vals, the_empty_env);
   LONGS_EQUAL(1,
               (long) lookup_variable_value(car(vars), env).data);
   LONGS_EQUAL(2,
