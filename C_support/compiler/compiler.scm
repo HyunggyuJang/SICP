@@ -1,5 +1,31 @@
 (load "../../Exercise/ch5-syntax")
 
+;; TEST compiles
+;; (scheme->c '(begin (define (factorial n) (if (= n 1) 1 (* (factorial (- n 1)) n))) (factorial 10)) "factorial.c")
+;; (scheme->c '(begin (define (fib n) (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2))))) (fib 30)) "fibonacci.c")
+
+(define (scheme->c exp outfile)
+  (let ((out (open-output-file (string-append "compiled/" outfile)))
+        (joiner (string-joiner 'infix "\n"))
+        (preamble (list "#include \"../src/sicp.h\"" "#include \"../src/type.h\"" "#include \"../../include/dbg.h\""))
+        (entry-start (list "Object entry()" "{"))
+        (entry-contents (statements (compile exp 'val 'next)))
+        (entry-end (list "return val;" "}"))
+        (main-start (list "int main()" "{"))
+        (main-contents
+         (list
+          "check_mem(heap_Create(30000));" "setup_obarray();"
+          "setup_environment();" "initialize_stack();" "env = global_env;"
+          "user_print(entry());" "destroy_obarray();" "heap_Destroy();"
+          "return 0;" "error:" "heap_Destroy();" "return 1;"))
+        (main-end (list "}")))
+    (for-each
+     (lambda (commands)
+       (display (apply joiner commands) out)
+       (display "\n" out))
+     (list preamble entry-start entry-contents entry-end main-start main-contents main-end))
+    (close-port out)))
+
 (define (compile exp target linkage)
   (cond ((self-evaluating? exp)
          (compile-self-evaluating exp target linkage))
@@ -30,7 +56,7 @@
 
 (define (compile-linkage linkage)
   (cond ((eq? linkage 'return)
-         (make-instruction-sequence '(continue) '()
+         (make-instruction-sequence '(cont) '()
           (list "goto *label(cont);")))
         ((eq? linkage 'next)
          (empty-instruction-sequence))
@@ -39,7 +65,7 @@
           (list (format #f "goto ~a;" linkage))))))
 
 (define (end-with-linkage linkage instruction-sequence)
-  (preserving '(continue)
+  (preserving '(cont)
    instruction-sequence
    (compile-linkage linkage)))
 
@@ -113,7 +139,7 @@
 
 (define (make-label name)
   (string->symbol
-    (string-append (symbol->string name)
+    (string-append (string-replace (symbol->string name) #\- #\_)
                    (number->string (new-label-number)))))
 ;; end of footnote
 
@@ -129,7 +155,7 @@
               (if-consequent exp) target consequent-linkage))
             (a-code
              (compile (if-alternative exp) target linkage)))
-        (preserving '(env continue)
+        (preserving '(env cont)
          p-code
          (append-instruction-sequences
           (make-instruction-sequence '(val) '()
@@ -142,7 +168,7 @@
 (define (compile-sequence seq target linkage)
   (if (last-exp? seq)
       (compile (first-exp seq) target linkage)
-      (preserving '(env continue)
+      (preserving '(env cont)
        (compile (first-exp seq) target 'next)
        (compile-sequence (rest-exps seq) target linkage))))
 
@@ -157,7 +183,7 @@
          (make-instruction-sequence '(env) (list target)
           (list (format
              #f
-             "~a = make_compiled_procedure(make_label(&&~a), env)"
+             "~a = make_compiled_procedure(make_label(&&~a), env);"
              target proc-entry))))
         (compile-lambda-body exp proc-entry))
        after-lambda))))
@@ -179,9 +205,9 @@
         (operand-codes
          (map (lambda (operand) (compile operand 'val 'next))
               (operands exp))))
-    (preserving '(env continue)
+    (preserving '(env cont)
      proc-code
-     (preserving '(proc continue)
+     (preserving '(proc cont)
       (construct-arglist operand-codes)
       (compile-procedure-call target linkage)))))
 
@@ -260,7 +286,7 @@
                   (format #f "goto ~a;" linkage)))))
         ((and (eq? target 'val) (eq? linkage 'return))
          (make-instruction-sequence
-          '(proc continue) all-regs
+          '(proc cont) all-regs
           (list "val = compiled_procedure_entry(proc);"
                 "goto *label(val);")))
         ((and (not (eq? target 'val)) (eq? linkage 'return))
@@ -268,7 +294,7 @@
                 target))))
 
 ;; footnote
-(define all-regs '(env proc val argl continue))
+(define all-regs '(env proc val argl cont))
 
 (define (registers-needed s)
   (if (symbol? s) '() (car s)))

@@ -1,10 +1,7 @@
-#include <Reader.h>
-#include <Reader_internal.h>
-#include <getChar.h>
-#include <stdio.h>
-#include <ctype.h>
+#include "sicp.h"
+#include "type.h"
 #include <stdlib.h>
-#include <dbg_testable.h>
+#include <dbg.h>
 
 /* Memory allocation */
 Object *heap = NULL;
@@ -24,26 +21,20 @@ error:
     return 0;
 }
 
-void heap_Destory(void)
+void heap_Destroy(void)
 {
     if (heap)
         free(heap);
 }
 
 /* scheme types */
-bool isNull(Object cell)
+bool inline isNull(Object cell)
 {
     return cell.type == OB_NIL;
 }
 
-bool isPair(Object cell)
-{
-    return cell.type == OB_PAIR || cell.type == OB_NIL;
-}
-
 Object cons(Object carCell, Object cdrCell)
 {
-    #ifdef GC_WORK
     push(&cdrCell);
     push(&carCell);
     if (!(Freep - heap + 2 < word_size)) {
@@ -51,16 +42,13 @@ Object cons(Object carCell, Object cdrCell)
         check(gc(), "Failed to clean up garbage."); // in addition to these, we need to update the contents of stack
     }
     check(Freep - heap + 2 < word_size, "Heap overflow. -- CONS");
-    #endif
     Object consCell;
     consCell.type = OB_PAIR;
     consCell.data = (unsigned long) Freep;
     *Freep++ = carCell;
     *Freep++ = cdrCell;
-    #ifdef GC_WORK
     pop();
     pop();
-    #endif
     return consCell;
 error:
     return err;
@@ -87,6 +75,11 @@ error:
     return err;
 }
 
+Object cadr(Object exp)
+{
+    return car(cdr(exp));
+}
+
 Object set_car(Object consCell, Object newCar)
 {
     *((Object *) consCell.data) = newCar;
@@ -109,32 +102,22 @@ Object Prim_set_cdr(Object args)
     return set_cdr(car(args), cadr(args));
 }
 
-bool isString(Object cell)
-{
-    return cell.type == OB_STRING;
-}
-
-char *getString(Object cell)
+char inline *getString(Object cell)
 {
     return (char *) &((Object *)cell.data)->data;
 }
 
-bool isNumber(Object cell)
+bool inline isNumber(Object cell)
 {
     return cell.type == OB_INEXACT || cell.type == OB_EXACT;
 }
 
-bool isSymbol(Object cell)
+bool inline isSymbol(Object cell)
 {
     return cell.type == OB_SYMBOL;
 }
 
-bool isSelfEvaluating(Object cell)
-{
-    return cell.type == OB_STRING || isNumber(cell) || isNull(cell);
-}
-
-bool eq(Object o1, Object o2)
+bool inline eq(Object o1, Object o2)
 {
     return o1.type == o2.type && o1.data == o2.data;
 }
@@ -221,7 +204,6 @@ void destroy_obarray(void)
         destroy_obnode(&obarray[i]);
 }
 
-#ifdef GC_WORK
 Object make_string_obj_gc(const char *cstring)
 {
     unsigned long cstrlen = strlen(cstring);
@@ -241,7 +223,6 @@ Object make_string_obj_gc(const char *cstring)
 error:
     return err;
 }
-#endif
 
 Object intern(char *str)
 {
@@ -255,28 +236,19 @@ Object intern(char *str)
             return bucket->symbol;
         if (cmpResult < 0) {
             prev->next = malloc(sizeof (Obnode));
-            #ifdef GC_WORK
             prev->next->symbol = make_string_obj_gc(str);
             check_debug(!eq(prev->next->symbol, err), "Go to call gc. -- INTERN");
-            #else
-            prev->next->symbol = make_string_obj(str);
-            #endif
             prev->next->symbol.type = OB_SYMBOL;
             prev->next->next = bucket;
             return prev->next->symbol;
         }
     }
     prev->next = malloc(sizeof (Obnode));
-#ifdef GC_WORK
     prev->next->symbol = make_string_obj_gc(str);
     check_debug(!eq(prev->next->symbol, err), "Go to call gc. -- INTERN");
-#else
-    prev->next->symbol = make_string_obj(str);
-#endif
     prev->next->symbol.type = OB_SYMBOL;
     prev->next->next = bucket;
     return prev->next->symbol;
-#ifdef GC_WORK
 error:
     gc();
     Object stringObj = make_string_obj_gc(str);
@@ -286,7 +258,6 @@ error:
     }
     stringObj.type = OB_SYMBOL;
     return registerSymbolObject(stringObj);
-#endif
 }
 // end of obarray
 
@@ -312,7 +283,7 @@ Object frame_values(Object frame)
 static long length(Object list)
 {
     long len = 0;
-    for (len = 0; isPair(list) && !isNull(list);
+    for (len = 0; list.type == OB_PAIR;
          len++, list = cdr(list))
         ;
     return isNull(list) ? len : -(len + 1); // for non-list detection
@@ -320,7 +291,6 @@ static long length(Object list)
 
 Object add_binding_to_frame(Object var, Object val, Object frame)
 {
-    #ifdef GC_WORK
     push(&frame);
     push(&var);
     push(&val);
@@ -330,9 +300,6 @@ Object add_binding_to_frame(Object var, Object val, Object frame)
     pop();
     pop();
     return ret;
-    #endif
-    set_car(frame, cons(var, car(frame)));
-    return set_cdr(frame, cons(val, cdr(frame)));
 }
 
 Object extend_environment(Object vars, Object vals, Object base_env)
@@ -342,13 +309,10 @@ Object extend_environment(Object vars, Object vals, Object base_env)
     check(var_len == val_len || var_len < 0 && -var_len <= val_len,
           "number of variables and values should match; vars' %ld, vals' %ld",
           var_len, val_len);
-    #ifdef GC_WORK
     push(&base_env);
     Object ret = cons(make_frame(vars, vals), base_env);
     pop();
     return ret;
-    #endif
-    return cons(make_frame(vars, vals), base_env);
 
 error:
     return err;
@@ -370,7 +334,7 @@ Object lookup_variable_value(Object var, Object env)
     for (; !eq(env, the_empty_env); env = enclosing_frame(env)) {
         frame = first_frame(env);
         for (vars = frame_variables(frame), vals = frame_values(frame);
-             isPair(vars) && !isNull(vars);
+             vars.type == OB_PAIR;
              vars = cdr(vars), vals = cdr(vals))
             if (eq(var, car(vars)))
                 return car(vals);
@@ -418,14 +382,12 @@ Object make_string_obj(const char *cstring)
     Object str = {.type = OB_STRING, .len = cstrlen};
     size_t sizeInWords = // account null character + type specifier for gc + sizeInWords
         (sizeof (Object) + str.len + sizeof (unsigned long)) / sizeof (Object);
-#ifdef GC_WORK
     if (!(Freep - heap + sizeInWords < word_size)) {
         debug("Call the garbage collector -- MAKE_STRING_OBJ.");
         check(gc(), "Failed to cleanup garbage."); // in addition to these, we need to update the contents of stack
     }
     check(Freep - heap + sizeInWords < word_size,
           "Heap overflow -- MAKE_STRING_OBJ.");
-#endif
     Freep->type = OB_STRING_DATA;
     Freep->len = (unsigned long) sizeInWords;
     str.data = (unsigned long)Freep;
@@ -614,21 +576,6 @@ Object make_double_obj(double data)
     return (Object) {.type = OB_INEXACT, .data = *(long *) &data};
 }
 
-bool quoted_p(Object exp)
-{
-    return eq(quote, car(exp));
-}
-
-bool define_p(Object exp)
-{
-    return eq(define, car(exp));
-}
-
-Object text_of_quotation(Object exp)
-{
-    return car(cdr(exp));
-}
-
 Object stack[300];
 Object *sp = stack;
 int max_depth = 0;
@@ -683,16 +630,12 @@ Object primitive_procedure_objects = {.type = OB_NIL};
 
 void addto_primitive_procedures(char *schemeName, primproc_t proc)
 {
-#ifdef GC_WORK
     push(&primitive_procedure_names);
     push(&primitive_procedure_objects);
-#endif
     primitive_procedure_names = cons(intern(schemeName), primitive_procedure_names);
     primitive_procedure_objects = cons(make_primitive_procedure(proc), primitive_procedure_objects);
-#ifdef GC_WORK
     pop();
     pop();
-#endif
 }
 
 void setup_primitive_procedures()
@@ -727,195 +670,61 @@ void setup_environment()
 Object expr, val, unev, env, argl, proc;
 Object cont = {.type = OB_LABEL, .data = (unsigned long) NULL};
 
-JUMP_LIST label(Object lab_obj){
+void *label(Object lab_obj)
+{
     check(lab_obj.type == OB_LABEL, "label accept only label object.");
-    return lab_obj.data;
+    return (void *) lab_obj.data;
 error:
-    return -1;
+    return NULL;
 }
 
-Object make_label(JUMP_LIST label) {
+Object make_label(void *label)
+{
     return (Object) {.type = OB_LABEL, .data = (unsigned long)label};
 }
 
-Object cadr(Object exp)
-{
-    return car(cdr(exp));
-}
-Object cddr(Object exp)
-{
-    return cdr(cdr(exp));
-}
-Object caddr(Object exp)
-{
-    return car(cddr(exp));
-}
-Object cdddr(Object exp)
-{
-    return cdr(cddr(exp));
-}
-Object cadddr(Object exp)
-{
-    return car(cdddr(exp));
-}
-Object caadr(Object exp)
-{
-    return car(cadr(exp));
-}
-Object cdadr(Object exp)
-{
-    return cdr(cadr(exp));
-}
-Object cadadr(Object exp)
-{
-    return cadr(cadr(exp));
-}
-
-Object make_lambda(Object params, Object body)
-{
-#ifdef GC_WORK
-    Object ret = cons(params, body);
-    return cons(lambda, ret);
-#endif
-    return cons(lambda, cons(params, body));
-}
-
-Object definition_variable(Object exp)
-{
-    return isSymbol(cadr(exp)) ? cadr(exp) : caadr(exp);
-}
-
-Object definition_value(Object exp)
-{
-    return isSymbol(cadr(exp)) ? caddr(exp)
-        : make_lambda(cdadr(exp), cddr(exp));
-}
-
-Object if_predicate(Object exp)
-{
-    return car(cdr(exp));
-}
-
-Object if_consequent(Object exp)
-{
-    return car(cdr(cdr(exp)));
-}
-
-Object if_alternative(Object exp)
-{
-    return car(cdr(cdr(cdr(exp))));
-}
-
-Object assignment_variable(Object exp)
-{
-    return cadr(exp);
-}
-
-Object assignment_value(Object exp)
-{
-    return caddr(exp);
-}
-
-bool true_p(Object exp)
+bool inline true_p(Object exp)
 {
     return !(exp.type == OB_BOOLEAN) || (bool) exp.data;
 }
 
-Object make_procedure(Object params, Object body, Object env)
+Object make_compiled_procedure(Object entry, Object env)
 {
-    #ifdef GC_WORK
-    push(&params);
-    push(&body);
     push(&env);
-    if (!(Freep - heap + 3 < word_size)) {
-        debug("Call garbage collector -- MAKE_PROCEDURE");
+    if (!(Freep - heap + 2 < word_size)) {
+        debug("Call garbage collector. -- MAKE_COMPILED_PROCEDURE");
         check(gc(), "Failed to clean up garbage."); // in addition to these, we need to update the contents of stack
-    check(Freep - heap + 3 < word_size, "Heap overflow. -- MAKE_PROCEDURE");
     }
-    #endif
-    Object proc = {.type = OB_COMPOUND,
-                   .data = (unsigned long) Freep};
-    *Freep++ = params;
-    *Freep++ = body;
+    check(Freep - heap + 2 < word_size, "Heap overflow. -- MAKE_COMPILED_PROCEDURE");
+    Object compiledProc;
+    compiledProc.type = OB_COMPILED;
+    compiledProc.data = (unsigned long) Freep;
+    *Freep++ = entry;
     *Freep++ = env;
-#ifdef GC_WORK
     pop();
-    pop();
-    pop();
-#endif
-    return proc;
+    return compiledProc;
 error:
     return err;
 }
 
-Object procedure_params(Object proc)
+Object compiled_procedure_entry(Object proc)
 {
-    return *(Object *)proc.data;
+    return car(proc);
 }
 
-Object procedure_body(Object proc)
+Object compiled_procedure_env(Object proc)
 {
-    return *((Object *)proc.data + 1);
+    return cdr(proc);
 }
 
-Object procedure_env(Object proc)
-{
-    return *((Object *)proc.data + 2);
-}
-
-Object lambda_params(Object exp)
-{
-    return cadr(exp);
-}
-
-Object lambda_body(Object exp)
-{
-    return cddr(exp);
-}
-
-Object operator(Object exp)
-{
-    return car(exp);
-}
-
-Object operands(Object exp)
-{
-    return cdr(exp);
-}
-
-Object adjoin_arg(Object arg, Object list)
-{
-    return cons(arg, list);
-}
-
-Object reverse(Object list)
-{
-    Object reversed = nil;
-    for (;isPair(list) && !isNull(list); list = cdr(list)) {
-#ifdef GC_WORK
-        push(&list);
-#endif
-        reversed = cons(car(list), reversed);
-#ifdef GC_WORK
-        pop();
-#endif
-    }
-    return reversed;
-}
-
-Object begin_actions(Object exp)
-{
-    return cdr(exp);
-}
-
-#if defined(GC_ALTERNATIVE) || defined(GC_WORK)
 /* Garbagge collection subroutine */
 
 Object *tospace = NULL;
 
 Object *regs[] = {&expr, &val, &unev, &global_env, &env, &argl, &proc};
 
-Object registerSymbolObject(Object symObj) {
+Object registerSymbolObject(Object symObj)
+{
     char *str = (char *) &((Object *) symObj.data - heap + tospace)->data;
     /* debug("%s", str); */
     unsigned hashval = hash(str);
@@ -946,7 +755,7 @@ Object relocate_old_result_in_new(Object old)
         case OB_PAIR:
         case OB_STRING:
         case OB_SYMBOL:
-        case OB_COMPOUND:
+        case OB_COMPILED:
             if (car(old).type == OB_BROKEN_HEART) {
                 new = car(old);
                 new.type = old.type;
@@ -980,12 +789,11 @@ Object relocate_old_result_in_new(Object old)
             if (new.type == OB_SYMBOL)
                 registerSymbolObject(new);
             return new;
-        case OB_COMPOUND:
+        case OB_COMPILED:
             new.type = old.type;
             new.data = (unsigned long) (Freep - tospace + heap);
-            *Freep++ = procedure_params(old);
-            *Freep++ = procedure_body(old);
-            *Freep++ = procedure_env(old);
+            *Freep++ = compiled_procedure_entry(old);
+            *Freep++ = compiled_procedure_env(old);
             set_car(old, (Object) {.type = OB_BROKEN_HEART, .data = new.data});
             return new;
         default:
@@ -999,17 +807,15 @@ int gc(void)
 {
     tospace = malloc(sizeof(Object) * word_size);
     check_mem(tospace);
+    Object old;
 
-    Object new, old;
     Object *scan = Freep = tospace;
     int i = 0;
     destroy_obarray();
     initialize_obarray();
 
-#ifdef GC_WORK
     for (Object **opp = toUpdateStack; opp < _sp; opp++)
         **opp = relocate_old_result_in_new(**opp);
-#endif
 
     for (i = 0; i < sizeof regs / sizeof regs[0]; i++)
         *regs[i] = relocate_old_result_in_new(*regs[i]);
@@ -1041,4 +847,52 @@ error:
         free(tospace);
     return 0;
 }
-#endif
+
+void user_print(Object val)
+{
+    switch (val.type) {
+        case OB_EXACT:
+            fprintf(stdout, "%ld", (long) val.data);
+            break;
+        case OB_INEXACT:
+            fprintf(stdout, "%g", *(double *) &val.data);
+            break;
+        case OB_SYMBOL:
+            fprintf(stdout, "%s", getString(val));
+            break;
+        case OB_STRING:
+            fprintf(stdout, "\"%s\"", getString(val));
+            break;
+        case OB_NIL:
+            fprintf(stdout, "()");
+            break;
+        case OB_BOOLEAN:
+            fprintf(stdout, (bool) val.data ? "#t" : "#f");
+            break;
+        case OB_PRIMITVE:
+            fprintf(stdout, "<primitive procedure>");
+            break;
+        case OB_COMPILED:
+            fprintf(stdout, "<compiled procedure>");
+            break;
+        case OB_PAIR:
+            fprintf(stdout, "(");
+            user_print(car(val));
+            for (val = cdr(val); val.type == OB_PAIR; val = cdr(val)) {
+                fprintf(stdout, " ");
+                user_print(car(val));
+            }
+            if (isNull(val))
+                fprintf(stdout, ")");
+            else {
+                fprintf(stdout, " . ");
+                user_print(val);
+                fprintf(stdout, ")");
+            }
+            break;
+        default:
+            sentinel("Unsupported expression, type num: %d", val.type);
+    }
+error: // fallthrough
+    return;
+}
