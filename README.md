@@ -270,7 +270,7 @@
     prove that using inequality sign not asymptotic notation; it will convolve more  
     subtle argument. We should use proof assistant otherwise it become really tricky  
     to prove.  
-
+<a id="org071dd7a"></a>
 -   Exercise 2.20
 
     I've started not to think about the structure. It's the evidence that I've  
@@ -296,7 +296,7 @@
     ```
     
     Isn't this obvious to explain? Anyway, I'll skip that.  
-
+<a id="org34ceda5"></a>
 -   Mapping over lists
 
     ```scheme
