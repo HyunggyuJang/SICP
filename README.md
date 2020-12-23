@@ -27681,7 +27681,7 @@ ok
     Done this long journey with [compiler](C_support/compiler/compiler.scm). I've extracted relevant parts from  
     previous exercise into [library](C_support/compiler/src/libSICP.c).  
 
-# Footnotes
+## Footnotes
 
 <sup><a id="fn.1" class="footnum" href="#fnr.1">1</a></sup> We sense more and more replicative patterns here
 
