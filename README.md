@@ -1,103 +1,103 @@
-- [Chapter 2: Building Abstractions with Data](#orgfa06687)
-  - [Hierarchical Data and the Closure Property](#org8a46d20)
-    - [Repersenting Sequences](#org676f40c)
-    - [Hierarchical Structures](#orgf12be9b)
-    - [Sequences as Conventional Interfaces](#org347b489)
-    - [Example: A Picture Language](#org95898af)
-  - [Symbolic Data](#org2991a64)
-    - [Quotation](#orgd8c9de0)
-    - [Example: Symbolic Differentiation](#orgdede7ac)
-    - [Example: Representing Sets](#org1a1d19b)
-    - [Example: Huffman Encoding trees](#org1736fe0)
-    - [Data-Directed Programming and Additivity](#org86689e3)
-    - [Lecture 4A: Pattern Matching and Rule-based Substitution](#org872f78a)
-  - [Systems with Generic Operations](#org16c5de2)
-    - [Generic Arithmetic Operations](#org40c5c38)
-    - [Combining Data of Different Types](#org4a71718)
-    - [Example: Symbolic Algebra](#org733fb7a)
-- [Chapter 3 Modularity, Objects, and State](#orge3a3cd5)
-  - [Assignment and Local State](#org1cd238b)
-    - [Local State Variables](#org4b967b3)
-    - [The Benefits of Introducing Assignment](#orgcb25c98)
-    - [The Costs of Introducing Assignment](#org8c18185)
-  - [Modeling with Mutable Data](#orgc053278)
-    - [Mutable List Structure](#org545affe)
-    - [Representing Queues](#orgd030145)
-    - [Representing Tables](#org319e1ac)
-    - [A Simulator for Digital Circuits](#org9417f83)
-    - [Lecture 5B: Computational Objects](#org92cdb04)
-    - [Propagation of Conlstraints](#org9b5e39b)
-  - [Concurrency: Time Is of the Essence](#orga9fad6c)
-    - [The Nature of Time in Concurrent Systems](#org4a90bf2)
-    - [Mechanisms for Controlling Concurrency](#org3da1cda)
-  - [Streams](#org113d63b)
-    - [Streams Are Delayed Lists](#orgdf604f8)
-    - [Infinite Streams](#org45ae49b)
-    - [Exploiting the Stream Paradigm](#org3afdc2c)
-    - [Modularity of Functional Programs and Modularity of Objects](#orgd243929)
-- [Chapter 4: Metalinguistic Abstraction](#org3377569)
-  - [The Metacircular Evaluator](#org4acbd65)
-    - [The Core of the Evaluator](#org40327e7)
-    - [Representing Expressions](#org02f7f3b)
-    - [Evaluator Data Structures](#org0b78261)
-    - [Running the Evaluator as a Program](#org2ddc5bc)
-    - [Data as Programs](#orgd0f382c)
-    - [Internal Definitions](#org88bb3a5)
-    - [Separating Syntactic Analysis from Execution](#org85bdb03)
-  - [Variations on a Scheme &#x2013; Lazy Evaluation](#org83b8802)
-    - [Normal Order and Applicative Order](#orgeaf5373)
-    - [An Interpreter with Lazy Evaluation](#orga94fc6f)
-  - [Variations on a Scheme &#x2013; Nondeterministic Computing](#org7c0f19d)
-    - [Amb and Search](#orgf5f421b)
-    - [Examples of Nondeterministic Programs](#org48f9a40)
-    - [Implementing the `Amb` Evaluator](#orgbdf82b4)
-  - [Logic Programming](#org7d3bbbf)
-    - [Deductive Information Retrieval](#org7f81616)
-    - [How the Query System Works](#org281cab2)
-    - [Is Logic Programming Mathematical Logic?](#org5e22dca)
-    - [Implementing the Query System](#orgd6315b3)
-- [Chapter 5: Computing with Register Machines](#org3b8abf1)
-  - [Designing Register Machines](#org616a719)
-    - [A Language for Describing Register Machines](#orgafbef17)
-    - [Abstraction in Machine Design](#org299ac7b)
-    - [Subroutines](#org9443df3)
-    - [Using a Stack to Implement Recursion](#org79c9c11)
-    - [Instruction Summary](#org1d3d224)
-  - [A Register-Machine Simulator](#org483825f)
-    - [The Machine Model](#org7a2a946)
-    - [The Assembler](#orgb3e6414)
-    - [Generating Execution Procedures for Instructions](#org7f6801d)
-    - [Monitoring Machine Performance](#org335758b)
-  - [Storage Allocation and Garbage Collection](#org2bec9fb)
-    - [Memory as Vectors](#org1050417)
-    - [Maintaining the Illusion of Infinite Memory](#orgd02b2dc)
-  - [The Explicit-Control Evaluator](#org3334a0c)
-    - [The Core of the Explicit-Control Evaluator](#org863e458)
-    - [Sequence Evaluation and Tail Recursion](#orgfd0de70)
-    - [Conditionals, Assignments, and Definitions](#orgc598906)
-    - [Running the Evaluator](#org137d3d9)
-  - [Compilation](#org53f64d1)
-    - [Structure of the Compiler](#orgcb5b978)
-    - [Compiling Expressions](#org8b325a5)
-    - [Compiling Combinations](#orga2f7635)
-    - [Combining Instruction Sequences](#orgef198c8)
-    - [An Example of Compiled Code](#orgf26ea33)
-    - [Lexical Addressing](#org8a2c5d8)
-    - [Interfacing Compiled Code to the Evaluator](#orgc323b6c)
+- [Chapter 2: Building Abstractions with Data](#org076efa2)
+  - [Hierarchical Data and the Closure Property](#org73cb5d2)
+    - [Repersenting Sequences](#org8b9b946)
+    - [Hierarchical Structures](#orgc34bf56)
+    - [Sequences as Conventional Interfaces](#org9f74639)
+    - [Example: A Picture Language](#org8dba49c)
+  - [Symbolic Data](#org99c5e06)
+    - [Quotation](#org5688567)
+    - [Example: Symbolic Differentiation](#orgafd6dad)
+    - [Example: Representing Sets](#orgf0e39c3)
+    - [Example: Huffman Encoding trees](#org3654998)
+    - [Data-Directed Programming and Additivity](#org99b89bf)
+    - [Lecture 4A: Pattern Matching and Rule-based Substitution](#orge1e8160)
+  - [Systems with Generic Operations](#org55546cf)
+    - [Generic Arithmetic Operations](#orgb4c4a03)
+    - [Combining Data of Different Types](#org78b1a49)
+    - [Example: Symbolic Algebra](#org865f1d0)
+- [Chapter 3 Modularity, Objects, and State](#org5861bd4)
+  - [Assignment and Local State](#org3325785)
+    - [Local State Variables](#org41197a3)
+    - [The Benefits of Introducing Assignment](#org8bebb8d)
+    - [The Costs of Introducing Assignment](#orgc7e98fb)
+  - [Modeling with Mutable Data](#org2e0f37d)
+    - [Mutable List Structure](#orgf05f159)
+    - [Representing Queues](#org818bb12)
+    - [Representing Tables](#org21b23ff)
+    - [A Simulator for Digital Circuits](#org73748ce)
+    - [Lecture 5B: Computational Objects](#orgc721554)
+    - [Propagation of Conlstraints](#org60a5194)
+  - [Concurrency: Time Is of the Essence](#orga586b26)
+    - [The Nature of Time in Concurrent Systems](#orgea319b0)
+    - [Mechanisms for Controlling Concurrency](#org994177f)
+  - [Streams](#orgd8fcd4f)
+    - [Streams Are Delayed Lists](#orgeccdf07)
+    - [Infinite Streams](#orgc8c1a4b)
+    - [Exploiting the Stream Paradigm](#org251d786)
+    - [Modularity of Functional Programs and Modularity of Objects](#orgc81cb23)
+- [Chapter 4: Metalinguistic Abstraction](#org9b1cf77)
+  - [The Metacircular Evaluator](#orga62ff99)
+    - [The Core of the Evaluator](#org1be7e43)
+    - [Representing Expressions](#org46027d4)
+    - [Evaluator Data Structures](#org5fa59de)
+    - [Running the Evaluator as a Program](#orgde620ff)
+    - [Data as Programs](#org99588b0)
+    - [Internal Definitions](#org9487f7e)
+    - [Separating Syntactic Analysis from Execution](#orgad1ea98)
+  - [Variations on a Scheme &#x2013; Lazy Evaluation](#org89c6146)
+    - [Normal Order and Applicative Order](#orgd091cc6)
+    - [An Interpreter with Lazy Evaluation](#org54dbd80)
+  - [Variations on a Scheme &#x2013; Nondeterministic Computing](#orgeccac30)
+    - [Amb and Search](#org3b03485)
+    - [Examples of Nondeterministic Programs](#orga1e9ed4)
+    - [Implementing the `Amb` Evaluator](#orgc16cc6b)
+  - [Logic Programming](#org9ec9e5d)
+    - [Deductive Information Retrieval](#org9f6e209)
+    - [How the Query System Works](#org1d17c14)
+    - [Is Logic Programming Mathematical Logic?](#org02169d5)
+    - [Implementing the Query System](#orga67e34f)
+- [Chapter 5: Computing with Register Machines](#org164fb0e)
+  - [Designing Register Machines](#orgf40a450)
+    - [A Language for Describing Register Machines](#org62ec7fc)
+    - [Abstraction in Machine Design](#org1e1612d)
+    - [Subroutines](#orga4a3df5)
+    - [Using a Stack to Implement Recursion](#org01586dc)
+    - [Instruction Summary](#orgaf908fb)
+  - [A Register-Machine Simulator](#org1adab56)
+    - [The Machine Model](#orgaa9d546)
+    - [The Assembler](#org48ba04d)
+    - [Generating Execution Procedures for Instructions](#orgdfef75e)
+    - [Monitoring Machine Performance](#org3e3fcbf)
+  - [Storage Allocation and Garbage Collection](#orgcbb67b1)
+    - [Memory as Vectors](#orgca215ba)
+    - [Maintaining the Illusion of Infinite Memory](#org714f70d)
+  - [The Explicit-Control Evaluator](#org7a317af)
+    - [The Core of the Explicit-Control Evaluator](#org61cac60)
+    - [Sequence Evaluation and Tail Recursion](#org2e1ebb8)
+    - [Conditionals, Assignments, and Definitions](#orgb6ecc50)
+    - [Running the Evaluator](#org017b248)
+  - [Compilation](#org5ec8a27)
+    - [Structure of the Compiler](#org8e5be9d)
+    - [Compiling Expressions](#org4b4bd9c)
+    - [Compiling Combinations](#org2c6ca3d)
+    - [Combining Instruction Sequences](#orgadd3aa8)
+    - [An Example of Compiled Code](#org056a259)
+    - [Lexical Addressing](#orgacfd673)
+    - [Interfacing Compiled Code to the Evaluator](#org72007c8)
 
 
 
-<a id="orgfa06687"></a>
+<a id="org076efa2"></a>
 
 # Chapter 2: Building Abstractions with Data
 
 
-<a id="org8a46d20"></a>
+<a id="org73cb5d2"></a>
 
 ## Hierarchical Data and the Closure Property
 
 
-<a id="org676f40c"></a>
+<a id="org8b9b946"></a>
 
 ### Repersenting Sequences
 
@@ -322,7 +322,7 @@
 -   Exercise 2.22
 
     1.  Because the structure of the helper procedure iter is same as our first  
-        definition of [reverse](#org12f9945).
+        definition of [reverse](#org943243a).
     2.  List is, by definition, sequence of pairs. But the tried implementation  
         returns something other than list: `(cons answer (square (car things)))` is  
         not chained pairs.
@@ -359,7 +359,7 @@
     Yeah works well.  
 
 
-<a id="orgf12be9b"></a>
+<a id="orgc34bf56"></a>
 
 ### Hierarchical Structures
 
@@ -479,7 +479,7 @@ Then we can complete the procedure:
     (fringe (list x x))                     ;(1 2 3 4 1 2 3 4)
     ```
     
-    The strategy is similar with [above](#org989a67d):  
+    The strategy is similar with [above](#orga4bcb27):  
     
     ```scheme
     (define (fringe x)
@@ -672,7 +672,7 @@ Then we can complete the procedure:
 
 -   Exercise 2.30
 
-    Define a procedure `square-tree` analogous to the `square-list` procedure of [exercise 2.21](#org59f3095).  
+    Define a procedure `square-tree` analogous to the `square-list` procedure of [exercise 2.21](#org817fec4).  
     That is, `square-tree` should behave as follows:  
     
     ```scheme
@@ -745,7 +745,7 @@ Then we can complete the procedure:
     ```
 
 
-<a id="org347b489"></a>
+<a id="org9f74639"></a>
 
 ### Sequences as Conventional Interfaces
 
@@ -754,8 +754,8 @@ Then we can complete the procedure:
     The main procedures that complete the signal processing interfaces are  
     followings:  
     
-    -   [map](#org843acbb)
-    -   [filter](#orgf4ec32f)
+    -   [map](#org34ceda5)
+    -   [filter](#org071dd7a)
     -   accumulate  
         
         ```scheme
@@ -826,7 +826,7 @@ Then we can complete the procedure:
 
 -   Exercise 2.35
 
-    We can redefine `count-leaves` from [this](#orgf12be9b) using `accumulate`, which means that we  
+    We can redefine `count-leaves` from [this](#orgc34bf56) using `accumulate`, which means that we  
     can formulate `count-leaves` as signal processing interface.  
     
     At first, let's try out without lingering over it; just compare those structure  
@@ -1045,7 +1045,7 @@ Then we can complete the procedure:
     more than 8<sup>5</sup> &times; *T*.  
 
 
-<a id="org95898af"></a>
+<a id="org8dba49c"></a>
 
 ### Example: A Picture Language
 
@@ -1547,12 +1547,12 @@ Then we can complete the procedure:
     ```
 
 
-<a id="org2991a64"></a>
+<a id="org99c5e06"></a>
 
 ## Symbolic Data
 
 
-<a id="orgd8c9de0"></a>
+<a id="org5688567"></a>
 
 ### Quotation
 
@@ -1619,7 +1619,7 @@ Then we can complete the procedure:
     treated symbolically, `(car (quote ...))` is `quote`. There is no surprise here.  
 
 
-<a id="orgdede7ac"></a>
+<a id="orgafd6dad"></a>
 
 ### Example: Symbolic Differentiation
 
@@ -1929,7 +1929,7 @@ Then we can implement this by amending the low level language.
         
         Note that in the first example we can represent in both, binary tree or tree  
         with arbitrary branches. Also note that this situation exactly match with the  
-        previous exercise, [ex 2.57](#orgdc1f56e).  
+        previous exercise, [ex 2.57](#org1416a7d).  
         
         Consequently, all we need to do is to convert infix form to prefix form allowed  
         to have arbitrary number of terms; the rest would be handled by ex 2.57 as said.  
@@ -2168,7 +2168,7 @@ Then we can implement this by amending the low level language.
             Done.  
 
 
-<a id="org1a1d19b"></a>
+<a id="orgf0e39c3"></a>
 
 ### Example: Representing Sets
 
@@ -2465,7 +2465,7 @@ All the representation that satisfy all the axioms above can be treat as set.
     
     -   b.
     
-        Analogous to [previous exercise](#org27e0704), we can deduce that the order of growth of this  
+        Analogous to [previous exercise](#org8cf41e6), we can deduce that the order of growth of this  
         implementation is &Theta;(n).  
 
 -   Exercise 2.65
@@ -2515,7 +2515,7 @@ All the representation that satisfy all the axioms above can be treat as set.
     ```
 
 
-<a id="org1736fe0"></a>
+<a id="org3654998"></a>
 
 ### Example: Huffman Encoding trees
 
@@ -2740,7 +2740,7 @@ All the representation that satisfy all the axioms above can be treat as set.
     worst case.  
 
 
-<a id="org86689e3"></a>
+<a id="org99b89bf"></a>
 
 ### Data-Directed Programming and Additivity
 
@@ -3062,7 +3062,7 @@ All the representation that satisfy all the axioms above can be treat as set.
     intuitive representation of *message passing*.  
 
 
-<a id="org872f78a"></a>
+<a id="orge1e8160"></a>
 
 ### Lecture 4A: Pattern Matching and Rule-based Substitution
 
@@ -3278,12 +3278,12 @@ Then we can test the previous `deriv` test using `dsimp`:
 Well, we need more clever algebraic simplifying rules here.  
 
 
-<a id="org16c5de2"></a>
+<a id="org55546cf"></a>
 
 ## Systems with Generic Operations
 
 
-<a id="org40c5c38"></a>
+<a id="orgb4c4a03"></a>
 
 ### Generic Arithmetic Operations
 
@@ -3525,7 +3525,7 @@ Then users can call the constructor granted the procedure:
     ```
 
 
-<a id="org4a71718"></a>
+<a id="org78b1a49"></a>
 
 ### Combining Data of Different Types
 
@@ -3886,7 +3886,7 @@ Then users can call the constructor granted the procedure:
       'done)
     ```
     
-    We've already coped with this situation in [previous exercise](#org648e4e3).  
+    We've already coped with this situation in [previous exercise](#orgc037fb6).  
 
 -   Exercise 2.84
 
@@ -4204,7 +4204,7 @@ Then users can call the constructor granted the procedure:
     Work!  
 
 
-<a id="org733fb7a"></a>
+<a id="org865f1d0"></a>
 
 ### Example: Symbolic Algebra
 
@@ -5302,7 +5302,7 @@ Note that here we also used `mul` instead of `*` with the same reason above.
                    (= (order t1) (order t2))))
             ```
             
-            Here we used the analogy with [Exercise 2.58](#orgf8ab104) when we dealt with AST. Also we  
+            Here we used the analogy with [Exercise 2.58](#org8d35cce) when we dealt with AST. Also we  
             exploit the type analysis to design these procedure.  
             
             Test!  
@@ -5341,7 +5341,7 @@ Note that here we also used `mul` instead of `*` with the same reason above.
         -   Multiplication
         
             We need some auxiliary procedure that is analogous to `union` procedure in  
-            [previous section](#org1a1d19b) with `collapse-term`:  
+            [previous section](#orgf0e39c3) with `collapse-term`:  
             
             ```scheme
             (define (collapse-term-list L1 L2)      ;provided that L1 L2 is not empty
@@ -5448,7 +5448,7 @@ Note that here we also used `mul` instead of `*` with the same reason above.
     that, our coercion scheme is limited in that we had to supply explicitly how our  
     arithmetic types related each other&#x2013; `tower`. It's a very poorly structured  
     hierarchical system. An obvious example of the freezing generic operation by  
-    user defined structure is [exercise 2.94](#orgd3c009e); previously we defined "simplifying  
+    user defined structure is [exercise 2.94](#org23ce1d0); previously we defined "simplifying  
     procedure"&#x2013; `drop` &#x2013; and integrated in our `apply-generic`. But as we (user)  
     extends the rational arithmetic system to accommodate all the object that  
     satisfy the rational arithmetic axioms (see below), the `drop` procedure, which  
@@ -5970,12 +5970,12 @@ Note that here we also used `mul` instead of `*` with the same reason above.
         ```
 
 
-<a id="orge3a3cd5"></a>
+<a id="org5861bd4"></a>
 
 # Chapter 3 Modularity, Objects, and State
 
 
-<a id="org1cd238b"></a>
+<a id="org3325785"></a>
 
 ## Assignment and Local State
 
@@ -5984,7 +5984,7 @@ this concept, we get to model real world system more naturally and modularly
 combining with message passing programming.  
 
 
-<a id="org4b967b3"></a>
+<a id="org41197a3"></a>
 
 ### Local State Variables
 
@@ -6177,7 +6177,7 @@ value of the state variable. For this, scheme has special syntax called `(set!
     It passes all the test case.  
 
 
-<a id="orgcb25c98"></a>
+<a id="org8bebb8d"></a>
 
 ### The Benefits of Introducing Assignment
 
@@ -6433,7 +6433,7 @@ instance of that kind.
     It works as expected.  
 
 
-<a id="org8c18185"></a>
+<a id="orgc7e98fb"></a>
 
 ### The Costs of Introducing Assignment
 
@@ -6697,12 +6697,12 @@ objects that we are compare with is same.
     So, our interpreter evaluate augend first.  
 
 
-<a id="orgc053278"></a>
+<a id="org2e0f37d"></a>
 
 ## Modeling with Mutable Data
 
 
-<a id="org545affe"></a>
+<a id="orgf05f159"></a>
 
 ### Mutable List Structure
 
@@ -7200,7 +7200,7 @@ objects that we are compare with is same.
     profound meaning I think.  
 
 
-<a id="orgd030145"></a>
+<a id="org818bb12"></a>
 
 ### Representing Queues
 
@@ -7265,7 +7265,7 @@ representation and implementing queue representation using list structure:
 -   Exercise 3.21
 
     Eva Lu Ator denotes that it is just reachable from two different pointer not  
-    that `insert-queue` inserts item twice; recall the exercise [3.16](#orge3af9da), where all the  
+    that `insert-queue` inserts item twice; recall the exercise [3.16](#org0c770ed), where all the  
     list has exactly three pairs in it but represented differently. (in both Ben  
     Bitdiddle's `count-pairs` and Lisp printer)  
     
@@ -7805,7 +7805,7 @@ representation and implementing queue representation using list structure:
     ```
 
 
-<a id="org319e1ac"></a>
+<a id="org21b23ff"></a>
 
 ### Representing Tables
 
@@ -8205,7 +8205,7 @@ Here is the sample implementation in text book:
 
 -   Exercise 3.26
 
-    As we already implemented the lookup procedure for binary tree in [exercise 2.66](#orged09971).  
+    As we already implemented the lookup procedure for binary tree in [exercise 2.66](#orgf17a459).  
     All the left is to implement constructor and mutator of table.  
     
     With the same argument of headed list&#x2013; our first backbone of table, we need to  
@@ -8329,7 +8329,7 @@ Here is the sample implementation in text book:
     it by simulating (drawing) the evaluation process using environment model.  
 
 
-<a id="org9417f83"></a>
+<a id="org73748ce"></a>
 
 ### A Simulator for Digital Circuits
 
@@ -8937,7 +8937,7 @@ Using this function box, we can construct more useful, complex function box:
     	(front-queue (segment-queue first-seg))))) ;from the contract, queue is not empty
     ```
     
-    Then let's test with previous exercise, [Exercise 3.31](#org636afe4):  
+    Then let's test with previous exercise, [Exercise 3.31](#orgea1e616):  
     
     ```scheme
     (half-adder input-1 input-2 sum carry)
@@ -8995,7 +8995,7 @@ Using this function box, we can construct more useful, complex function box:
         doesn't reflect well what behavior the real world takes.
 
 
-<a id="org92cdb04"></a>
+<a id="orgc721554"></a>
 
 ### Lecture 5B: Computational Objects
 
@@ -9056,7 +9056,7 @@ to capture; if we can imagine what we want, we can capture that in computational
 object.  
 
 
-<a id="org9b5e39b"></a>
+<a id="org60a5194"></a>
 
 ### Propagation of Conlstraints
 
@@ -9067,7 +9067,7 @@ logical programming combined with pattern matching. In that paradigm, all the
 constraints works as *fact*. Using such *facts*, deduce unknown things if  
 appropriate amounts of fact provided.  
 
-To implement such programming style, we apply what we learned in [Lecture 5B: Computational Objects](#org92cdb04):  
+To implement such programming style, we apply what we learned in [Lecture 5B: Computational Objects](#orgc721554):  
 
 -   Capture the behavior of real world scheme.
 
@@ -9117,7 +9117,7 @@ To implement such programming style, we apply what we learned in [Lecture 5B: Co
     
     With all the specification in the text book, we can deduce the cloudy objects  
     as connector should have state variable that holds the value of connector and  
-    constraint list of all constraints to which the connector linked; in  
+    gconstraint list of all constraints to which the connector linked; in  
     addition, it should have informant as its state variable to achieve the  
     requirement. For the primitive constraint boxes, it should have references to  
     terminals to poll and set; it should possess identity to signature informant  
@@ -9254,7 +9254,7 @@ To implement such programming style, we apply what we learned in [Lecture 5B: Co
     connector has lost its value.  
     
     Note that by using the wishful thinking we could break down the massive  
-    structure into smaller ones as we did in the [Exercise 2.92](#orgbe0f018). From this process,  
+    structure into smaller ones as we did in the [Exercise 2.92](#org4c3482d). From this process,  
     we can learn how to expand our previous designing skill embracing mutation. The  
     only difference is that in previous we used to substitution model in conversion  
     from common computation to code, here we use environment model to convert the  
@@ -9684,12 +9684,12 @@ To implement such programming style, we apply what we learned in [Lecture 5B: Co
     ```
 
 
-<a id="orga9fad6c"></a>
+<a id="orga586b26"></a>
 
 ## Concurrency: Time Is of the Essence
 
 
-<a id="org4a90bf2"></a>
+<a id="orgea319b0"></a>
 
 ### The Nature of Time in Concurrent Systems
 
@@ -9742,7 +9742,7 @@ To implement such programming style, we apply what we learned in [Lecture 5B: Co
         Here we stroke out the duplicated result; overall number of different result is 10.  
 
 
-<a id="org3da1cda"></a>
+<a id="org994177f"></a>
 
 ### Mechanisms for Controlling Concurrency
 
@@ -9750,7 +9750,7 @@ There are several strategy to control the concurrency. In the text book, they
 implemented *serializer*, which works as station where issues permission to  
 operate. Then each of procedure who can mutate shared variable should be  
 registered by the same serializer to prevent the interleaving process. We can  
-implement this behavior following the steps of [previous section](#org9b5e39b).  
+implement this behavior following the steps of [previous section](#org60a5194).  
 
 There are several implementation details that we can choose for our own:  
 
@@ -9868,7 +9868,7 @@ There are several implementation details that we can choose for our own:
 
 -   Exercise 3.44
 
-    As we noted in [exercise 3.42](#org848c905), the anomalous behavior can be introduced only by  
+    As we noted in [exercise 3.42](#org010e331), the anomalous behavior can be introduced only by  
     consequent access to value & mutating that variable. In the previous exchange  
     procedure, we accessed each account to calculate the difference of those  
     balances then mutated each account appropriately. That is, the anomaly involved each  
@@ -10095,7 +10095,7 @@ There are several implementation details that we can choose for our own:
     the text book &#x2013; jointing accounts results to making each account reference the  
     other account in their state variable. Then now think of the situation where we  
     want to exchange the account's balance of ones with the joint account's. It  
-    cannot be avoided by outlined procedure in [exercise 3.48](#orgba64419).  
+    cannot be avoided by outlined procedure in [exercise 3.48](#org203f6fc).  
 
 -   Concurrency, time, and communication
 
@@ -10113,7 +10113,7 @@ There are several implementation details that we can choose for our own:
     > fundamental complexity of the physical universe.  
 
 
-<a id="org113d63b"></a>
+<a id="orgd8fcd4f"></a>
 
 ## Streams
 
@@ -10130,7 +10130,7 @@ question of which modeling technique leads to more modular and more easily
 maintained systems remains open.  
 
 
-<a id="orgdf604f8"></a>
+<a id="orgeccdf07"></a>
 
 ### Streams Are Delayed Lists
 
@@ -10231,7 +10231,7 @@ maintained systems remains open.
     that additional evaluation.  
 
 
-<a id="org45ae49b"></a>
+<a id="orgc8c1a4b"></a>
 
 ### Infinite Streams
 
@@ -10554,7 +10554,7 @@ equation as we'll learn from 6.01.
     ```
 
 
-<a id="org3afdc2c"></a>
+<a id="org251d786"></a>
 
 ### Exploiting the Stream Paradigm
 
@@ -11232,7 +11232,7 @@ equation as we'll learn from 6.01.
     ```
 
 
-<a id="orgd243929"></a>
+<a id="orgc81cb23"></a>
 
 ### Modularity of Functional Programs and Modularity of Objects
 
@@ -11352,7 +11352,7 @@ equation as we'll learn from 6.01.
 -   A functional-programming view of time
 
     In text, they noted that to formulate or deal with the concurrency problem of  
-    Paul and Peter's that we encountered with in section [3.1.3](#org8c18185) we need to  
+    Paul and Peter's that we encountered with in section [3.1.3](#orgc7e98fb) we need to  
     reintroduce the notion of time into our language &#x2013; which functional style was  
     meant to eliminate. I thought to deal with this specific problem with making  
     that affection regional so that it does not leak over all the other components,  
@@ -11361,7 +11361,7 @@ equation as we'll learn from 6.01.
     *weight*.  
 
 
-<a id="org3377569"></a>
+<a id="org9b1cf77"></a>
 
 # Chapter 4: Metalinguistic Abstraction
 
@@ -11371,12 +11371,12 @@ computer programming, because in programming *not only can we formulate new
 languages but we can also implement these languages by constructing evaluators*.  
 
 
-<a id="org4acbd65"></a>
+<a id="orga62ff99"></a>
 
 ## The Metacircular Evaluator
 
 
-<a id="org40327e7"></a>
+<a id="org1be7e43"></a>
 
 ### The Core of the Evaluator
 
@@ -11409,7 +11409,7 @@ internal representations for internal evaluation model &#x2013; environment.
     ```
 
 
-<a id="org02f7f3b"></a>
+<a id="org46027d4"></a>
 
 ### Representing Expressions
 
@@ -11529,7 +11529,7 @@ this type and recursively evaluate the nested expression.
           'done)
         ```
         
-        Here we used data-directed style `eval` from [ex 4.3](#org4d52a94).  
+        Here we used data-directed style `eval` from [ex 4.3](#org35fe303).  
         
         Then setup for test:  
         
@@ -11719,7 +11719,7 @@ this type and recursively evaluate the nested expression.
         ```
         
         For the `or` part, we delegate the test until we implement the `let` expression  
-        in our evaluator ([ex 4.6](#org6ecfb47))  
+        in our evaluator ([ex 4.6](#org3b9930f))  
 
 -   Exercise 4.5
 
@@ -12284,7 +12284,7 @@ this type and recursively evaluate the nested expression.
     ```
 
 
-<a id="org0b78261"></a>
+<a id="org5fa59de"></a>
 
 ### Evaluator Data Structures
 
@@ -12693,7 +12693,7 @@ this type and recursively evaluate the nested expression.
     Works sweetly!  
 
 
-<a id="org2ddc5bc"></a>
+<a id="orgde620ff"></a>
 
 ### Running the Evaluator as a Program
 
@@ -12710,7 +12710,7 @@ this type and recursively evaluate the nested expression.
         implementation language but in language being implemented.
 
 
-<a id="orgd0f382c"></a>
+<a id="org99588b0"></a>
 
 ### Data as Programs
 
@@ -12728,7 +12728,7 @@ this type and recursively evaluate the nested expression.
         assumption in any case &#x2013; whether it evaluated as *run forever* or *raise error*.
 
 
-<a id="org88bb3a5"></a>
+<a id="org9487f7e"></a>
 
 ### Internal Definitions
 
@@ -13103,7 +13103,7 @@ this type and recursively evaluate the nested expression.
         ```
 
 
-<a id="org85bdb03"></a>
+<a id="orgad1ea98"></a>
 
 ### Separating Syntactic Analysis from Execution
 
@@ -13111,7 +13111,7 @@ this type and recursively evaluate the nested expression.
 
     We can get what we want by mapping the expression part to `let->combination` to  
     `analyze-application`. First let we make our analyzer to be data-directed  
-    style, which is analogous to [ex 4.3](#org4d52a94):  
+    style, which is analogous to [ex 4.3](#org35fe303):  
     
     ```scheme
     (define (analyze exp)
@@ -13376,12 +13376,12 @@ this type and recursively evaluate the nested expression.
         ```
 
 
-<a id="org83b8802"></a>
+<a id="org89c6146"></a>
 
 ## Variations on a Scheme &#x2013; Lazy Evaluation
 
 
-<a id="orgeaf5373"></a>
+<a id="orgd091cc6"></a>
 
 ### Normal Order and Applicative Order
 
@@ -13431,7 +13431,7 @@ this type and recursively evaluate the nested expression.
     application.  
 
 
-<a id="orga94fc6f"></a>
+<a id="org54dbd80"></a>
 
 ### An Interpreter with Lazy Evaluation
 
@@ -13587,7 +13587,7 @@ this type and recursively evaluate the nested expression.
     
     -   b.
     
-        As we noted in [ex 4.28](#org88565af), the thunked expression is not evaluated as value without  
+        As we noted in [ex 4.28](#orga521797), the thunked expression is not evaluated as value without  
         forcing it &#x2013; by `actual-value` &#x2013;, in turn, user can thunk the expression only  
         via application of compound procedure.  
         
@@ -13702,7 +13702,7 @@ this type and recursively evaluate the nested expression.
     	(else obj)))
     ```
     
-    Then test! Here we use [ex 4.29](#orgab1eaa4) for test:  
+    Then test! Here we use [ex 4.29](#org5d24d31) for test:  
     
     ```scheme
     ;;; L-Eval input:
@@ -14267,12 +14267,12 @@ this type and recursively evaluate the nested expression.
     ```
 
 
-<a id="org7c0f19d"></a>
+<a id="orgeccac30"></a>
 
 ## Variations on a Scheme &#x2013; Nondeterministic Computing
 
 
-<a id="orgf5f421b"></a>
+<a id="org3b03485"></a>
 
 ### Amb and Search
 
@@ -14375,7 +14375,7 @@ this type and recursively evaluate the nested expression.
     
     So we need to constrain `k` using following rules &#x2013; the triangle inequality:  
     
-    -   \(i^{2}+j^{2} \ge k^{2} \iff i+j > k\) for \(i,j \ge 1\)
+    -   i<sup>2</sup>+j<sup>2</sup> &ge; k<sup>2</sup> &hArr; i+j > k for i,j &ge; 1
     
     This also would not work since now `i` is fixed to `low`; this kind problem is  
     exactly same as before, when we tried to produce stream of pairs from two  
@@ -14452,7 +14452,7 @@ this type and recursively evaluate the nested expression.
     So consequently this Ben's version is efficient in asymptotic order.  
 
 
-<a id="org48f9a40"></a>
+<a id="orga1e9ed4"></a>
 
 ### Examples of Nondeterministic Programs
 
@@ -15103,7 +15103,7 @@ this type and recursively evaluate the nested expression.
     studies" using the `when` subordinate adjunct.  
 
 
-<a id="orgbdf82b4"></a>
+<a id="orgc16cc6b"></a>
 
 ### Implementing the `Amb` Evaluator
 
@@ -15338,12 +15338,12 @@ this type and recursively evaluate the nested expression.
     ```
 
 
-<a id="org7d3bbbf"></a>
+<a id="org9ec9e5d"></a>
 
 ## Logic Programming
 
 
-<a id="org7f81616"></a>
+<a id="org9f6e209"></a>
 
 ### Deductive Information Retrieval
 
@@ -15726,12 +15726,12 @@ this type and recursively evaluate the nested expression.
     ```
 
 
-<a id="org281cab2"></a>
+<a id="org1d17c14"></a>
 
 ### How the Query System Works
 
 
-<a id="org5e22dca"></a>
+<a id="org02169d5"></a>
 
 ### Is Logic Programming Mathematical Logic?
 
@@ -15988,7 +15988,7 @@ this type and recursively evaluate the nested expression.
     ```
 
 
-<a id="orgd6315b3"></a>
+<a id="orga67e34f"></a>
 
 ### Implementing the Query System
 
@@ -16101,7 +16101,7 @@ this type and recursively evaluate the nested expression.
     The preceding observation applies here too. So here we just show the example  
     that embodies the difference.  
     
-    For that example here we use the one from [ex 4.64](#org9d9d944):  
+    For that example here we use the one from [ex 4.64](#orgf278843):  
     
     ```scheme
     (outranked-by (Bitdiddle Ben) ?who)
@@ -17238,7 +17238,7 @@ this type and recursively evaluate the nested expression.
     
     ```
     
-    Or like this (variation of [Exercise 4.56](#orga5067b7) c.):  
+    Or like this (variation of [Exercise 4.56](#org80c5607) c.):  
     
     ```scheme
     ;;; Query input:
@@ -17418,7 +17418,7 @@ this type and recursively evaluate the nested expression.
       (filter-failed (add-callback callback frame)))
     ```
     
-    Here we used the combination of `if-fail` and `permanent-set!` as we did [before](#orged4e128)  
+    Here we used the combination of `if-fail` and `permanent-set!` as we did [before](#org8288792)  
     to cope with the time branch abortion.  
     
     Then (unit) test:  
@@ -17648,7 +17648,7 @@ this type and recursively evaluate the nested expression.
       C-c C-c;Quit!
     ```
     
-    Or the `or` from [the previous example](#org34eba52):  
+    Or the `or` from [the previous example](#org6856479):  
     
     ```scheme
     ;;; Starting a new problem
@@ -17723,7 +17723,7 @@ this type and recursively evaluate the nested expression.
     representation of this fact.  
     
     Think about the `(last-pair <list> <last-pair>)` query with the `<list>` part  
-    unbound. As we seen from ex [4.62](#orgab021e4), it unfolds all possible answers using the  
+    unbound. As we seen from ex [4.62](#org345cae5), it unfolds all possible answers using the  
     unbound variable and using "different" variable representation. It make sense  
     since in our language, same variable name indicates has to be bound with same  
     value. But in that example, all of the variable do not need to be bound at same  
@@ -17816,7 +17816,7 @@ this type and recursively evaluate the nested expression.
     (not (and P (not A)))
     ```
     
-    Let's test this fact with the `grandson` relation in exercise [4.63](#org825825f):  
+    Let's test this fact with the `grandson` relation in exercise [4.63](#org00b1198):  
     
     ```scheme
     ;;; Query input:
@@ -17847,7 +17847,7 @@ this type and recursively evaluate the nested expression.
     (and (grandson adam enoch) (not (and (son adam ?f) (son ?f enoch))))
     ```
     
-    Since now our `not` is modified from the original one in exercise [4.76](#org91729cb); our new  
+    Since now our `not` is modified from the original one in exercise [4.76](#orgbf89215); our new  
     `not` does not process the negated query unless the variables in that are all  
     bound. We need the behavior of previous `not` in this case to accomplish this.  
     So we've added `not!`, which is exactly the previous `not`, that process the  
@@ -18248,7 +18248,7 @@ this type and recursively evaluate the nested expression.
                 symbol `done` else aborts.
             
             The rest depend on the `unify-frames`, which in turn depends on `unify-match` or  
-            using the `callback` structure in [exercise 4.77](#orgdc0e008); that we are going to implement  
+            using the `callback` structure in [exercise 4.77](#orgdfa92cf); that we are going to implement  
             in following step.  
             
             Then the code:  
@@ -18606,7 +18606,7 @@ this type and recursively evaluate the nested expression.
             
                 For the one having curiosity of `last-pair` response we've mentioned above, in  
                 current query language implemented using `amb` evaluator, as noted before in  
-                exercise [4.78](#org0c43eaa), we can not produce the output of `(last-pair ?x (2))`:  
+                exercise [4.78](#orge3601cd), we can not produce the output of `(last-pair ?x (2))`:  
                 
                 ```scheme
                 ;;; Query input:
@@ -18671,7 +18671,7 @@ this type and recursively evaluate the nested expression.
             order as `andthen` did using `ramb`; but I've found no use of that in our case,  
             so let it go as it is.  
             
-            For the `callback` feature we made in the [previous exercise](#orgdc0e008) to frame structure,  
+            For the `callback` feature we made in the [previous exercise](#orgdfa92cf) to frame structure,  
             we need to transit into more constraint arithmetic language flavored  
             implementation; that is, to make our callback process as object as it did in  
             constraint object &#x2013; adder, multiplier, etc.  
@@ -19870,7 +19870,7 @@ this type and recursively evaluate the nested expression.
         also to be multi directional.  
 
 
-<a id="org3b8abf1"></a>
+<a id="org164fb0e"></a>
 
 # Chapter 5: Computing with Register Machines
 
@@ -19908,7 +19908,7 @@ that solves the given specific kind of problem.
 We'd better to be engraved in our mind the general strategy through out this chapter.  
 
 
-<a id="org616a719"></a>
+<a id="orgf40a450"></a>
 
 ## Designing Register Machines
 
@@ -19929,7 +19929,7 @@ We'd better to be engraved in our mind the general strategy through out this cha
     context that even not appear until this exercise.  
 
 
-<a id="orgafbef17"></a>
+<a id="org62ec7fc"></a>
 
 ### A Language for Describing Register Machines
 
@@ -19955,7 +19955,7 @@ number of instructions can be used in the designing.
     ```
 
 
-<a id="org299ac7b"></a>
+<a id="org1e1612d"></a>
 
 ### Abstraction in Machine Design
 
@@ -20048,12 +20048,12 @@ number of instructions can be used in the designing.
     For the data paths diagrams, I've drawn in digital paper.  
 
 
-<a id="org9443df3"></a>
+<a id="orga4a3df5"></a>
 
 ### Subroutines
 
 
-<a id="org79c9c11"></a>
+<a id="org01586dc"></a>
 
 ### Using a Stack to Implement Recursion
 
@@ -20111,14 +20111,14 @@ number of instructions can be used in the designing.
     ```
 
 
-<a id="org1d3d224"></a>
+<a id="orgaf908fb"></a>
 
 ### Instruction Summary
 
 In this section, the specifications we need to implement are summarized.  
 
 
-<a id="org483825f"></a>
+<a id="org1adab56"></a>
 
 ## A Register-Machine Simulator
 
@@ -20205,14 +20205,14 @@ thinking as we outlined in the beginning of this chapter.
     ```
 
 
-<a id="org7a2a946"></a>
+<a id="orgaa9d546"></a>
 
 ### The Machine Model
 
 This subsection implements the middle-high level procedures.  
 
 
-<a id="orgb3e6414"></a>
+<a id="org48ba04d"></a>
 
 ### The Assembler
 
@@ -20221,7 +20221,7 @@ instructions (expressions) into execution procedures. The idea behind this
 process is much of the works the simulator would do otherwise can be processed  
 without knowing the actual contents of machine registers. For example, they  
 replaced the references to registers by pointers to the register objects &#x2013; as  
-we did in the [last exercise](#org8e0eaaf) in the previous chapter, and replace references to  
+we did in the [last exercise](#org65f79f3) in the previous chapter, and replace references to  
 labels by pointers to the place in the instruction sequence that the label  
 designates &#x2013; like the variable bound to pair actually bound to pointer to that  
 pair.  
@@ -20298,7 +20298,7 @@ pair.
     ```
 
 
-<a id="org7f6801d"></a>
+<a id="orgdfef75e"></a>
 
 ### Generating Execution Procedures for Instructions
 
@@ -21085,7 +21085,7 @@ actual contents.
     Works well.  
 
 
-<a id="org335758b"></a>
+<a id="org3e3fcbf"></a>
 
 ### Monitoring Machine Performance
 
@@ -21394,7 +21394,7 @@ actual contents.
       (execute))
     ```
     
-    `Label-name` and `get-label` are defined in [exercise 5.8](#org1329aff).  
+    `Label-name` and `get-label` are defined in [exercise 5.8](#org2819f43).  
     
     Then test  
     
@@ -21793,12 +21793,12 @@ actual contents.
     ```
 
 
-<a id="org2bec9fb"></a>
+<a id="orgcbb67b1"></a>
 
 ## Storage Allocation and Garbage Collection
 
 
-<a id="org1050417"></a>
+<a id="orgca215ba"></a>
 
 ### Memory as Vectors
 
@@ -22119,7 +22119,7 @@ actual contents.
     is iterative process unlike the preceding implementation.  
 
 
-<a id="orgd02b2dc"></a>
+<a id="org714f70d"></a>
 
 ### Maintaining the Illusion of Infinite Memory
 
@@ -22134,14 +22134,14 @@ like you understood the core concept of this simple and compact algorithm but
 only in spurious manner.  
 
 
-<a id="org3334a0c"></a>
+<a id="org7a317af"></a>
 
 ## The Explicit-Control Evaluator
 
 Now we turn into the application of this new language. Actually this is not an  
 application but in more presentation about what's going on under the hood &#x2013;  
 this is meant to explain what they assumed or omitted to describe in preceding  
-chapter, [Metacircular Evaluator](#org4acbd65).  
+chapter, [Metacircular Evaluator](#orga62ff99).  
 
 Through this material, we will get the ability to implement meta circular  
 evaluator or even the other variants in hardware in principal. That is, if we  
@@ -22168,12 +22168,12 @@ chuck along with the contracts not only in the high level language also in this
 very low level assembly language uniformly.  
 
 
-<a id="org863e458"></a>
+<a id="org61cac60"></a>
 
 ### The Core of the Explicit-Control Evaluator
 
 
-<a id="orgfd0de70"></a>
+<a id="org2e1ebb8"></a>
 
 ### Sequence Evaluation and Tail Recursion
 
@@ -22181,7 +22181,7 @@ To deal with the tail recursion, we need to handle the last expression in the
 evaluation of sequence differently.  
 
 
-<a id="orgc598906"></a>
+<a id="orgb6ecc50"></a>
 
 ### Conditionals, Assignments, and Definitions
 
@@ -22622,7 +22622,7 @@ evaluation of sequence differently.
     It works as expected.  
 
 
-<a id="org137d3d9"></a>
+<a id="org017b248"></a>
 
 ### Running the Evaluator
 
@@ -22707,7 +22707,7 @@ evaluation of sequence differently.
 -   Exercise 5.28
 
     Let's modify our register machine not to be tail recursive. Then let's re-run  
-    [exercise 5.26](#org02f5e38)'s factorial &#x2013; iterative one:  
+    [exercise 5.26](#org2635ac8)'s factorial &#x2013; iterative one:  
     
     ```scheme
     ;;; EC-Eval input:
@@ -23225,7 +23225,7 @@ evaluation of sequence differently.
         	    (cadr exp)))
         ```
         
-        `tree-map` is the one implemented in [exercise 5.12](#org4e98acb).  
+        `tree-map` is the one implemented in [exercise 5.12](#orgaf0b374).  
         
         Then  
         
@@ -24118,7 +24118,7 @@ evaluation of sequence differently.
         Now works as expected.  
 
 
-<a id="org53f64d1"></a>
+<a id="org5ec8a27"></a>
 
 ## Compilation
 
@@ -24162,7 +24162,7 @@ level language, it can manipulate the given expression directly using the
 pointer to the data structure allocated heap (or list structured memory).  
 
 
-<a id="orgcb5b978"></a>
+<a id="org8e5be9d"></a>
 
 ### Structure of the Compiler
 
@@ -24234,22 +24234,22 @@ pointer to the data structure allocated heap (or list structured memory).
         code since it is done once and compile time.  
 
 
-<a id="org8b325a5"></a>
+<a id="org4b4bd9c"></a>
 
 ### Compiling Expressions
 
 
-<a id="orga2f7635"></a>
+<a id="org2c6ca3d"></a>
 
 ### Compiling Combinations
 
 
-<a id="orgef198c8"></a>
+<a id="orgadd3aa8"></a>
 
 ### Combining Instruction Sequences
 
 
-<a id="orgf26ea33"></a>
+<a id="org056a259"></a>
 
 ### An Example of Compiled Code
 
@@ -24668,7 +24668,7 @@ pointer to the data structure allocated heap (or list structured memory).
 -   Exercise 5.36
 
     Our compiler produces right-to-left order of evaluation for operands of  
-    combination in contrast to the explicit control evaluator in preceding [section](#org3334a0c).  
+    combination in contrast to the explicit control evaluator in preceding [section](#org7a317af).  
     It is determined by the `construct-arglist` in the `compile-application`.  
     
     To change this order according to previous left-to-right order, all we need to  
@@ -24717,7 +24717,7 @@ pointer to the data structure allocated heap (or list structured memory).
 
 -   Exercise 5.37
 
-    This is the place where the exercise [5.31](#orgd7a29a9) can play its role or be verified  
+    This is the place where the exercise [5.31](#orgf8e8271) can play its role or be verified  
     concretely. First, let's modify the `preserving` procedure so that it always  
     `save` and `restore` given registers around the first instruction sequence:  
     
@@ -24738,7 +24738,7 @@ pointer to the data structure allocated heap (or list structured memory).
     	     seq2))))
     ```
     
-    Then let's run this with the 4 cases of exercise [5.31](#orgd7a29a9)  
+    Then let's run this with the 4 cases of exercise [5.31](#orgf8e8271)  
     
     -   Case 1: `(f 'x 'y)`
     
@@ -25339,7 +25339,7 @@ pointer to the data structure allocated heap (or list structured memory).
           (assign val (const ok))))
         ```
         
-        Got way more cleaner than [previous](#org3adcf69).  
+        Got way more cleaner than [previous](#org6f4d043).  
     
     -   d.
     
@@ -25547,7 +25547,7 @@ pointer to the data structure allocated heap (or list structured memory).
         Only the ones annotated is the change from `compile-+`  
 
 
-<a id="org8a2c5d8"></a>
+<a id="orgacfd673"></a>
 
 ### Lexical Addressing
 
@@ -26181,7 +26181,7 @@ pointer to the data structure allocated heap (or list structured memory).
     Works well.  
 
 
-<a id="orgc323b6c"></a>
+<a id="org72007c8"></a>
 
 ### Interfacing Compiled Code to the Evaluator
 
@@ -26373,7 +26373,7 @@ ok
           (assign val (const ok))))
         ```
         
-        If we compare this code with the `fact-machine` in [Exercise 5.14](#org403571e), we come to  
+        If we compare this code with the `fact-machine` in [Exercise 5.14](#orgef0572d), we come to  
         know that the only overhead of stack operation is `(save env)` as annotated  
         above code; we have introduced this overhead when we dealing with the lexical  
         address to lookup variable, if the given variable not found in the lexical  
@@ -26449,7 +26449,7 @@ ok
 
     We will do the same thing to procedure computing the Fibonacci numbers. As noted  
     in the text book, the analysis result for interpreted version obtained in  
-    [Exercise 5.29](#org71761b9).  
+    [Exercise 5.29](#org92b3a10).  
     
     So here, we are going to analyze the special-purpose machine for Fibonacci and  
     compiled version (one for the unoptimized and the other for the optimized).  
@@ -26484,7 +26484,7 @@ ok
         
         -   `Total-pushes`
         
-            We can use the strategy of analysis of [exercise 5.29](#org71761b9)b since the complexity is  
+            We can use the strategy of analysis of [exercise 5.29](#org92b3a10)b since the complexity is  
             same. So if we apply that formulation to following data:  
             
             ```scheme
@@ -26632,7 +26632,7 @@ ok
         one, and 1 and 11/4 compared to special-purpose machine.  
         
         The reason the unoptimized version has less `total-pushes` than optimized one is  
-        same [preceding exercise](#org0b9909f); and the improvement strategy also be same as that.  
+        same [preceding exercise](#orgb18e164); and the improvement strategy also be same as that.  
         
         If we remove the assignment of `global-environment`, we got  
         
@@ -27612,7 +27612,7 @@ ok
 
     This exercise and the last exercise (the one after this) would be longer journey  
     than any one we ever have encountered. We should translate the explicit-control  
-    evaluator of [preceding section](#org3334a0c) into low-level language &#x2013; the typical one would  
+    evaluator of [preceding section](#org7a317af) into low-level language &#x2013; the typical one would  
     be C programming language.  
     
     They warned us that we should provide appropriate storage-allocation routines  
@@ -27685,7 +27685,7 @@ ok
 
 <sup><a id="fn.1" class="footnum" href="#fnr.1">1</a></sup> We sense more and more replicative patterns here
 
-<sup><a id="fn.2" class="footnum" href="#fnr.2">2</a></sup> In fact, it is same procedure as [fringe](#orge0113b8).
+<sup><a id="fn.2" class="footnum" href="#fnr.2">2</a></sup> In fact, it is same procedure as [fringe](#org427e7ff).
 
 <sup><a id="fn.3" class="footnum" href="#fnr.3">3</a></sup> Well, there are several candidates for doing this like [plantUML](http://plantuml.com/en/), [dot](https://www.graphviz.org/)  
 , etc. If I can afford to learn those, I'd like to upload these study note as  

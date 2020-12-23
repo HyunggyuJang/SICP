@@ -572,8 +572,8 @@ Then we can complete the code:
 **** Sequence Operations
 The main procedures that complete the signal processing interfaces are
 followings:
-- [[Mapping over lists][map]]
-- [[Exercise 2.20][filter]]
+- [[*Mapping over lists][map]]
+- [[*Exercise 2.20][filter]]
 - accumulate
   #+BEGIN_SRC scheme
 (define (accumulate op initial sequence)
@@ -13003,7 +13003,7 @@ Unfortunately the last =let= expression doesn't end; it tries all the integers
 higher than =j=. So it will never tries other than =i= equals =low=, =j= equals =low=.
 
 So we need to constrain =k= using following rules -- the triangle inequality:
-- $i^{2}+j^{2} \ge k^{2} \iff i+j > k$ for $i,j \ge 1$
+- i^2+j^2 \ge k^2 \Leftrightarrow i+j > k for i,j \ge 1
 
 
 This also would not work since now =i= is fixed to =low=; this kind problem is
