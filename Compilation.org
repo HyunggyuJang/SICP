@@ -397,8 +397,7 @@ And the branch' structure:
 
 ***** b.
 The procedure that returns weight of mobile, ~total-weight~, is similar with
-above tree recursion processes:[fn::We sense more and more replicative patterns
-here]
+above tree recursion processes: [fn::We sense more and more replicative patterns here]
 - Reduction process:
   #+BEGIN_SRC scheme
 (+ (total-weight (branch-structure (left-branch mobile)))
@@ -596,8 +595,7 @@ of elements to be processed. That is, to make signals which processed afterward.
       (cons low (enumerate-interval (+ low 1) high))))
   #+END_SRC
 
-  For tree, we can transform the tree as follows[fn::In fact, it is same
-  procedure as [[Exercise 2.28][fringe]].]:
+  For tree, we can transform the tree as follows[fn::In fact, it is same procedure as [[Exercise 2.28][fringe]].]:
   #+BEGIN_SRC scheme
 (define (enumerate-tree tree)
   (cond ((null? tree) nil)
@@ -631,7 +629,7 @@ Horner's rule.
 ;; test
 (horner-eval 2 (list 1 3 0 5 0 1))      ;79
 #+END_SRC
-Actually I've used this in the exercise in [[github:HyunggyuJang/Isabelle][Isabelle]].
+Actually I've used this in the exercise in [[https://github.com/HyunggyuJang/Isabelle][Isabelle]].
 **** Exercise 2.35
 We can redefine ~count-leaves~ from [[Hierarchical Structures][this]] using ~accumulate~, which means that we
 can formulate ~count-leaves~ as signal processing interface.
@@ -7262,7 +7260,7 @@ extend the previous table to generalized one:
 I didn't tested it but it would work only if we lookup the table that contains
 entry with key list with which we lookup. Unfortunately, it is huge bug, since
 the user of lookup doesn't know whether the table has such entry. To fix this,
-we make our table using the strategy learned from lecture, [[youtube:bWJlEevfp1E?list=PL7BcsI5ueSNFPCEisbaoQ0kXIDX9rR5FF][Abstract Data Type]].
+we make our table using the strategy learned from lecture, [[yt:bWJlEevfp1E][Abstract Data Type]].
 
 In previous exercise, we only dealt with table of fixed dimension; we don't need
 to check whether the value of given entry is table or not. Here we don't know
@@ -7428,7 +7426,7 @@ To design =make-table-with=, I've exploit the opaque type. And here is the test:
 Note that the latter one is more efficient than former one; also seems cleaner.
 Object-oriented paradigm do not always win.
 **** Exercise 3.26
-As we already implemented the lookup procedure for binary tree in [[org:../MEGAsync/MIT%20Challenge/6.001/Chapter2.org][exercise 2.66]].
+As we already implemented the lookup procedure for binary tree in [[*Exercise 2.66][exercise 2.66]].
 All the left is to implement constructor and mutator of table.
 
 With the same argument of headed list-- our first backbone of table, we need to
@@ -8154,7 +8152,7 @@ We reason as follows:
     to be executed start to get mattered; also in the view point of modeling, it
     doesn't reflect well what behavior the real world takes.
 *** Lecture 5B: Computational Objects
-In [[youtube:yedzRWhi-9E?list=PLE18841CABEA24090][this lecture]], we are going to learn how we use computational object -- the
+In [[yt:yedzRWhi-9E][this lecture]], we are going to learn how we use computational object -- the
 object of message passing paradigm -- to model the real world object; that is,
 mapping the objects from the real world to our computational world as well as
 all the relations between the objects. In lecture, it brings digital circuit
@@ -8209,7 +8207,7 @@ The only difference between this and above modeling of real world object is
 that for designing ADT, there is no need to exist in the real world what we want
 to capture; if we can imagine what we want, we can capture that in computational
 object.
-*** Propagation of Constraints
+*** Propagation of Conlstraints
 Here we implement the constraint-based programming -- non-directional
 computations. There are some mechanisms works in this way in the real world --
 mechanics of material and so on. This constraint-based programming also known as
@@ -8264,7 +8262,7 @@ behavior.
 
 With all the specification in the text book, we can deduce the cloudy objects
 as connector should have state variable that holds the value of connector and
-constraint list of all constraints to which the connector linked; in
+gconstraint list of all constraints to which the connector linked; in
 addition, it should have informant as its state variable to achieve the
 requirement. For the primitive constraint boxes, it should have references to
 terminals to poll and set; it should possess identity to signature informant
@@ -8392,7 +8390,7 @@ value, and =inform-about-no-value=, which tells the constraint that the
 connector has lost its value.
 
 Note that by using the wishful thinking we could break down the massive
-structure into smaller ones as we did in the [[org:../MEGAsync/MIT Challenge/6.001/Chapter2.org][Exercise 2.92]]. From this process,
+structure into smaller ones as we did in the [[*Exercise 2.92][Exercise 2.92]]. From this process,
 we can learn how to expand our previous designing skill embracing mutation. The
 only difference is that in previous we used to substitution model in conversion
 from common computation to code, here we use environment model to convert the
@@ -8849,7 +8847,7 @@ There are several strategy to control the concurrency. In the text book, they
 implemented /serializer/, which works as station where issues permission to
 operate. Then each of procedure who can mutate shared variable should be
 registered by the same serializer to prevent the interleaving process. We can
-implement this behavior following the steps of [[Propagation of Constrains][previous section]].
+implement this behavior following the steps of [[*Propagation of Conlstraints][previous section]].
 
 There are several implementation details that we can choose for our own:
 - Serializer should have state variable that stores all the procedures that
@@ -13350,7 +13348,7 @@ our analyzer:
         ((or? exp) (analyze (or->transformed exp)))
 #+END_SRC
 
-For the implementation of those transformation please visit [[org:../MEGAsync/MIT Challenge/6.001/2004/Projects.org][my other project]].
+For the implementation of those transformation please visit [[file:~/Writing/SICP/2004/Projects.org][my other project]].
 
 **** Exercise 4.43
 As our =amb= evaluator does not support the multi-directional computation, we
@@ -17170,7 +17168,7 @@ definition evaluated -- we need to understand exactly what logic program is for,
 what can we do in current version, and what if we can make use the "capturing"
 in the context of preceding ones.
 
-So it's time to learn from lecture -- Logic programming, [[youtube:rCqMiPk1BJE?list=PLE18841CABEA24090][part 1]] and [[youtube:GReBwkGFZcs?list=PLE18841CABEA24090][part 2]].
+So it's time to learn from lecture -- Logic programming, [[yt:rCqMiPk1BJE][part 1]] and [[yt:GReBwkGFZcs][part 2]].
 It says,
 #+BEGIN_QUOTE
 People use logic program to express what is true, to check whether something is
@@ -18434,7 +18432,7 @@ instructions (expressions) into execution procedures. The idea behind this
 process is much of the works the simulator would do otherwise can be processed
 without knowing the actual contents of machine registers. For example, they
 replaced the references to registers by pointers to the register objects -- as
-we did in the last exercise in the [[org:../MEGAsync/MIT Challenge/6.001/Chapter4.org][previous chapter]], and replace references to
+we did in the [[*Exercise 4.79][last exercise]] in the previous chapter, and replace references to
 labels by pointers to the place in the instruction sequence that the label
 designates -- like the variable bound to pair actually bound to pointer to that
 pair.
@@ -20228,7 +20226,7 @@ only in spurious manner.
 Now we turn into the application of this new language. Actually this is not an
 application but in more presentation about what's going on under the hood --
 this is meant to explain what they assumed or omitted to describe in preceding
-chapter, [[org:../MEGAsync/MIT Challenge/6.001/Chapter4.org][Metacircular Evaluator]].
+chapter, [[*The Metacircular Evaluator][Metacircular Evaluator]].
 
 Through this material, we will get the ability to implement meta circular
 evaluator or even the other variants in hardware in principal. That is, if we
@@ -20240,13 +20238,13 @@ So for start, here they are going to /unwind/ the metacircular evaluator in
 sections 4.1.1 through 4.1.4.
 
 From this point, we can get some intuition behind this concept through the
-[[youtube:ikvAQ_lu31s?list=PL7BcsI5ueSNFPCEisbaoQ0kXIDX9rR5FF][lectures]] available in [[youtube:cIc8ZBMcqAc?list=PLE18841CABEA24090][online]]. So for recapitulation or to understand what concepts
+[[yt:ikvAQ_lu31s][lectures]] available in [[yt:cIc8ZBMcqAc][online]]. So for recapitulation or to understand what concepts
 the authors consider as core, before to go through this section, we'd better to
 go through all the material before this section -- Register Machines.
 
 Actually we can deduce a lot of useful informations using contraction as we did
 in procedural definition (or module) in static sense -- analogous to the type
-contraction rather than behavior specifications. The [[youtube:1eQpcms7c98&t=635s][lecture]] explains this
+contraction rather than behavior specifications. The [[yt:1eQpcms7c98][lecture]] explains this
 concept consistently through this term of lectures.
 
 So using the static information (deduced by static analysis by human not the
